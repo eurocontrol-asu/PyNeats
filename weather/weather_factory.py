@@ -9,7 +9,7 @@ from glob import glob
 from pycontrails.datalib.ecmwf import ERA5
 from pycontrails import DiskCacheStore, MetDataset
 from pycontrails.models.cocip import Cocip
-
+from pycontrails.core.met_var import MetVariable
 from pycontrails.core.met_var  import (
     EastwardWind, NorthwardWind, VerticalVelocity, AirTemperature,
     SpecificHumidity, MassFractionOfCloudIceInAir, Geopotential,
@@ -22,6 +22,27 @@ DEFAULT_WEATHER_OFFSET: Final[int] = 36
 DEFAULT_PRESSURE_LEVELS: Final[List[float]] = [550, 500, 450, 400, 350, 300, 250, 225, 200, 175, 150, 125]
 DEFAULT_HORIZONTAL_RESOLUTION: Final[float] = 0.25
     
+    
+
+
+PotentialVorticity = MetVariable(
+    short_name='pv',
+    standard_name='potential_vorticity',
+    long_name='Potential vorticity (K m^2 / kg s)',
+    level_type='isobaricInhPa',
+    ecmwf_id=60,
+    grib1_id=128,
+    grib2_id=(0,2,14),
+    units='K m**2 kg**-1 s**-1',
+    amip='pvu',
+    description=(
+        'Potential vorticity is a measure of the capacity for air to rotate in the '
+        'atmosphere. If we ignore the effects of heating and friction, potential vorticity '
+        'is conserved following an air parcel. It increases strongly above the tropopause '
+        'and is used in studies related to stratosphere‑troposphere exchange and cyclogenesis.'
+    )
+)
+    
 @dataclass(frozen=True)
 class WeatherFactoryParams:
     
@@ -30,6 +51,7 @@ class WeatherFactoryParams:
     pressure_levels: List[float] = field(default_factory=lambda: DEFAULT_PRESSURE_LEVELS.copy())
     weather_offset: int = DEFAULT_WEATHER_OFFSET
         
+     
 
 class WeatherFactoryProtocol(Protocol):
     def __call__(self, asofdate: datetime) -> WeatherProviderProtocol:
@@ -95,14 +117,18 @@ class DWDFactory:
 
         # Maps for variable classification
         self.required_map = {
-            'u': EastwardWind, 'v': NorthwardWind,
-            'omega': VerticalVelocity, 'temp': AirTemperature,
-            'qv': SpecificHumidity, 'qi': MassFractionOfCloudIceInAir
+            'u': EastwardWind,
+            'v': NorthwardWind,
+            'omega': VerticalVelocity,
+            'temp': AirTemperature,
+            'qv': SpecificHumidity,
+            'qi': MassFractionOfCloudIceInAir
         }
         
         self.optional_map = {'geopot': Geopotential,
             'clc': CloudAreaFractionInAtmosphereLayer,
-            'rhi': RelativeHumidity
+            'rhi': RelativeHumidity,
+            'pv' : PotentialVorticity
         }
         self.wind_map = {'u': EastwardWind, 'v': NorthwardWind}
         
@@ -194,7 +220,8 @@ class DWDFactory:
             if raw in ds:
                 ds[raw].attrs.update({
                     "long_name": mv.long_name,
-                    "standard_name": mv.standard_name
+                    "standard_name": mv.standard_name,
+                    "units": mv.units
                 })
                 ds = ds.rename({raw: mv.standard_name})
             else:

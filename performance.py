@@ -2,19 +2,12 @@ from typing import Protocol, Final, List, Tuple, Union, Dict, Any
 import pandas as pd
 from dataclasses import dataclass, field
 from enum import Enum
+import pkg_resources
+from importlib.resources import files
 
 from pycontrails import Flight
 from pycontrails.physics.jet import acceleration, overall_propulsion_efficiency
 
-paths = [ 
-    '/data/common/dataiku2/config/projects/FUEL_MODEL/lib/python/BADA'
-]
-
-import sys 
-for path in paths:
-    if path not in sys.path:
-        sys.path.append(path)
-        
 import pyBADA.constants as const
 import pyBADA.conversions as conv
 import pyBADA.atmosphere as atm
@@ -55,8 +48,7 @@ class FlightPerformanceModel(Protocol):
     
 def load_bada_mapping():
     
-    #path = pkg_resources.resource_filename(__name__, 'mapping_table.csv')
-    path = '/data/common/dataiku2/managed_folders/NEATS/9vmjWgdQ/AIRCRAFT_Mapping_PRISME_BADA_2025.csv'
+    path = pkg_resources.resource_filename('pyneats.ressources', 'mapping_bada.csv')
     return pd.read_csv(path)
     
 @dataclass(frozen=True)
@@ -64,8 +56,7 @@ class BADAPerformanceModelParams():
     
     true_air_speed_smoothing_window: int = DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW
     bada_mapping_file: pd.DataFrame = field(default_factory=load_bada_mapping)
-    #path = pkg_resources.resource_filename(__name__, 'mapping_table.csv')
-    bada4_config_path = "/data/common/dataiku2/config/projects/FUEL_MODEL/lib/python/BADA/4.2.1/"
+    bada4_config_path = str(files('pyBADA').joinpath('4.2.1')) + '/'
     q_fuel: float = Q_FUEL
         
     def bada_type(self, icao: str) -> Tuple[int, str, str, str]:

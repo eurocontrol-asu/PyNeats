@@ -205,16 +205,15 @@ class NeatsFlight():
        
         # Global Processing Chain
         
-        with dask.config.set(scheduler="synchronous"):
             
-            return (
-                self
-                ._parse_flight()
-                ._interpolate()
-                ._intersect_weather()
-                ._performance()
-                ._emissions()
-                ._contrails()
-                ._gwp()
-            )
+        return (
+            self
+            ._parse_flight()
+            ._interpolate()
+            ._intersect_weather()
+            ._performance()
+            ._emissions()
+            ._contrails()
+            ._gwp()
+        )
     
