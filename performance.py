@@ -57,6 +57,7 @@ class BADAPerformanceModelParams():
     true_air_speed_smoothing_window: int = DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW
     bada_mapping_file: pd.DataFrame = field(default_factory=load_bada_mapping)
     bada4_config_path = str(files('pyBADA').joinpath('4.2.1')) + '/'
+    bada3_config_path = str(files('pyBADA').joinpath('3.16')) + '/'
     q_fuel: float = Q_FUEL
         
     def bada_type(self, icao: str) -> Tuple[int, str, str, str]:
@@ -89,28 +90,54 @@ class BADAPerformanceModel():
         rocd = conv.ft2m(vs_fpm) / 60
         acc = dtas_ktpm
         
-        phase = 'Climb' if vs_fpm > 20 else 'Descent' if vs_fpm < -20 else 'Cruise'
-        
-        cfg = aircraft.flightEnvelope.getConfig(
-            h=alt_ft, phase=phase, theta=theta, delta=delta,
-            v=CAS, mass=mass, DeltaTau=delta_tau, nz=1.2
-        )
-        
-        HLid, LG = aircraft.flightEnvelope.getAeroConfig(config=cfg)
+        if isinstance(aircraft, pyBADA.bada4.Bada4Aircraft):
+            
+            phase = 'Climb' if vs_fpm > 20 else 'Descent' if vs_fpm < -20 else 'Cruise'
 
-        CL = aircraft.CL(M=M, delta=delta, mass=mass)
-        CD = aircraft.CD(M=M, CL=CL, HLid=HLid, LG=LG)
-        Drag = aircraft.D(M=M, delta=delta, CD=CD)
-        ROCD_term = rocd * mass * const.g * tau_const / TAS
-        Thrust = ROCD_term + mass * acc + Drag
+            cfg = aircraft.flightEnvelope.getConfig(
+                h=alt_ft, phase=phase, theta=theta, delta=delta,
+                v=CAS, mass=mass, DeltaTau=delta_tau, nz=1.2
+            )
 
-        Thrust_idle = aircraft.Thrust(rating='LIDL', delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
-        Thrust_MCMB = aircraft.Thrust(rating='MCMB', delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
+            HLid, LG = aircraft.flightEnvelope.getAeroConfig(config=cfg)
 
-        CT = aircraft.CT(Thrust=Thrust, delta=delta)
-        ff = aircraft.ff(CT=CT, delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
-        ff_idle = aircraft.ff(rating='LIDL', delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
-        ff_MCMB = aircraft.ff(rating='MCMB', delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
+            CL = aircraft.CL(M=M, delta=delta, mass=mass)
+            CD = aircraft.CD(M=M, CL=CL, HLid=HLid, LG=LG)
+            Drag = aircraft.D(M=M, delta=delta, CD=CD)
+            ROCD_term = rocd * mass * const.g * tau_const / TAS
+            Thrust = ROCD_term + mass * acc + Drag
+
+            Thrust_idle = aircraft.Thrust(rating='LIDL', delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
+            Thrust_MCMB = aircraft.Thrust(rating='MCMB', delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
+
+            CT = aircraft.CT(Thrust=Thrust, delta=delta)
+            ff = aircraft.ff(CT=CT, delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
+            ff_idle = aircraft.ff(rating='LIDL', delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
+            ff_MCMB = aircraft.ff(rating='MCMB', delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
+            
+        elif isinstance(aircraft, pyBADA.bada3.Bada4Aircraft):
+            phase = 'cl' if vs_fpm > 0 else 'des' if vs_fpm < 0 else 'cr'
+
+            cfg = aircraft.flightEnvelope.getConfig(
+                h=alt_ft, phase=phase, v=CAS, mass=mass, DeltaTau=delta_tau)
+
+            CL = aircraft.CL(tas=TAS, sigma=sigma, mass=mass)
+            CD = aircraft.CD(CL=CL, config=config)
+            Drag = aircraft.D(tas=TAS, sigma=sigma, CD=CD)
+
+            Thrust_idle = aircraft.Thrust(rating='LIDL', v=TAS, h=H_m, config='CR', DeltaTau=DeltaTau)
+            Thrust_MCMB = aircraft.Thrust(rating='MCMB', v=TAS, h=H_m, DeltaTau=DeltaTau)
+            Thrust = ROCD*mass*const.g*tau_const/TAS + mass*acc + Drag
+
+            if phase == 'cr':
+                ff = aircraft.ff(rating='MCRZ',v=TAS, h=H_m, T=Thrust)
+            elif phase == 'cl':
+                ff = aircraft.ff(rating='MCMB',v=TAS, h=H_m, T=Thrust)
+            elif phase == 'des':
+                ff = aircraft.ff(h=H_m, v=TAS, T=Thrust)
+
+            ff_idle = aircraft.ff(rating='LIDL', h=H_m)
+            ff_MCMB = aircraft.ff(rating='MCMB', v=TAS, h=H_m, T=Thrust_MCMB)
 
         if ff < ff_idle or Thrust < Thrust_idle:
             return ff_idle, Thrust_idle, phase, "LIDL"
@@ -180,8 +207,11 @@ class BADAPerformanceModel():
     def _compute_performance(self) -> FlightWithPerformance:
         
         icao = self.source.attrs["aircraft_type"]
-        _, _, bada_4, _ = self.params.bada_type(icao)
-        aircraft = Bada4Aircraft(self.params.bada4_config_path, bada_4)
+        nb_eng, bada3, bada_4, enfine_id = self.params.bada_type(icao)
+        if np.isnan(bada_4):
+            aircraft = Bada4Aircraft(self.params.bada4_config_path, bada_4)
+        else:
+            aircraft = Bada3Aircraft(self.params.bada3_config_path, bada_3)
 
         df = self.flight_performance_df
         df["delta_tau"] = 0.0

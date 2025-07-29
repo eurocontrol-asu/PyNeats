@@ -67,7 +67,25 @@ class NeatsFleet:
     def eval(self):
         self._get_weather()
         self._get_trajectories()
-        self._process_parallel()
+        #self._process_parallel()
+        self.process_loop()
+        
+        
+    def _process_loop(self):
+        
+        self.results = []
+        
+        for df_flight in self.flights:
+            try:
+                neats_flight = NeatsFlight(weather=self.weather)
+                neats_flight.source = df_flight    # Only update the flight source
+                neats_flight.eval()
+                self.results.append(neats_flight.climate_impact)
+            except Exception as e:
+                flight_id = df_flight['FLIGHT_ID'].iloc[0] if 'FLIGHT_ID' in df_flight else 'UNKNOWN'
+                print(f"Error processing flight {flight_id}: {e}")
+                self.results.append({})
+            
         
     def _process_parallel(self):
         """
