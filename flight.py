@@ -91,6 +91,7 @@ class NeatsFlight():
     def _parse_flight(self)-> Self:
         
         self.parsed_flight = self.parser(self.source)
+        self.current = self.parsed_flight
         return self
     
     # Step 2: Interpolate/reconstruct trajectory
@@ -98,6 +99,8 @@ class NeatsFlight():
         
         assert self.parsed_flight is not None, "parse_flight() must be called first"
         self.interpolated_flight = self.interpolator(self.parsed_flight)
+        self.current = self.interpolated_flight
+        del self.parsed_flight
         return self
     
     # Step 3: Intersect with weather data 
@@ -105,6 +108,8 @@ class NeatsFlight():
         
         assert self.interpolated_flight is not None, "interpolate() must be called first"
         self.flight_with_weather = self.weather.intersect(self.interpolated_flight)
+        self.current = self.flight_with_weather
+        del self.interpolated_flight
         return self
     
     # Step 4: Run Performance model 
@@ -112,23 +117,44 @@ class NeatsFlight():
         
         assert self.flight_with_weather is not None, "intersect_weather() must be called first"
         self.flight_with_performance  = self.performance(self.flight_with_weather)
+        self.current = self.flight_with_performance
+        del self.flight_with_weather
         return self
     
     # Step 5: Run Emission model 
     def _emissions(self) -> Self:
         assert self.flight_with_performance is not None, "performance() must be called first"
         self.flight_with_emissions  = self.emission(self.flight_with_performance)
+        self.current = self.flight_with_emissions
+        del self.flight_with_performance
         return self
     
     # Step 6: Compute Contrails EF 
     def _contrails(self) -> Self:
         assert self.flight_with_emissions is not None, "emissions() must be called first"
         self.flight_with_contrails  = self.contrails_model(self.flight_with_emissions)
+        self.current = self.flight_with_contrails
+        del self.flight_with_emissions
         return self
     
     
+    def get_meta_data(self):
+        
+        attrs = self.current.attrs
+    
+        return {'aircraft_id': attrs['flight_id'],
+                'departure_airport': attrs.get('departure_airport'),
+                'arrival_airport': attrs.get('arrival_airport'),
+                'aircraft_type': attrs.get('aircraft_type'),
+                'bada_version' : attrs.get('bada_version'),
+                'callsign': attrs.get('callsign'),
+                'aobt': attrs['aobt'],
+                'pycontrails_version': attrs.get('pycontrails_version')
+               }
+    
     # Step 7: Compute Climate Impact 
     def _gwp(self) -> Self:
+        
         assert self.flight_with_contrails is not None, "contrails() must be called first"
         
         # Constants
@@ -153,15 +179,7 @@ class NeatsFlight():
         total_ef = df['ef'].sum()             # total contrail energy forcing (Joules)
         total_co2 = attrs['total_co2']        # total CO₂ emissions (kg)
 
-        result = {
-            'aircraft_id': attrs['flight_id'],
-            'departure_airport': attrs.get('departure_airport'),
-            'arrival_airport': attrs.get('arrival_airport'),
-            'aircraft_type': attrs.get('aircraft_type'),
-            'callsign': attrs.get('callsign'),
-            'aobt': attrs['aobt'],
-            'pycontrails_version': attrs.get('pycontrails_version'),
-        }
+        result = self.get_meta_data()
 
         # STEP 1: Compute GWP forcing for contrails
         gwp_contrails = {

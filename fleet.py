@@ -4,6 +4,7 @@ import os
 import pandas as pd
 from joblib import Parallel, delayed
 import time
+import gc
 
 from pyneats.flight import NeatsFlight
 from pyneats.weather import DWDFactory, WeatherFactoryParams
@@ -68,7 +69,7 @@ class NeatsFleet:
         self._get_weather()
         self._get_trajectories()
         #self._process_parallel()
-        self.process_loop()
+        self._process_loop()
         
         
     def _process_loop(self):
@@ -81,10 +82,14 @@ class NeatsFleet:
                 neats_flight.source = df_flight    # Only update the flight source
                 neats_flight.eval()
                 self.results.append(neats_flight.climate_impact)
+                gc.collect()
             except Exception as e:
                 flight_id = df_flight['FLIGHT_ID'].iloc[0] if 'FLIGHT_ID' in df_flight else 'UNKNOWN'
                 print(f"Error processing flight {flight_id}: {e}")
-                self.results.append({})
+                result = neats_flight.get_meta_data()
+                result['error'] = e
+                self.results.append(result)
+                gc.collect()
             
         
     def _process_parallel(self):

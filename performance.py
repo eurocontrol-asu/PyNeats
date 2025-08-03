@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 import pkg_resources
 from importlib.resources import files
+import numpy as np
 
 from pycontrails import Flight
 from pycontrails.physics.jet import acceleration, overall_propulsion_efficiency
@@ -13,6 +14,8 @@ import pyBADA.conversions as conv
 import pyBADA.atmosphere as atm
 from pyBADA.bada3 import Bada3Aircraft
 from pyBADA.bada4 import Bada4Aircraft
+
+from pyneats.utilities import is_nan_string
 
 
 COLS_MAPPING_BADA: Final[List[str]] = ['NB_ENG','BADA3','BADA4','ENGINE_ID']
@@ -50,6 +53,53 @@ def load_bada_mapping():
     
     path = pkg_resources.resource_filename('pyneats.ressources', 'mapping_bada.csv')
     return pd.read_csv(path)
+
+
+class AircraftProtocol(Protocol):
+    """
+    Protocol describing the interface expected from all aircraft classes.
+    This allows your code to type-hint for any object that 'looks like' an aircraft,
+    regardless of its underlying implementation.
+    """
+    @property
+    def nb_eng(self) -> int:
+        """Return the number of engines."""
+        ...
+        
+    @property
+    def span(self) -> float:
+        """Return the number of engines."""
+        ...
+        
+class BADA4Neats:
+    """
+    Adapter for Bada4Aircraft to expose a uniform interface.
+    """
+    def __init__(self, config_path: str, bada_4_code: str) -> None:
+        self._obj = Bada4Aircraft(config_path, bada_4_code)
+    
+    @property
+    def nb_eng(self) -> int:
+        return self._obj.n_eng 
+    
+    @property
+    def span(self) -> float:
+        return self._obj.span
+
+class BADA3Neats:
+    """
+    Adapter for Bada3Aircraft to expose a uniform interface.
+    """
+    def __init__(self, config_path: str, bada_3_code: str) -> None:
+        self._obj = Bada3Aircraft(config_path, bada_3_code)
+    
+    @property
+    def nb_eng(self) -> int:
+        return self._obj.engines  #'engines' attribute in Bada3Aircraft
+    
+    @property
+    def span(self) -> float:
+        return self._obj.span
     
 @dataclass(frozen=True)
 class BADAPerformanceModelParams():
@@ -90,7 +140,7 @@ class BADAPerformanceModel():
         rocd = conv.ft2m(vs_fpm) / 60
         acc = dtas_ktpm
         
-        if isinstance(aircraft, pyBADA.bada4.Bada4Aircraft):
+        if isinstance(aircraft, Bada4Aircraft):
             
             phase = 'Climb' if vs_fpm > 20 else 'Descent' if vs_fpm < -20 else 'Cruise'
 
@@ -115,29 +165,29 @@ class BADAPerformanceModel():
             ff_idle = aircraft.ff(rating='LIDL', delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
             ff_MCMB = aircraft.ff(rating='MCMB', delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
             
-        elif isinstance(aircraft, pyBADA.bada3.Bada4Aircraft):
+        elif isinstance(aircraft, Bada3Aircraft):
             phase = 'cl' if vs_fpm > 0 else 'des' if vs_fpm < 0 else 'cr'
 
             cfg = aircraft.flightEnvelope.getConfig(
                 h=alt_ft, phase=phase, v=CAS, mass=mass, DeltaTau=delta_tau)
 
             CL = aircraft.CL(tas=TAS, sigma=sigma, mass=mass)
-            CD = aircraft.CD(CL=CL, config=config)
+            CD = aircraft.CD(CL=CL, config=cfg)
             Drag = aircraft.D(tas=TAS, sigma=sigma, CD=CD)
 
-            Thrust_idle = aircraft.Thrust(rating='LIDL', v=TAS, h=H_m, config='CR', DeltaTau=DeltaTau)
-            Thrust_MCMB = aircraft.Thrust(rating='MCMB', v=TAS, h=H_m, DeltaTau=DeltaTau)
-            Thrust = ROCD*mass*const.g*tau_const/TAS + mass*acc + Drag
+            Thrust_idle = aircraft.Thrust(rating='LIDL', v=TAS, h=alt_ft, config='CR', DeltaTau=delta_tau)
+            Thrust_MCMB = aircraft.Thrust(rating='MCMB', v=TAS, h=alt_ft, DeltaTau=delta_tau)
+            Thrust = rocd*mass*const.g*tau_const/TAS + mass*acc + Drag
 
             if phase == 'cr':
-                ff = aircraft.ff(rating='MCRZ',v=TAS, h=H_m, T=Thrust)
+                ff = aircraft.ff(rating='MCRZ',v=TAS, h=alt_ft, T=Thrust)
             elif phase == 'cl':
-                ff = aircraft.ff(rating='MCMB',v=TAS, h=H_m, T=Thrust)
+                ff = aircraft.ff(rating='MCMB',v=TAS, h=alt_ft, T=Thrust)
             elif phase == 'des':
-                ff = aircraft.ff(h=H_m, v=TAS, T=Thrust)
+                ff = aircraft.ff(h=alt_ft, v=TAS, T=Thrust)
 
-            ff_idle = aircraft.ff(rating='LIDL', h=H_m)
-            ff_MCMB = aircraft.ff(rating='MCMB', v=TAS, h=H_m, T=Thrust_MCMB)
+            ff_idle = aircraft.ff(rating='LIDL', h=alt_ft)
+            ff_MCMB = aircraft.ff(rating='MCMB', v=TAS, h=alt_ft, T=Thrust_MCMB)
 
         if ff < ff_idle or Thrust < Thrust_idle:
             return ff_idle, Thrust_idle, phase, "LIDL"
@@ -167,24 +217,26 @@ class BADAPerformanceModel():
 
 
         for idx, pt in enumerate(df.itertuples(index=False, name="FlightPt")):
-            try:
-                ff, thrust, phase, thrust_seg = self._thrust_fuel_segment(
-                    aircraft,
-                    mass_curr,
-                    pt.altitude,
-                    pt.true_airspeed,
-                    pt.rocd,
-                    pt.acceleration,
-                    pt.delta_tau
-                )
-                prev_ff, prev_thrust, prev_phase, prev_segment = ff, thrust, phase, thrust_seg
+        #try:
+            ff, thrust, phase, thrust_seg = self._thrust_fuel_segment(
+                aircraft,
+                mass_curr,
+                pt.altitude,
+                pt.true_airspeed,
+                pt.rocd,
+                pt.acceleration,
+                pt.delta_tau
+            )
+            prev_ff, prev_thrust, prev_phase, prev_segment = ff, thrust, phase, thrust_seg
 
+            '''    
             except Exception:
             # fallback: reuse previous values
                 ff = prev_ff
                 thrust = prev_thrust
                 phase = prev_phase
                 thrust_seg = prev_segment
+            '''
 
             # record
             mass_arr[idx] = mass_curr
@@ -204,19 +256,27 @@ class BADAPerformanceModel():
             "segment": segment_arr,
         }
     
+    def _get_bada_aircraft(self, icao: str) -> AircraftProtocol:
+        
+        nb_eng, bada_3, bada_4, enfine_id = self.params.bada_type(icao)
+        
+        if is_nan_string(bada_4):
+            return BADA3Neats(self.params.bada3_config_path, bada_3), "BADA3"
+        else:
+            return BADA4Neats(self.params.bada4_config_path, bada_4), "BADA4"
+          
+        
+    
     def _compute_performance(self) -> FlightWithPerformance:
         
         icao = self.source.attrs["aircraft_type"]
-        nb_eng, bada3, bada_4, enfine_id = self.params.bada_type(icao)
-        if np.isnan(bada_4):
-            aircraft = Bada4Aircraft(self.params.bada4_config_path, bada_4)
-        else:
-            aircraft = Bada3Aircraft(self.params.bada3_config_path, bada_3)
-
+        aircraft, bada_version = self._get_bada_aircraft(icao)
+        
+  
         df = self.flight_performance_df
         df["delta_tau"] = 0.0
 
-        perf = self._thrust_fuel_flight(aircraft, df)
+        perf = self._thrust_fuel_flight(aircraft._obj, df)
 
         df["fuel_flow"] = perf["fuel_flow"]
         df["fuel_burn"] = df["fuel_flow"] * df["segment_duration"]
@@ -235,8 +295,9 @@ class BADAPerformanceModel():
         )
         
         flight_performance = Flight(self.flight_performance_df)
-        flight_performance.attrs["n_engine"] = aircraft.n_eng
+        flight_performance.attrs["n_engine"] = aircraft.nb_eng
         flight_performance.attrs["wingspan"] = aircraft.span
+        flight_performance.attrs["bada_version"] = bada_version
 
         return flight_performance
     
