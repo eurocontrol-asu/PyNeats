@@ -15,7 +15,6 @@ class TrajectoryParser(Protocol):
         ...
 
         
-        
 ######################################################################
 #                                                                    #
 #       PARSER FOR FTFM, RTFM and CTFM Trajectories from NM          #
@@ -68,7 +67,7 @@ class NMTrajectoryParser:
 
         # Drop any rows with missing coords or time
         required = list(self.params.mapping_4d.values())
-        df = df.dropna(subset=required)
+        df = df.dropna(subset=required) # type: ignore
 
         # Parse time column, sort and drop duplicates
         df["time"] = pd.to_datetime(

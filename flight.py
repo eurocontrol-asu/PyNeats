@@ -1,18 +1,18 @@
+from pycontrails.models.humidity_scaling import ConstantHumidityScaling
+
 from typing import Final, Dict, Any
 import numpy as np
 import pandas as pd
 from typing_extensions import Self
-import dask
 
 from pyneats.interpolator import TrajectoryInterpolator, InterpolatorType
 from pyneats.trajectory import TrajectoryParserType, TrajectoryParser
 from pyneats.performance import FlightPerformanceModel, PerformanceModelType
 from pyneats.emissions import EmissionModel, EmissionModelType
 from pyneats.climate import ContrailsModelType, ContrailsModel, ContrailsParams
-from pyneats.weather import ERA5Factory, WeatherFactoryParams, WeatherProviderProtocol
+from pyneats.weather import  WeatherProviderProtocol
 
-from pycontrails.models.humidity_scaling import ConstantHumidityScaling
-from pycontrails.physics.jet import acceleration
+
 
 #Default Trajectory in NEATS is Interpolator/reconstructor from PyContrails (cf class PyContrailsInterpolator) 
 DEFAULT_INTERPOLATOR: Final[TrajectoryInterpolator] = InterpolatorType.PYCONTRAILS.get()

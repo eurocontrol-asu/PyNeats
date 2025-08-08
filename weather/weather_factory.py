@@ -2,47 +2,29 @@ from typing import Protocol
 from dataclasses import dataclass, field
 from typing import Final, List, Optional
 from datetime import datetime, timedelta
-import xarray as xr
-import re, os
 from glob import glob
+import re
+import os
+import xarray as xr
 
 from pycontrails.datalib.ecmwf import ERA5
 from pycontrails import DiskCacheStore, MetDataset
 from pycontrails.models.cocip import Cocip
-from pycontrails.core.met_var import MetVariable
 from pycontrails.core.met_var  import (
     EastwardWind, NorthwardWind, VerticalVelocity, AirTemperature,
     SpecificHumidity, MassFractionOfCloudIceInAir, Geopotential,
     CloudAreaFractionInAtmosphereLayer, RelativeHumidity,
     TOANetDownwardShortwaveFlux, TOAOutgoingLongwaveFlux)
+from pycontrails.datalib.ecmwf import PotentialVorticity, SurfaceSolarDownwardRadiation
 
 from pyneats.weather.weather_provider import WeatherProviderProtocol,WeatherProvider
 
 DEFAULT_WEATHER_OFFSET: Final[int] = 36
-DEFAULT_PRESSURE_LEVELS: Final[List[float]] = [550, 500, 450, 400, 350, 300, 250, 225, 200, 175, 150, 125]
+DEFAULT_PRESSURE_LEVELS: Final[List[float]] = [550, 500, 450, 400, 350, 300, 
+                                               250, 225, 200, 175, 150, 125]
 DEFAULT_HORIZONTAL_RESOLUTION: Final[float] = 0.25
-    
-    
 
-
-PotentialVorticity = MetVariable(
-    short_name='pv',
-    standard_name='potential_vorticity',
-    long_name='Potential vorticity (K m^2 / kg s)',
-    level_type='isobaricInhPa',
-    ecmwf_id=60,
-    grib1_id=128,
-    grib2_id=(0,2,14),
-    units='K m**2 kg**-1 s**-1',
-    amip='pvu',
-    description=(
-        'Potential vorticity is a measure of the capacity for air to rotate in the '
-        'atmosphere. If we ignore the effects of heating and friction, potential vorticity '
-        'is conserved following an air parcel. It increases strongly above the tropopause '
-        'and is used in studies related to stratosphere‑troposphere exchange and cyclogenesis.'
-    )
-)
-    
+  
 @dataclass(frozen=True)
 class WeatherFactoryParams:
     
@@ -133,7 +115,8 @@ class DWDFactory:
         self.wind_map = {'u': EastwardWind, 'v': NorthwardWind}
         
         self.rad_map = {'tsr': TOANetDownwardShortwaveFlux,
-                        'olr': TOAOutgoingLongwaveFlux}
+                        'olr': TOAOutgoingLongwaveFlux,
+                        'sdr' : SurfaceSolarDownwardRadiation}
 
     def __call__(self, asofdate: datetime, hour: Optional[int] = None) -> WeatherProviderProtocol:
         """
@@ -141,8 +124,6 @@ class DWDFactory:
         returns WeatherProvider(met, rad, wind)
         """
         run_hour = hour if hour is not None else asofdate.hour
-
-        cache = DiskCacheStore(cache_dir=self.params.data_dir, allow_clear=True)
 
         date_str = asofdate.strftime("%Y%m%d")
 
