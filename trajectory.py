@@ -80,7 +80,7 @@ class NMTrajectoryParserParams:
         "callsign": "REGISTRATION",
         "departure_airport": "ADEP",
         "arrival_airport": "ADES",
-        "aobt": "TIME_OVER",
+        "aobt": "time",
     })
 
 

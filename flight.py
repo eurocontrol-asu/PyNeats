@@ -1,17 +1,17 @@
-from pycontrails.models.humidity_scaling import ConstantHumidityScaling
-from pycontrails import Flight
-
 import logging
 from typing import Final, Dict, Any
 import numpy as np
 import pandas as pd
 from typing_extensions import Self
 
-from pyneats.interpolator import TrajectoryInterpolator, InterpolatorType
+from pycontrails.models.humidity_scaling import ConstantHumidityScaling
+from pycontrails import Flight
+
+from pyneats.interpolator import TrajectoryInterpolator, InterpolatorType, InterpolationStepError
 from pyneats.trajectory import TrajectoryParserType, TrajectoryParser, FlightParsingError, ParsedFlight
 from pyneats.performance import FlightPerformanceModel, PerformanceModelType
 from pyneats.emissions import EmissionModel, EmissionModelType, EmissionsStepError, FlightWithEmissions
-from pyneats.climate import ContrailsModelType, ContrailsModel, ContrailsParams
+from pyneats.climate import ContrailsModelType, ContrailsModel, ContrailsParams, ContrailsStepError, FlightWithContrailsImpact
 from pyneats.weather import  WeatherProviderProtocol
 
 logger = logging.getLogger(__name__)
@@ -64,17 +64,22 @@ class NeatsFlight():
         self.weather = weather
         self.performance = performance or self.default_performance
         self.emission = emission or self.default_emission
-        self.contrails_model = self.default_contrails_model_type.get(ContrailsParams(met=self.weather.met,
-                                                               rad=self.weather.rad,
-                                                               contrails_params=self.default_contrails_params))
+        
+        self.contrails_model = self.default_contrails_model_type.get(
+            ContrailsParams(
+                met=self.weather.met,
+                rad=self.weather.rad,
+                cocip_kwargs=self.default_contrails_params  # <-- new name
+            )
+        )
 
         # After the main eval() method:
         self.parsed_flight: Flight | None = None
         self.interpolated_flight: Flight | None = None
         self.flight_with_weather: Flight | None = None
-        self.flight_with_performance: FlightWithPerformance | None = None
+        self.flight_with_performance: Flight | None = None
         self.flight_with_emissions: Flight | None = None
-        self.flight_with_contrails: FlightWithContrailsImpact | None = None
+        self.flight_with_contrails: Flight | None = None
             
     @property
     def source(self):
@@ -115,11 +120,35 @@ class NeatsFlight():
     
     # Step 2: Interpolate/reconstruct trajectory
     def _interpolate(self) -> Self:
-        
-        assert self.parsed_flight is not None, "parse_flight() must be called first"
-        self.interpolated_flight = self.interpolator(self.parsed_flight)
+
+        if self.parsed_flight is None:
+            logger.error("Missing parsed_flight; did you call _parse_flight() first?")
+            raise RuntimeError("_parse_flight() must be called before _interpolate().")
+
+        # Run the interpolator (may raise InterpolationStepError)
+        try:
+            base: Flight = self.interpolator(self.parsed_flight)
+        except InterpolationStepError:
+            # Already logged inside the interpolator; propagate with original traceback
+            raise
+        except Exception as e:
+            logger.exception("Unexpected error during interpolation")
+            raise RuntimeError(f"Interpolation failed: {e}") from e
+
+        # Optional: validate again (zero-copy) for typed accessors & safety
+        self.interpolated_flight = ParsedFlight.from_flight(base)
+        #self.interpolated_flight = base
+
+        # Advance the pipeline pointer
         self.current = self.interpolated_flight
-        del self.parsed_flight
+
+        # Release previous reference (often same object; clarifies stage ownership)
+        self.parsed_flight = None
+
+        logger.info(
+            "Interpolation completed successfully with %d points",
+            len(base.data),
+        )
         return self
     
     # Step 3: Intersect with weather data 
@@ -164,13 +193,31 @@ class NeatsFlight():
         logger.info("Emissions step completed successfully")
         return self
     
-    # Step 6: Compute Contrails EF 
+    # Step 6: Compute Contrails EF
     def _contrails(self) -> Self:
 
-        assert self.flight_with_emissions is not None, "emissions() must be called first"
-        self.flight_with_contrails  = self.contrails_model(self.flight_with_emissions)
+        if self.flight_with_emissions is None:
+            logger.error("Missing flight_with_emissions; did you call _emissions() first?")
+            raise RuntimeError("_emissions() must be called before _contrails().")
+
+        # Run the contrails step (COCIP). It returns a base Flight.
+        try:
+            f_out: Flight = self.contrails_model(self.flight_with_emissions)
+        except ContrailsStepError:
+            # Already logged inside the model; keep original traceback.
+            raise
+        except Exception as e:
+            logger.exception("Unexpected error during contrails (COCIP) evaluation")
+            raise RuntimeError(f"Contrails evaluation failed: {e}") from e
+
+        # Zero-copy validated view for ergonomic access (e.g., .ef property)
+        self.flight_with_contrails = FlightWithContrailsImpact.from_flight(f_out)
+
+        # Advance pointer & release previous stage
         self.current = self.flight_with_contrails
-        del self.flight_with_emissions
+        self.flight_with_emissions = None
+
+        logger.info("Contrails step completed successfully")
         return self
     
     
@@ -268,6 +315,6 @@ class NeatsFlight():
             ._performance()
             ._emissions()
             ._contrails()
-           # ._gwp()
+            ._gwp()
         )
     
