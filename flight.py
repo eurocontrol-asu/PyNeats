@@ -1,20 +1,20 @@
 from pycontrails.models.humidity_scaling import ConstantHumidityScaling
 from pycontrails import Flight
 
-import time
+import logging
 from typing import Final, Dict, Any
 import numpy as np
 import pandas as pd
 from typing_extensions import Self
 
 from pyneats.interpolator import TrajectoryInterpolator, InterpolatorType
-from pyneats.trajectory import TrajectoryParserType, TrajectoryParser
+from pyneats.trajectory import TrajectoryParserType, TrajectoryParser, ParsedFlight
 from pyneats.performance import FlightPerformanceModel, PerformanceModelType
-from pyneats.emissions import EmissionModel, EmissionModelType
+from pyneats.emissions import EmissionModel, EmissionModelType, FlightWithEmissions
 from pyneats.climate import ContrailsModelType, ContrailsModel, ContrailsParams
 from pyneats.weather import  WeatherProviderProtocol
 
-
+logger = logging.getLogger(__name__)
 
 #Default Trajectory in NEATS is Interpolator/reconstructor from PyContrails (cf class PyContrailsInterpolator) 
 DEFAULT_INTERPOLATOR: Final[TrajectoryInterpolator] = InterpolatorType.PYCONTRAILS.get()
@@ -73,7 +73,7 @@ class NeatsFlight():
         self.interpolated_flight: Flight | None = None
         self.flight_with_weather: Flight | None = None
         self.flight_with_performance: FlightWithPerformance | None = None
-        self.flight_with_emissions: FlightWithEmissions | None = None
+        self.flight_with_emissions: Flight | None = None
         self.flight_with_contrails: FlightWithContrailsImpact | None = None
             
     @property
@@ -89,11 +89,23 @@ class NeatsFlight():
         """
         self._source = value.copy() if value is not None else None
             
-    # Step 1: Parse flights (NM trajectories, ADS-B flights) so that they can be further processed by PyContrails
-    def _parse_flight(self)-> Self:
-        
-        self.parsed_flight = self.parser(self.source)
+    # Step 1: Parse flights (NM trajectories, ADS-B flights) so that they can be further processed 
+    def _parse_flight(self) -> Self:
+
+        if self.source is None:
+            logger.error("No source data provided before _parse_flight() call")
+            raise RuntimeError("Source data must be set before parsing flights.")
+
+        base: Flight = self.parser(self.source)
+
+        try:
+            self.parsed_flight = ParsedFlight.from_flight(base)
+        except KeyError as e:
+            logger.error(f"Parsed flight missing required columns: {e}")
+            raise
+
         self.current = self.parsed_flight
+        logger.info("Flight parsing completed successfully")
         return self
     
     # Step 2: Interpolate/reconstruct trajectory
@@ -122,16 +134,37 @@ class NeatsFlight():
         self.current = self.flight_with_performance
         del self.flight_with_weather
         return self
-    
-    # Step 5: Run Emission model 
+
+    # Step 5: Run Emission model
     def _emissions(self) -> Self:
-        
-        assert self.flight_with_performance is not None, "performance() must be called first"
-        self.flight_with_emissions  = self.emission(self.flight_with_performance)
+
+        if self.flight_with_performance is None:
+            logger.error("Missing flight_with_performance; did you call performance() first?")
+            raise RuntimeError("performance() must be called before _emissions().")
+
+        # Run the emissions step (typically mutates and returns the same Flight)
+        try:
+            enriched: Flight = self.emission(self.flight_with_performance)
+        except Exception as e:
+            logger.exception("Emissions step failed during backend evaluation")
+            raise RuntimeError(f"Emissions evaluation failed: {e}") from e
+
+        # Validate required columns (zero-copy view)
+        try:
+            self.flight_with_emissions = FlightWithEmissions.from_flight(enriched)
+        except KeyError as e:
+            logger.error("Emissions output missing required columns: %s", e)
+            raise RuntimeError(f"Emissions step did not produce required columns: {e}") from e
+
+        # Advance the pipeline pointer
         self.current = self.flight_with_emissions
-        del self.flight_with_performance
+
+        # Release previous reference (often the same object, but clarifies stage ownership)
+        self.flight_with_performance = None
+
+        logger.info("Emissions step completed successfully")
         return self
-    
+
     # Step 6: Compute Contrails EF 
     def _contrails(self) -> Self:
 
@@ -236,6 +269,6 @@ class NeatsFlight():
             ._performance()
             ._emissions()
             ._contrails()
-            ._gwp()
+           # ._gwp()
         )
     

@@ -1,12 +1,24 @@
+# trajectory.py
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol, Mapping, Any, Final, cast
 from enum import Enum
-import inspect
-import pandas as pd
+from typing import Any, Final, Mapping, Protocol, cast
 
+import pandas as pd
 from pycontrails import Flight
+
+__all__ = [
+    "METERS_PER_FOOT",
+    "FEET_PER_FL",
+    "REQUIRED_4D_COLS",
+    "ParsedFlight",
+    "TrajectoryParser",
+    "NMTrajectoryParserParams",
+    "NMTrajectoryParser",
+    "ADSBParser",
+    "TrajectoryParserType",
+]
 
 # ---- constants ----
 METERS_PER_FOOT: Final[float] = 0.3048
@@ -14,38 +26,32 @@ FEET_PER_FL: Final[float] = 100.0
 REQUIRED_4D_COLS: Final[tuple[str, ...]] = ("latitude", "longitude", "altitude", "time")
 
 
-# ---- validated flight type ----
+# ---- validated flight view (zero-copy) ----
 class ParsedFlight(Flight):
     """
-    A Flight guaranteed to contain latitude, longitude, altitude (m), and time (tz-aware).
-
-    Notes
-    -----
-    - Validates presence of required columns only (O(#cols)); no DataFrame copy.
-    - `from_flight` reuses the underlying data; no large allocations.
+    A zero-copy *view* of a Flight that guarantees the presence of
+    ('latitude', 'longitude', 'altitude', 'time') with altitude in meters
+    and timezone-aware timestamps.
     """
 
     def __init__(self, data: pd.DataFrame, attrs: dict[str, Any] | None = None) -> None:
+        # No validation here; keep constructor trivial for robustness.
         super().__init__(data=data, attrs=attrs)
-        missing = [c for c in REQUIRED_4D_COLS if c not in self]
-        if missing:
-            raise KeyError(f"ParsedFlight missing required columns: {missing}")
-        self.attrs.setdefault("altitude_units", "m")
 
     @classmethod
-    def from_flight(cls, flight: Flight) -> ParsedFlight:
+    def from_flight(cls, flight: Flight) -> "ParsedFlight":
         """
-        Wrap an existing Flight in a ParsedFlight without copying data.
+        Create a validated, zero-copy `ParsedFlight` view from an existing `Flight`.
 
         Parameters
         ----------
         flight : Flight
-            Existing Flight object to wrap.
+            The source flight expected to already contain the required 4D columns.
 
         Returns
         -------
         ParsedFlight
-            A validated wrapper around the original Flight data.
+            A view on the same underlying data/attrs.
 
         Raises
         ------
@@ -56,123 +62,156 @@ class ParsedFlight(Flight):
         if missing:
             raise KeyError(f"ParsedFlight missing required columns: {missing}")
 
-        return cls(
+        # Reuse underlying data/attrs (no DataFrame copy)
+        view = cls(
             data=cast(pd.DataFrame, flight.data),
-            attrs=dict(flight.attrs),
+            attrs=getattr(flight, "attrs", None),
         )
+        # Ensure a standard attribute for downstream logic
+        view.attrs.setdefault("altitude_units", "m")
+        return view
+
+    def has_columns(self, *cols: str) -> bool:
+        """
+        Check if the flight contains all of the given columns.
+
+        Returns
+        -------
+        bool
+            True if all specified columns are present, False otherwise.
+        """
+        return all(c in self for c in cols)
 
 
-# ---- single protocol for all parsers ----
+# ---- parser protocol: return a plain Flight for composability ----
 class TrajectoryParser(Protocol):
-    """Callable that takes a DataFrame and returns a validated ParsedFlight."""
-    def __call__(self, source: pd.DataFrame) -> ParsedFlight: ...
+    """Callable that takes a DataFrame and returns a Flight enriched with required 4D fields."""
+    def __call__(self, source: pd.DataFrame) -> Flight: ...
 
 
-# ---- NM parser ----
+# ---- NM (Network Manager) parser ----
 @dataclass(frozen=True)
 class NMTrajectoryParserParams:
-    """Configuration for parsing NM flights from raw DataFrame."""
+    """
+    Configuration for parsing NM FTFM/RTFM/CTFM tables.
+    """
     mapping_4d: Mapping[str, str] = field(default_factory=lambda: {
         "LAT": "latitude",
         "LON": "longitude",
         "TIME_OVER": "time",
         "FLIGHT_LEVEL": "altitude",
     })
-    # NM exports are typically UTC
+    # NM exports are typically UTC; adjust if your inputs differ
     date_format: str = "%Y-%m-%d %H:%M:%S"
     timezone: str = "UTC"
+    # Optional metadata to lift into attrs from the first row when present
     attrs_mapping: Mapping[str, str] = field(default_factory=lambda: {
         "flight_id": "AIRCRAFT_ID",
         "aircraft_type": "AIRCRAFT_TYPE_ICAO_ID",
         "callsign": "REGISTRATION",
         "departure_airport": "ADEP",
         "arrival_airport": "ADES",
-        "aobt": "time",  # first timestamp as proxy; adjust if better field
+        "aobt": "TIME_OVER",  # crude proxy; replace with a better field if available
     })
 
 
 class NMTrajectoryParser:
-    """Parse NM FTFM/RTFM/CTFM data into a ParsedFlight (altitude in meters)."""
+    """
+    Parse NM FTFM/RTFM/CTFM data into a `Flight` with required 4D fields.
+
+    Notes
+    -----
+    - Returns a base `Flight` for pipeline composability.
+    - Immediately validates via `ParsedFlight.from_flight(out)` to fail fast.
+    """
 
     required_after_rename = REQUIRED_4D_COLS
 
     def __init__(self, params: NMTrajectoryParserParams | None = None) -> None:
         self.params = params or NMTrajectoryParserParams()
 
-    def __call__(self, source: pd.DataFrame) -> ParsedFlight:
-        # Rename and copy to avoid chained assignment
-        df = source.rename(columns=self.params.mapping_4d).copy()
+    def __call__(self, source: pd.DataFrame) -> Flight:
+        # Rename columns; avoid an extra .copy() unless you plan to mutate original
+        df = source.rename(columns=self.params.mapping_4d)
 
-        # Validate required columns exist post-rename
+        # Ensure required columns exist after rename
         missing = [c for c in self.required_after_rename if c not in df.columns]
         if missing:
             raise KeyError(f"Missing required columns after rename: {missing}")
 
-        # Convert FL (hundreds of feet) → meters
-        df["altitude"] *= FEET_PER_FL * METERS_PER_FOOT
-        # Parse time to tz-aware (UTC)
+        # Convert FL (hundreds of feet) → meters (in-place on a new column reference)
+        # If altitude is already in meters upstream, adjust this logic accordingly.
+        df["altitude"] = df["altitude"] * FEET_PER_FL * METERS_PER_FOOT
+
+        # Parse time to tz-aware
         ts = pd.to_datetime(
             df["time"],
             format=self.params.date_format,
             errors="coerce",
-            utc=True,
+            utc=True,  # interpret as UTC
         )
         if self.params.timezone != "UTC":
+            # Convert to requested timezone (keeps absolute instants; changes display)
             ts = ts.dt.tz_convert(self.params.timezone)
         df["time"] = ts
 
-        # Drop rows missing any required fields (including NaT)
+        # Drop rows missing any of the required fields (including NaT)
         mask = df[list(self.required_after_rename)].notna().all(axis=1)
         df = df.loc[mask]
 
+        if df.empty:
+            raise ValueError("No valid trajectory points after cleaning.")
 
-        # Sort and deduplicate by time
+        # Sort & deduplicate by time to maintain temporal consistency
         df = (
             df.sort_values("time")
               .drop_duplicates(subset="time", keep="first")
               .reset_index(drop=True)
         )
 
-        if df.empty:
-            raise ValueError("No valid trajectory points after cleaning.")
-
-        # Build attrs from the first row (if present)
+        # Build attrs from the first row (no dict copy needed)
         attrs: dict[str, Any] = {}
-        for key, col in self.params.attrs_mapping.items():
-            if col in df.columns:
-                attrs[key] = df[col].iloc[0]
+        first = df.iloc[0]
+        for attr_key, src_col in self.params.attrs_mapping.items():
+            if src_col in df.columns:
+                attrs[attr_key] = first[src_col]
         attrs.setdefault("altitude_units", "m")
 
-        return ParsedFlight(data=df[list(self.required_after_rename)], attrs=attrs)
+        # Construct a Flight with exactly the required columns
+        # (Selecting columns typically creates a view; minimal overhead.)
+        out = Flight(data=df[list(self.required_after_rename)], attrs=attrs)
+
+        # Fail fast: validate (zero-copy view), but keep returning base Flight
+        _ = ParsedFlight.from_flight(out)
+
+        return out
 
 
-# ---- OpenSky parser (same signature; implement when schema is known) ----
+# ---- ADS-B / OpenSky parser (skeleton) ----
 class ADSBParser:
-    """Parse ADS-B data into a ParsedFlight (to be implemented)."""
+    """
+    Parse ADS-B tables into a `Flight` with required 4D fields.
 
+    Implement the same pattern as NM:
+    - rename → required names
+    - ensure altitude in meters
+    - tz-aware timestamps
+    - dropna, sort, dedup
+    - return Flight and validate with ParsedFlight.from_flight
+    """
     def __init__(self) -> None:
         ...
 
-    def __call__(self, source: pd.DataFrame) -> ParsedFlight:
-        # TODO:
-        # 1) rename columns → ("latitude","longitude","altitude","time")
-        # 2) ensure altitude is meters (convert if needed)
-        # 3) dropna, sort, dedup
-        # 4) return ParsedFlight(data=df[list(REQUIRED_4D_COLS)], attrs=attrs)
-        raise NotImplementedError("OpenSky Parser not yet implemented")
+    def __call__(self, source: pd.DataFrame) -> Flight:
+        raise NotImplementedError("OpenSky/ADS-B parser not yet implemented")
 
 
 # ---- factory ----
 class TrajectoryParserType(Enum):
-    """Enum mapping parser names to classes; safe factory that handles params when supported."""
+    """Enum mapping parser names to classes (simple factory)."""
     NM = NMTrajectoryParser
     ADSB = ADSBParser
 
     def get(self, *args: Any, **kwargs: Any) -> TrajectoryParser:
-        cls = self.value
-        sig = inspect.signature(cls)
-        try:
-            sig.bind_partial(*args, **kwargs)
-            return cls(*args, **kwargs)  # type: ignore[call-arg]
-        except TypeError:
-            return cls()  # constructor takes no params
+        impl = self.value  # type: ignore[assignment]
+        return impl(*args, **kwargs)  # type: ignore[misc]

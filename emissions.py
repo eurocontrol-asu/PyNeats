@@ -1,71 +1,77 @@
+# emissions.py
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, Any, Final, cast, Optional, Dict
 from enum import Enum
-import inspect
-import pandas as pd
+from typing import Any, Final, Mapping, Optional, Protocol, cast
 
+import pandas as pd
 from pycontrails import Flight
 from pycontrails.models.emissions import Emissions
 
+__all__ = [
+    "DEFAULT_REQUIRED_EMISSION_COLS",
+    "FlightWithEmissions",
+    "EmissionModel",
+    "PyContrailsEmissionParams",
+    "PyContrailsEmissionModel",
+    "EurocontrolEmissionModel",
+    "DLREmissionModel",
+    "EmissionModelType",
+]
+
 # ---- configuration ----
-# Default set is minimal; extend per use-case when constructing the model.
+# Extend this tuple in your pipeline as you add more required columns.
 DEFAULT_REQUIRED_EMISSION_COLS: Final[tuple[str, ...]] = ("nvpm_ei_m",)
 
 
-# ---- validated flight type ----
+# ---- validated flight view ----
 class FlightWithEmissions(Flight):
     """
-    A Flight guaranteed to contain the requested emission columns.
+    A thin, zero-copy *view* of a Flight that guarantees certain emission columns exist.
 
-    Notes on performance:
-    - Validates presence of required columns only (O(#cols)); no DataFrame copy.
-    - `from_flight` reuses the underlying data; no large allocations.
+    Notes
+    -----
+    - Validation happens in `from_flight()` (not in __init__) to avoid surprising
+      failures when upstream libs construct Flights internally.
+    - No DataFrame copy: we reuse `flight.data` and `flight.attrs`.
     """
 
-    def __init__(
-        self,
-        data: pd.DataFrame,
-        attrs: dict[str, Any] | None = None,
-        required_cols: tuple[str, ...] = DEFAULT_REQUIRED_EMISSION_COLS,
-    ) -> None:
+    def __init__(self, data: pd.DataFrame, attrs: dict[str, Any] | None = None) -> None:
         super().__init__(data=data, attrs=attrs)
-        missing = [c for c in required_cols if c not in self]
-        if missing:
-            raise KeyError(f"FlightWithEmissions missing required columns: {missing}")
+
 
     @classmethod
     def from_flight(
         cls,
         flight: Flight,
         required_cols: tuple[str, ...] = DEFAULT_REQUIRED_EMISSION_COLS,
-    ) -> FlightWithEmissions:
+    ) -> "FlightWithEmissions":
         """
-        Wrap an existing Flight in a FlightWithEmissions without copying data.
+        Create a validated, zero-copy `FlightWithEmissions` view from an existing `Flight`.
 
         Parameters
         ----------
         flight : Flight
-            Existing Flight object to wrap.
+            The source `Flight` object, expected to already contain the required emission columns.
         required_cols : tuple[str, ...], optional
-            Names of emission columns that must be present in the Flight.
+            The set of emission column names that must be present in `flight`.
+            Defaults to `DEFAULT_REQUIRED_EMISSION_COLS`.
 
         Returns
         -------
         FlightWithEmissions
-            A validated wrapper around the original Flight data.
+            A view on the same underlying data/attrs, with type-safe access to emission columns.
 
         Raises
         ------
         KeyError
-            If any of the required emission columns are missing.
+            If any of the `required_cols` are missing from the flight data.
 
         Notes
         -----
-        - This method avoids copying the underlying DataFrame, reusing `flight.data`.
-        - The `attrs` dictionary is shallow-copied; pass `attrs=flight.attrs`
-          directly in the constructor if you require zero copies.
+        - This method does not copy the DataFrame; it reuses `flight.data` and `flight.attrs`.
+        - Use this when you want to ensure the flight is ready for emission-specific processing.
         """
         missing = [c for c in required_cols if c not in flight]
         if missing:
@@ -73,108 +79,134 @@ class FlightWithEmissions(Flight):
 
         return cls(
             data=cast(pd.DataFrame, flight.data),
-            attrs=dict(flight.attrs),
-            required_cols=required_cols,
+            attrs=getattr(flight, "attrs", None),
         )
 
     def has_columns(self, *cols: str) -> bool:
-        """Quick check to see if additional columns are present."""
+        """
+        Check if the flight contains all of the given columns.
+
+        Parameters
+        ----------
+        *cols : str
+            One or more column names to verify.
+
+        Returns
+        -------
+        bool
+            True if all specified columns are present in the flight, False otherwise.
+
+        Examples
+        --------
+        >>> f.has_columns("nvpm_ei_m", "nox_ei")
+        True
+        """
         return all(c in self for c in cols)
 
-# ---- single protocol for all emission models ----
+
+
+# ---- protocol for emissions step ----
 class EmissionModel(Protocol):
-    """Callable that turns a Flight into a validated FlightWithEmissions."""
-    def __call__(self, flight: Flight) -> FlightWithEmissions: ...
+    """
+    An emissions step that enriches a Flight with emissions columns.
+
+    Returning `Flight` keeps composition flexible. Validate with
+    `FlightWithEmissions.from_flight()` at boundaries that require it.
+    """
+
+    def __call__(self, flight: Flight) -> Flight: ...
 
 
 # ---- PyContrails Emissions wrapper ----
 @dataclass(frozen=True)
 class PyContrailsEmissionParams:
     """
-    Parameters forwarded to pycontrails.models.emissions.Emissions.
+    Optional structured params you want to expose explicitly.
 
-    Keep this empty or add explicit fields you rely on; alternatively,
-    pass arbitrary kwargs via `extra_kwargs` if you want full flexibility.
+    Keep this minimal and stable. Forward everything else via `extra_kwargs`.
     """
-    # Example (uncomment/add when you know the options you want to expose):
+    # Example placeholders (uncomment/extend when needed):
     # nvpm_model: str = "SCOPE11"
     # use_fuel_flow: bool = True
-    extra_kwargs: Optional[Dict[str, Any]] = None
+    extra_kwargs: Optional[Mapping[str, Any]] = None
 
-    
 
 class PyContrailsEmissionModel:
     """
-    Thin wrapper around pycontrails.models.emissions.Emissions that guarantees
-    specific emission columns exist on the returned Flight.
+    Thin wrapper over `pycontrails.models.emissions.Emissions`.
+
+    - Calls `.eval(source=flight)` to attach emission columns in place.
+    - Immediately validates presence of `required_cols` and returns a `FlightWithEmissions`.
     """
 
     def __init__(
         self,
         required_cols: tuple[str, ...] = DEFAULT_REQUIRED_EMISSION_COLS,
         params: PyContrailsEmissionParams | None = None,
-        **emissions_kwargs: Any,  # convenience: forward directly to Emissions(...)
+        **emissions_kwargs: Any,
     ) -> None:
         self.required_cols = required_cols
-        # Merge explicit params.extra_kwargs (if provided) with direct **emissions_kwargs
-        extra = (params.extra_kwargs if (params and params.extra_kwargs) else {})  # type: ignore[arg-type]
+        # Merge explicit param bag with direct kwargs (direct kwargs win)
+        extra = dict(params.extra_kwargs) if (params and params.extra_kwargs) else {}
         merged_kwargs = {**extra, **emissions_kwargs}
-        self.em = Emissions(**merged_kwargs)
+        self._impl = Emissions(**merged_kwargs)
 
-    def __call__(self, flight: Flight) -> FlightWithEmissions:
-        # Emissions.eval attaches emission columns to the provided Flight
-        out = self.em.eval(source=flight)
-        # Validate and return a zero-copy wrapper
-        return FlightWithEmissions.from_flight(out, required_cols=self.required_cols)
+    def __call__(self, flight: Flight) -> Flight:
+        out: Flight = self._impl.eval(source=flight)
+        # Validate right away to fail fast; return base Flight for composability
+        _ = FlightWithEmissions.from_flight(out, required_cols=self.required_cols)
+        return out
 
 
-# ---- Eurocontrol model placeholder ----
+# ---- alternative model placeholders ----
 class EurocontrolEmissionModel:
     """
     Placeholder for an alternative emissions implementation.
-    When implemented, ensure it adds the required columns to `flight`,
-    then return a validated wrapper.
+
+    Implement `__call__` to compute and attach required columns on `flight`
+    (prefer vectorized ops), then return `flight`.
     """
 
     def __init__(self, required_cols: tuple[str, ...] = DEFAULT_REQUIRED_EMISSION_COLS) -> None:
         self.required_cols = required_cols
 
-    def __call__(self, flight: Flight) -> FlightWithEmissions:
-        # TODO: compute and attach columns to `flight` (vectorized).
-        # e.g., flight["nvpm_ei_m"] = ...
-        # return FlightWithEmissions.from_flight(flight, required_cols=self.required_cols)
+    def __call__(self, flight: Flight) -> Flight:
+        # TODO: compute columns, e.g.:
+        # flight["nvpm_ei_m"] = ...
+        # Validate if you want:
+        # _ = FlightWithEmissions.from_flight(flight, required_cols=self.required_cols)
         raise NotImplementedError("Eurocontrol Emission Model not yet implemented")
 
-# ---- DLR model placeholder ----
+
 class DLREmissionModel:
     """
-    Placeholder for an alternative emissions implementation.
-    When implemented, ensure it adds the required columns to `flight`,
-    then return a validated wrapper.
+    Placeholder for another emissions implementation.
+
+    Same contract as EurocontrolEmissionModel.
     """
 
     def __init__(self, required_cols: tuple[str, ...] = DEFAULT_REQUIRED_EMISSION_COLS) -> None:
         self.required_cols = required_cols
 
-    def __call__(self, flight: Flight) -> FlightWithEmissions:
-        # TODO: compute and attach columns to `flight` (vectorized).
-        # e.g., flight["nvpm_ei_m"] = ...
-        # return FlightWithEmissions.from_flight(flight, required_cols=self.required_cols)
-        raise NotImplementedError("Eurocontrol Emission Model not yet implemented")
+    def __call__(self, flight: Flight) -> Flight:
+        # TODO: compute columns, e.g.:
+        # flight["nvpm_ei_m"] = ...
+        # _ = FlightWithEmissions.from_flight(flight, required_cols=self.required_cols)
+        raise NotImplementedError("DLR Emission Model not yet implemented")
 
 
-# ---- factory ----
+# ---- factory enum ----
 class EmissionModelType(Enum):
-    """Enum mapping model names to classes; safe factory that forwards params when supported."""
+    """
+    Factory for emission model implementations.
+
+    Use: `EmissionModelType.PYCONTRAILS.get(required_cols=("nvpm_ei_m","nox_ei"))`
+    """
+
     PYCONTRAILS = PyContrailsEmissionModel
     EUROCONTROL = EurocontrolEmissionModel
     DLR = DLREmissionModel
 
     def get(self, *args: Any, **kwargs: Any) -> EmissionModel:
-        cls = self.value
-        sig = inspect.signature(cls)
-        try:
-            sig.bind_partial(*args, **kwargs)
-            return cls(*args, **kwargs)  # type: ignore[call-arg]
-        except TypeError:
-            return cls()  # constructor takes no params
+        impl = self.value  # type: ignore[assignment]
+        return impl(*args, **kwargs)  # type: ignore[misc]
