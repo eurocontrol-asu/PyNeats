@@ -1,6 +1,7 @@
 # emissions.py
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Final, Mapping, Optional, Protocol, cast
@@ -18,11 +19,18 @@ __all__ = [
     "EurocontrolEmissionModel",
     "DLREmissionModel",
     "EmissionModelType",
+    "EmissionsStepError",
 ]
 
+logger = logging.getLogger(__name__)
+
 # ---- configuration ----
-# Extend this tuple in your pipeline as you add more required columns.
 DEFAULT_REQUIRED_EMISSION_COLS: Final[tuple[str, ...]] = ("nvpm_ei_m",)
+
+
+# ---- error type ----
+class EmissionsStepError(RuntimeError):
+    """Raised when the emissions step fails to evaluate or validate outputs."""
 
 
 # ---- validated flight view ----
@@ -39,7 +47,6 @@ class FlightWithEmissions(Flight):
 
     def __init__(self, data: pd.DataFrame, attrs: dict[str, Any] | None = None) -> None:
         super().__init__(data=data, attrs=attrs)
-
 
     @classmethod
     def from_flight(
@@ -95,14 +102,8 @@ class FlightWithEmissions(Flight):
         -------
         bool
             True if all specified columns are present in the flight, False otherwise.
-
-        Examples
-        --------
-        >>> f.has_columns("nvpm_ei_m", "nox_ei")
-        True
         """
         return all(c in self for c in cols)
-
 
 
 # ---- protocol for emissions step ----
@@ -113,7 +114,6 @@ class EmissionModel(Protocol):
     Returning `Flight` keeps composition flexible. Validate with
     `FlightWithEmissions.from_flight()` at boundaries that require it.
     """
-
     def __call__(self, flight: Flight) -> Flight: ...
 
 
@@ -136,7 +136,8 @@ class PyContrailsEmissionModel:
     Thin wrapper over `pycontrails.models.emissions.Emissions`.
 
     - Calls `.eval(source=flight)` to attach emission columns in place.
-    - Immediately validates presence of `required_cols` and returns a `FlightWithEmissions`.
+    - Immediately validates presence of `required_cols` (fail fast).
+    - Returns the base `Flight` for pipeline composability.
     """
 
     def __init__(
@@ -152,9 +153,21 @@ class PyContrailsEmissionModel:
         self._impl = Emissions(**merged_kwargs)
 
     def __call__(self, flight: Flight) -> Flight:
-        out: Flight = self._impl.eval(source=flight)
-        # Validate right away to fail fast; return base Flight for composability
-        _ = FlightWithEmissions.from_flight(out, required_cols=self.required_cols)
+        # Evaluate emissions via backend
+        try:
+            out: Flight = self._impl.eval(source=flight)
+        except Exception as e:
+            logger.exception("Emissions backend evaluation failed")
+            raise EmissionsStepError(f"Emissions backend evaluation failed: {e}") from e
+
+        # Validate required columns (zero-copy); raise a clearer domain error
+        try:
+            _ = FlightWithEmissions.from_flight(out, required_cols=self.required_cols)
+        except KeyError as e:
+            logger.error("Emissions output missing required columns: %s", e)
+            raise EmissionsStepError(f"Emissions output missing required columns: {e}") from e
+
+        logger.info("Emissions step completed successfully")
         return out
 
 
@@ -171,10 +184,6 @@ class EurocontrolEmissionModel:
         self.required_cols = required_cols
 
     def __call__(self, flight: Flight) -> Flight:
-        # TODO: compute columns, e.g.:
-        # flight["nvpm_ei_m"] = ...
-        # Validate if you want:
-        # _ = FlightWithEmissions.from_flight(flight, required_cols=self.required_cols)
         raise NotImplementedError("Eurocontrol Emission Model not yet implemented")
 
 
@@ -189,9 +198,6 @@ class DLREmissionModel:
         self.required_cols = required_cols
 
     def __call__(self, flight: Flight) -> Flight:
-        # TODO: compute columns, e.g.:
-        # flight["nvpm_ei_m"] = ...
-        # _ = FlightWithEmissions.from_flight(flight, required_cols=self.required_cols)
         raise NotImplementedError("DLR Emission Model not yet implemented")
 
 
@@ -200,9 +206,9 @@ class EmissionModelType(Enum):
     """
     Factory for emission model implementations.
 
-    Use: `EmissionModelType.PYCONTRAILS.get(required_cols=("nvpm_ei_m","nox_ei"))`
+    Use:
+        EmissionModelType.PYCONTRAILS.get(required_cols=("nvpm_ei_m","nox_ei"))
     """
-
     PYCONTRAILS = PyContrailsEmissionModel
     EUROCONTROL = EurocontrolEmissionModel
     DLR = DLREmissionModel

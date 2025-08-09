@@ -8,9 +8,9 @@ import pandas as pd
 from typing_extensions import Self
 
 from pyneats.interpolator import TrajectoryInterpolator, InterpolatorType
-from pyneats.trajectory import TrajectoryParserType, TrajectoryParser, ParsedFlight
+from pyneats.trajectory import TrajectoryParserType, TrajectoryParser, FlightParsingError, ParsedFlight
 from pyneats.performance import FlightPerformanceModel, PerformanceModelType
-from pyneats.emissions import EmissionModel, EmissionModelType, FlightWithEmissions
+from pyneats.emissions import EmissionModel, EmissionModelType, EmissionsStepError, FlightWithEmissions
 from pyneats.climate import ContrailsModelType, ContrailsModel, ContrailsParams
 from pyneats.weather import  WeatherProviderProtocol
 
@@ -89,23 +89,28 @@ class NeatsFlight():
         """
         self._source = value.copy() if value is not None else None
             
-    # Step 1: Parse flights (NM trajectories, ADS-B flights) so that they can be further processed 
+    # Step 1: Parse flights (NM trajectories, ADS-B flights)
     def _parse_flight(self) -> Self:
 
         if self.source is None:
-            logger.error("No source data provided before _parse_flight() call")
+            logger.error("No source data provided before _parse_flight()")
             raise RuntimeError("Source data must be set before parsing flights.")
 
-        base: Flight = self.parser(self.source)
-
+        # Run the parser (may raise FlightParsingError)
         try:
-            self.parsed_flight = ParsedFlight.from_flight(base)
-        except KeyError as e:
-            logger.error(f"Parsed flight missing required columns: {e}")
+            base: Flight = self.parser(self.source)
+        except FlightParsingError:
+            # Already logged inside the parser; just propagate with original traceback
             raise
+        except Exception as e:
+            logger.exception("Unexpected error while parsing trajectory")
+            raise RuntimeError(f"Trajectory parsing failed: {e}") from e
+        
+        # Optional: validate again (zero-copy). Since the parser already validates,
+        self.parsed_flight = ParsedFlight.from_flight(base)
 
         self.current = self.parsed_flight
-        logger.info("Flight parsing completed successfully")
+        logger.info("Flight parsing completed successfully with %d points", len(base.data))
         return self
     
     # Step 2: Interpolate/reconstruct trajectory
@@ -142,29 +147,23 @@ class NeatsFlight():
             logger.error("Missing flight_with_performance; did you call performance() first?")
             raise RuntimeError("performance() must be called before _emissions().")
 
-        # Run the emissions step (typically mutates and returns the same Flight)
         try:
             enriched: Flight = self.emission(self.flight_with_performance)
+        except EmissionsStepError:
+            # Already logged inside the emissions step; just propagate.
+            raise
         except Exception as e:
-            logger.exception("Emissions step failed during backend evaluation")
+            logger.exception("Unexpected error during emissions backend evaluation")
             raise RuntimeError(f"Emissions evaluation failed: {e}") from e
 
-        # Validate required columns (zero-copy view)
-        try:
-            self.flight_with_emissions = FlightWithEmissions.from_flight(enriched)
-        except KeyError as e:
-            logger.error("Emissions output missing required columns: %s", e)
-            raise RuntimeError(f"Emissions step did not produce required columns: {e}") from e
-
-        # Advance the pipeline pointer
+        # Get the typed, zero-copy view
+        self.flight_with_emissions = FlightWithEmissions.from_flight(enriched)
         self.current = self.flight_with_emissions
-
-        # Release previous reference (often the same object, but clarifies stage ownership)
         self.flight_with_performance = None
 
         logger.info("Emissions step completed successfully")
         return self
-
+    
     # Step 6: Compute Contrails EF 
     def _contrails(self) -> Self:
 
