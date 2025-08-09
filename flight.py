@@ -1,5 +1,7 @@
 from pycontrails.models.humidity_scaling import ConstantHumidityScaling
+from pycontrails import Flight
 
+import time
 from typing import Final, Dict, Any
 import numpy as np
 import pandas as pd
@@ -24,7 +26,7 @@ DEFAULT_TRAJECTORY_PARSER: Final[TrajectoryParser] = TrajectoryParserType.NM.get
 DEFAULT_PERFORMANCE_MODEL: Final[FlightPerformanceModel] = PerformanceModelType.BADA.get()
     
 #Default Performance Model is T4/T2 as implemented in PyContrails
-DEFAULT_EMISSION_MODEL: Final[EmissionModel] = EmissionModelType.PyContrails.get()
+DEFAULT_EMISSION_MODEL: Final[EmissionModel] = EmissionModelType.PYCONTRAILS.get()
 
 DEFAULT_CONTRAILS_PARAMS = {
     "dt_integration": np.timedelta64(1, "m"),
@@ -123,6 +125,7 @@ class NeatsFlight():
     
     # Step 5: Run Emission model 
     def _emissions(self) -> Self:
+        
         assert self.flight_with_performance is not None, "performance() must be called first"
         self.flight_with_emissions  = self.emission(self.flight_with_performance)
         self.current = self.flight_with_emissions
@@ -131,6 +134,7 @@ class NeatsFlight():
     
     # Step 6: Compute Contrails EF 
     def _contrails(self) -> Self:
+
         assert self.flight_with_emissions is not None, "emissions() must be called first"
         self.flight_with_contrails  = self.contrails_model(self.flight_with_emissions)
         self.current = self.flight_with_contrails

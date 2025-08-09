@@ -105,9 +105,10 @@ class WeatherProvider:
                        "v_wind" if var == "northward_wind" else var)
             val = flight.intersect_met(
                 ds_met[var],
-                method=self.params.interpolation_method
+                method=self.params.interpolation_method, 
+                use_indices=True
             )
-            df[df_alias] = np.nan_to_num(val, nan=0.0) if "wind" in var or var == "specific_humidity" else val
+            df[df_alias] = np.nan_to_num(val, nan=0.0) if "wind" in var else val #or var == "specific_humidity"
         
         
         flight = Flight(df)

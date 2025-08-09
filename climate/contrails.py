@@ -35,7 +35,8 @@ class COCIP():
         self.params = params
         self.cocip_model = Cocip(met=self.params.met, 
                                  rad=self.params.rad, 
-                                 params=self.params.contrails_params)
+                                 params=self.params.contrails_params, 
+                                 interpolation_use_indices=True)
         
     
     def __call__(self, flight: Flight) -> FlightWithContrailsImpact:
