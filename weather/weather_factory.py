@@ -33,8 +33,6 @@ class WeatherFactoryParams:
     pressure_levels: List[float] = field(default_factory=lambda: DEFAULT_PRESSURE_LEVELS.copy())
     weather_offset: int = DEFAULT_WEATHER_OFFSET
         
-     
-
 class WeatherFactoryProtocol(Protocol):
     def __call__(self, asofdate: datetime) -> WeatherProviderProtocol:
             ...

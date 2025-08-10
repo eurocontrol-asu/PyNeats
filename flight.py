@@ -10,7 +10,7 @@ from pyneats.trajectory import TrajectoryParserType, TrajectoryParser, FlightPar
 from pyneats.performance import FlightPerformanceModel, PerformanceModelType
 from pyneats.emissions import EmissionModel, EmissionModelType, EmissionsStepError, FlightWithEmissions
 from pyneats.climate import ContrailsModelType, ContrailsModel, ContrailsParams, ContrailsStepError, FlightWithContrailsImpact, COCIPModel
-from pyneats.weather import  WeatherProviderProtocol
+from pyneats.weather import  WeatherProviderProtocol, WeatherStepError, FlightWithWeather
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +22,7 @@ DEFAULT_TRAJECTORY_PARSER: Final[TrajectoryParser] = TrajectoryParserType.NM.get
 DEFAULT_PERFORMANCE_MODEL: Final[FlightPerformanceModel] = PerformanceModelType.BADA.get()
 #Default Performance Model is T4/T2 as implemented in PyContrails
 DEFAULT_EMISSION_MODEL: Final[EmissionModel] = EmissionModelType.PYCONTRAILS.get()
-
-
+# PyContrail's COCIP used for contrail modelling
 DEFAULT_CONTRAILS_MODEL_TYPE: Final[ContrailsModelType] = ContrailsModelType.COCIP
 
 class FlightRunner():
@@ -59,8 +58,8 @@ class FlightRunner():
 
         self.contrails_model = contrails_model or COCIPModel(
         params=ContrailsParams(
-            met=self.weather.met,
-            rad=self.weather.rad,
+            met=self.weather.met(),
+            rad=self.weather.rad(),
             # optional per-run overrides; omit to use module defaults
             # cocip_kwargs={"persistent_criteria": "strict"},
             )
@@ -74,6 +73,7 @@ class FlightRunner():
         self.flight_with_performance: Flight | None = None
         self.flight_with_emissions: Flight | None = None
         self.flight_with_contrails: Flight | None = None
+        self.current: Flight | None = None
             
     @property
     def source(self):
@@ -145,13 +145,31 @@ class FlightRunner():
         )
         return self
     
-    # Step 3: Intersect with weather data 
+    # Step 3: Intersect with weather data
     def _intersect_weather(self) -> Self:
-        
-        assert self.interpolated_flight is not None, "interpolate() must be called first"
-        self.flight_with_weather = self.weather.intersect(self.interpolated_flight)
+
+        if self.interpolated_flight is None:
+            logger.error("Missing interpolated_flight; did you call _interpolate() first?")
+            raise RuntimeError("_interpolate() must be called before _intersect_weather().")
+
+        # Run the weather intersection step (returns a base Flight)
+        try:
+            wx_flight: Flight = self.weather.intersect(self.interpolated_flight)
+        except WeatherStepError:
+            # Already logged inside the weather provider; propagate with original traceback
+            raise
+        except Exception as e:
+            logger.exception("Unexpected error during weather intersection")
+            raise RuntimeError(f"Weather intersection failed: {e}") from e
+
+        # Typed, zero-copy view for downstream convenience/safety
+        self.flight_with_weather = FlightWithWeather.from_flight(wx_flight)
+
+        # Advance pointer & release previous stage reference
         self.current = self.flight_with_weather
-        del self.interpolated_flight
+        self.interpolated_flight = None
+
+        logger.info("Weather intersection completed successfully with %d points", len(wx_flight.data))
         return self
     
     # Step 4: Run Performance model 
