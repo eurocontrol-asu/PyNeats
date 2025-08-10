@@ -1,13 +1,13 @@
 import logging
 from typing import Final
 import pandas as pd
-from typing_extensions import Self
+from typing_extensions import Self, cast
 
 from pycontrails import Flight
 
 from pyneats.interpolator import TrajectoryInterpolator, InterpolatorType, InterpolationStepError
 from pyneats.trajectory import TrajectoryParserType, TrajectoryParser, FlightParsingError, ParsedFlight
-from pyneats.performance import FlightPerformanceModel, PerformanceModelType
+from pyneats.performance import FlightWithPerformance, PerformanceModelType, PerformanceStepError, PerformanceModel
 from pyneats.emissions import EmissionModel, EmissionModelType, EmissionsStepError, FlightWithEmissions
 from pyneats.climate import ContrailsModelType, ContrailsModel, ContrailsParams, ContrailsStepError, FlightWithContrailsImpact, COCIPModel
 from pyneats.weather import  WeatherProviderProtocol, WeatherStepError, FlightWithWeather
@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_INTERPOLATOR: Final[TrajectoryInterpolator] = InterpolatorType.PYCONTRAILS.get()
 #Default Trajectory in NEATS are NM's FTFM, RTFM and CTFM
 DEFAULT_TRAJECTORY_PARSER: Final[TrajectoryParser] = TrajectoryParserType.NM.get()
-#Default Performance Model is BADA as implemented in PyBADA
-DEFAULT_PERFORMANCE_MODEL: Final[FlightPerformanceModel] = PerformanceModelType.BADA.get()
+# Default Performance Model is BADA as implemented via pyBADA
+DEFAULT_PERFORMANCE_MODEL: Final[PerformanceModel] = PerformanceModelType.BADA.get()
 #Default Performance Model is T4/T2 as implemented in PyContrails
 DEFAULT_EMISSION_MODEL: Final[EmissionModel] = EmissionModelType.PYCONTRAILS.get()
 # PyContrail's COCIP used for contrail modelling
@@ -32,7 +32,7 @@ class FlightRunner():
     
     default_trajectory_parser: TrajectoryParser = DEFAULT_TRAJECTORY_PARSER
     default_interpolator: TrajectoryInterpolator = DEFAULT_INTERPOLATOR
-    default_performance: FlightPerformanceModel = DEFAULT_PERFORMANCE_MODEL
+    default_performance: PerformanceModel = DEFAULT_PERFORMANCE_MODEL
     default_emission: EmissionModel = DEFAULT_EMISSION_MODEL
     default_contrails_model_type: ContrailsModelType = DEFAULT_CONTRAILS_MODEL_TYPE
         
@@ -42,7 +42,7 @@ class FlightRunner():
         source: pd.DataFrame | None = None,
         parser: TrajectoryParser | None = None,
         interpolator: TrajectoryInterpolator | None =  None,
-        performance: FlightPerformanceModel | None =  None,
+        performance: PerformanceModel | None = None,
         emission: EmissionModel| None =  None,
         contrails_model: ContrailsModel| None =  None
     ):
@@ -172,13 +172,30 @@ class FlightRunner():
         logger.info("Weather intersection completed successfully with %d points", len(wx_flight.data))
         return self
     
-    # Step 4: Run Performance model 
+    # Step 4: Run Performance model
     def _performance(self) -> Self:
-        
-        assert self.flight_with_weather is not None, "intersect_weather() must be called first"
-        self.flight_with_performance  = self.performance(self.flight_with_weather)
+        perf = self.performance
+        src  = self.flight_with_weather
+
+        src_f  = cast(Flight, src)
+
+        try:
+            enriched: Flight = perf(src_f)
+        except PerformanceStepError:
+            raise
+        except Exception as e:
+            logger.exception("Unexpected error during performance evaluation")
+            raise RuntimeError(f"Performance evaluation failed: {e}") from e
+
+        try:
+            self.flight_with_performance = FlightWithPerformance.from_flight(enriched)
+        except KeyError as e:
+            logger.error("Performance output missing required columns: %s", e)
+            raise RuntimeError(f"Performance validation failed: {e}") from e
+
         self.current = self.flight_with_performance
-        del self.flight_with_weather
+        self.flight_with_weather = None
+        logger.info("Performance step completed successfully")
         return self
 
     # Step 5: Run Emission model
