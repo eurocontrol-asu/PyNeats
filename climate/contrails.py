@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Final, Mapping, Protocol, cast
-
+import numpy as np
 import pandas as pd
+
 from pycontrails import Flight
 from pycontrails.core.met import MetDataset
 from pycontrails.models.cocip import Cocip
+from pycontrails.models.humidity_scaling import ConstantHumidityScaling
 
 __all__ = [
     "DEFAULT_REQUIRED_CONTRAIL_COLS",
@@ -23,10 +25,16 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-# ---- configuration -------------------------------------------------
-# Keep minimal; expand as you standardize schema (e.g., "ci", "tau_cirrus", etc.)
-DEFAULT_REQUIRED_CONTRAIL_COLS: Final[tuple[str, ...]] = ("ef",)  # effective radiative forcing (W/m^2)
+# Sensible, overridable defaults for Cocip(...)
+DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
+    "dt_integration": np.timedelta64(1, "m"),
+    "humidity_scaling": ConstantHumidityScaling(rhi_adj=0.99),
+}
 
+# ---- configuration -------------------------------------------------
+# Keep minimal; expand as you standardize schema 
+# ef : effective radiative forcing (W/m^2)
+DEFAULT_REQUIRED_CONTRAIL_COLS: Final[tuple[str, ...]] = ("ef", ) 
 
 # ---- error type ----------------------------------------------------
 class ContrailsStepError(RuntimeError):
@@ -72,12 +80,9 @@ class ContrailsModel(Protocol):
 # ---- params --------------------------------------------------------
 @dataclass(frozen=True)
 class ContrailsParams:
-    """
-    Parameters and datasets required by COCIP-like models.
-    """
-    met: MetDataset
-    rad: MetDataset
-    cocip_kwargs: Mapping[str, Any] = None  # forwarded to Cocip(...)
+    met: MetDataset | None = None
+    rad: MetDataset | None = None
+    cocip_kwargs: Mapping[str, Any] = field(default_factory=dict)  # never None
 
     def __post_init__(self) -> None:  # type: ignore[override]
         # dataclasses with frozen=True don't run __post_init__ for mutation; we just ensure defaults are dict-like at use time
@@ -99,18 +104,19 @@ class COCIPModel:
         params: ContrailsParams,
         required_cols: tuple[str, ...] = DEFAULT_REQUIRED_CONTRAIL_COLS,
         interpolation_use_indices: bool = True,
-        **extra_kwargs: Any,
     ) -> None:
+        if params.met is None or params.rad is None:
+            raise ContrailsStepError("COCIP requires both 'met' and 'rad' datasets.")
+
         self.required_cols = required_cols
-        # Merge user-provided cocip kwargs with any extra kwargs here (extra wins)
-        base_kwargs = dict(params.cocip_kwargs or {})
-        base_kwargs.update(extra_kwargs)
+        cocip_args = dict(DEFAULT_COCIP_KWARGS)
+        cocip_args.update(params.cocip_kwargs)   # params win over defaults
 
         try:
             self._impl = Cocip(
                 met=params.met,
                 rad=params.rad,
-                params=base_kwargs,
+                params=cocip_args,
                 interpolation_use_indices=interpolation_use_indices,
             )
         except Exception as e:

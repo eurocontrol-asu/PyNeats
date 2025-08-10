@@ -6,13 +6,13 @@ from joblib import Parallel, delayed
 import time
 import gc
 
-from pyneats.flight import NeatsFlight
+from pyneats.flight import FlightRunner
 from pyneats.weather import DWDFactory, WeatherFactoryParams
 
 NJOBS = 5
 
 @dataclass(frozen=True)
-class NeatsFleetParams:
+class FleetRunner:
     """
     Immutable container for fleet configuration.
     """
@@ -31,7 +31,7 @@ def process_flight_chunk(flight_list, weather):
       # Create ONCE per worker/chunk
     for df_flight in flight_list:
         try:
-            neats_flight = NeatsFlight(weather=weather)
+            neats_flight = FlightRunner(weather=weather)
             neats_flight.source = df_flight    # Only update the flight source
             neats_flight.eval()
             results.append(neats_flight.climate_impact)
@@ -53,7 +53,7 @@ class NeatsFleet:
     def __init__(self, 
                  asofdate: datetime, 
                  timeofday: int,
-                 params: NeatsFleetParams,
+                 params: FleetRunner,
                  sample: int = 0,
                  njobs: int = NJOBS):
         self.asofdate = asofdate
@@ -78,7 +78,7 @@ class NeatsFleet:
         
         for df_flight in self.flights:
             try:
-                neats_flight = NeatsFlight(weather=self.weather)
+                neats_flight = FlightRunner(weather=self.weather)
                 neats_flight.source = df_flight    # Only update the flight source
                 neats_flight.eval()
                 self.results.append(neats_flight.climate_impact)

@@ -1,40 +1,32 @@
 import logging
-from typing import Final, Dict, Any
-import numpy as np
+from typing import Final
 import pandas as pd
 from typing_extensions import Self
 
-from pycontrails.models.humidity_scaling import ConstantHumidityScaling
 from pycontrails import Flight
 
 from pyneats.interpolator import TrajectoryInterpolator, InterpolatorType, InterpolationStepError
 from pyneats.trajectory import TrajectoryParserType, TrajectoryParser, FlightParsingError, ParsedFlight
 from pyneats.performance import FlightPerformanceModel, PerformanceModelType
 from pyneats.emissions import EmissionModel, EmissionModelType, EmissionsStepError, FlightWithEmissions
-from pyneats.climate import ContrailsModelType, ContrailsModel, ContrailsParams, ContrailsStepError, FlightWithContrailsImpact
+from pyneats.climate import ContrailsModelType, ContrailsModel, ContrailsParams, ContrailsStepError, FlightWithContrailsImpact, COCIPModel
 from pyneats.weather import  WeatherProviderProtocol
 
 logger = logging.getLogger(__name__)
 
-#Default Trajectory in NEATS is Interpolator/reconstructor from PyContrails (cf class PyContrailsInterpolator) 
+#Default Trajectory in NEATS is Interpolator/reconstructor from PyContrails 
 DEFAULT_INTERPOLATOR: Final[TrajectoryInterpolator] = InterpolatorType.PYCONTRAILS.get()
-    
 #Default Trajectory in NEATS are NM's FTFM, RTFM and CTFM
 DEFAULT_TRAJECTORY_PARSER: Final[TrajectoryParser] = TrajectoryParserType.NM.get()
-    
 #Default Performance Model is BADA as implemented in PyBADA
 DEFAULT_PERFORMANCE_MODEL: Final[FlightPerformanceModel] = PerformanceModelType.BADA.get()
-    
 #Default Performance Model is T4/T2 as implemented in PyContrails
 DEFAULT_EMISSION_MODEL: Final[EmissionModel] = EmissionModelType.PYCONTRAILS.get()
 
-DEFAULT_CONTRAILS_PARAMS = {
-    "dt_integration": np.timedelta64(1, "m"),
-    "humidity_scaling": ConstantHumidityScaling(rhi_adj=0.99),
-    }
+
 DEFAULT_CONTRAILS_MODEL_TYPE: Final[ContrailsModelType] = ContrailsModelType.COCIP
 
-class NeatsFlight():
+class FlightRunner():
     """
     Parses, interpolates, and holds flight trajectory with met data.
     """
@@ -44,7 +36,6 @@ class NeatsFlight():
     default_performance: FlightPerformanceModel = DEFAULT_PERFORMANCE_MODEL
     default_emission: EmissionModel = DEFAULT_EMISSION_MODEL
     default_contrails_model_type: ContrailsModelType = DEFAULT_CONTRAILS_MODEL_TYPE
-    default_contrails_params: Dict[str,Any] = DEFAULT_CONTRAILS_PARAMS
         
     def __init__(
         self,
@@ -65,13 +56,16 @@ class NeatsFlight():
         self.performance = performance or self.default_performance
         self.emission = emission or self.default_emission
         
-        self.contrails_model = self.default_contrails_model_type.get(
-            ContrailsParams(
-                met=self.weather.met,
-                rad=self.weather.rad,
-                cocip_kwargs=self.default_contrails_params  # <-- new name
+
+        self.contrails_model = contrails_model or COCIPModel(
+        params=ContrailsParams(
+            met=self.weather.met,
+            rad=self.weather.rad,
+            # optional per-run overrides; omit to use module defaults
+            # cocip_kwargs={"persistent_criteria": "strict"},
             )
         )
+
 
         # After the main eval() method:
         self.parsed_flight: Flight | None = None

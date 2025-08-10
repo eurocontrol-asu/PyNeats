@@ -1,6 +1,6 @@
 
 from pyneats.weather import DWDFactory, WeatherFactoryParams
-from pyneats.fleet import NeatsFleet, NeatsFleetParams
+from pyneats.fleet import NeatsFleet, FleetRunner
 
 from datetime import datetime
 
@@ -17,7 +17,7 @@ FORECAST_WINDOW = 6
 #Instantiate Fleet Object
 global_fleet = NeatsFleet(asofdate=ASOFDATE, 
                           timeofday=TIME_OF_DAY,
-                          params=NeatsFleetParams('CTFM', WEATHER_PATH, TRAJECTORIES_PATH, FORECAST_WINDOW),
+                          params=FleetRunner('CTFM', WEATHER_PATH, TRAJECTORIES_PATH, FORECAST_WINDOW),
                           sample=SAMPLE)
 
 # Print results for the Fleet sample
