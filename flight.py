@@ -5,12 +5,14 @@ from typing_extensions import Self, cast
 
 from pycontrails import Flight
 
+from pyneats.climate import ClimateImpactModelType, ClimateImpactModel, ClimateImpactStepError
 from pyneats.interpolator import TrajectoryInterpolator, InterpolatorType, InterpolationStepError
 from pyneats.trajectory import TrajectoryParserType, TrajectoryParser, FlightParsingError, ParsedFlight
 from pyneats.performance import FlightWithPerformance, PerformanceModelType, PerformanceStepError, PerformanceModel
 from pyneats.emissions import EmissionModel, EmissionModelType, EmissionsStepError, FlightWithEmissions
-from pyneats.climate import ContrailsModelType, ContrailsModel, ContrailsParams, ContrailsStepError, FlightWithContrailsImpact, COCIPModel
+from pyneats.climate import ContrailsModelType, ContrailsModel, ContrailsParams, ContrailsStepError, FlightWithContrailsImpact, COCIPModel, FlightWithClimateImpact
 from pyneats.weather import  WeatherProviderProtocol, WeatherStepError, FlightWithWeather
+from pyneats.meta import extract_flight_meta
 
 logger = logging.getLogger(__name__)
 
@@ -20,73 +22,80 @@ DEFAULT_INTERPOLATOR: Final[TrajectoryInterpolator] = InterpolatorType.PYCONTRAI
 DEFAULT_TRAJECTORY_PARSER: Final[TrajectoryParser] = TrajectoryParserType.NM.get()
 # Default Performance Model is BADA as implemented via pyBADA
 DEFAULT_PERFORMANCE_MODEL: Final[PerformanceModel] = PerformanceModelType.BADA.get()
-#Default Performance Model is T4/T2 as implemented in PyContrails
+#Default Performance Model is BFFM2 - T4/T2 as implemented in PyContrails
 DEFAULT_EMISSION_MODEL: Final[EmissionModel] = EmissionModelType.PYCONTRAILS.get()
 # PyContrail's COCIP used for contrail modelling
 DEFAULT_CONTRAILS_MODEL_TYPE: Final[ContrailsModelType] = ContrailsModelType.COCIP
+# Default climate impact : GWP
+DEFAULT_CLIMAT_IMPACT: Final[ClimateImpactModel]= ClimateImpactModelType.GWP.get()
 
-class FlightRunner():
+
+class FlightRunner:
     """
     Parses, interpolates, and holds flight trajectory with met data.
     """
-    
+
+    # Explicit attribute type so Pylance can infer the property's return type
+    _source: pd.DataFrame | None
+
+    # Defaults (unchanged)
     default_trajectory_parser: TrajectoryParser = DEFAULT_TRAJECTORY_PARSER
     default_interpolator: TrajectoryInterpolator = DEFAULT_INTERPOLATOR
     default_performance: PerformanceModel = DEFAULT_PERFORMANCE_MODEL
     default_emission: EmissionModel = DEFAULT_EMISSION_MODEL
     default_contrails_model_type: ContrailsModelType = DEFAULT_CONTRAILS_MODEL_TYPE
-        
+    default_climate_impact: ClimateImpactModel = DEFAULT_CLIMAT_IMPACT
+
     def __init__(
         self,
         weather: WeatherProviderProtocol,
         source: pd.DataFrame | None = None,
         parser: TrajectoryParser | None = None,
-        interpolator: TrajectoryInterpolator | None =  None,
+        interpolator: TrajectoryInterpolator | None = None,
         performance: PerformanceModel | None = None,
-        emission: EmissionModel| None =  None,
-        contrails_model: ContrailsModel| None =  None
-    ):
-        
-        self.source = source.copy() if source is not None else None
+        emission: EmissionModel | None = None,
+        contrails_model: ContrailsModel | None = None,
+        climate_impact: ClimateImpactModel | None = None
+    ) -> None:
+        # initialize backing field before using the property
+        self._source = None
+        # let the setter make a defensive copy (avoid double copy)
+        self.source = source
 
         self.parser = parser or self.default_trajectory_parser
         self.interpolator = interpolator or self.default_interpolator
         self.weather = weather
         self.performance = performance or self.default_performance
         self.emission = emission or self.default_emission
-        
+        self.climate_impact = climate_impact or self.default_climate_impact
 
         self.contrails_model = contrails_model or COCIPModel(
-        params=ContrailsParams(
-            met=self.weather.met(),
-            rad=self.weather.rad(),
-            # optional per-run overrides; omit to use module defaults
-            # cocip_kwargs={"persistent_criteria": "strict"},
+            params=ContrailsParams(
+                met=self.weather.met(),
+                rad=self.weather.rad(),
             )
         )
 
-
-        # After the main eval() method:
+        # Pipeline state
         self.parsed_flight: Flight | None = None
         self.interpolated_flight: Flight | None = None
         self.flight_with_weather: Flight | None = None
         self.flight_with_performance: Flight | None = None
         self.flight_with_emissions: Flight | None = None
         self.flight_with_contrails: Flight | None = None
+        self.flight_with_climate_impact: Flight | None = None
         self.current: Flight | None = None
-            
+
     @property
-    def source(self):
+    def source(self) -> pd.DataFrame | None:
         """Get the trajectory dataframe."""
         return self._source
 
     @source.setter
-    def source(self, value):
-        """
-        Set the trajectory dataframe.
-        Make a defensive copy to avoid side effects.
-        """
-        self._source = value.copy() if value is not None else None
+    def source(self, value: pd.DataFrame | None) -> None:
+        """Set the trajectory dataframe (defensive copy to avoid side effects)."""
+        # Use deep=True if callers might mutate nested objects; deep=False is fine for plain numeric frames
+        self._source = value.copy(deep=True) if value is not None else None
             
     # Step 1: Parse flights (NM trajectories, ADS-B flights)
     def _parse_flight(self) -> Self:
@@ -249,101 +258,59 @@ class FlightRunner():
         logger.info("Contrails step completed successfully")
         return self
     
-    
-    def get_meta_data(self):
-        
-        attrs = self.current.attrs
-    
-        return {'aircraft_id': attrs['flight_id'],
-                'departure_airport': attrs.get('departure_airport'),
-                'arrival_airport': attrs.get('arrival_airport'),
-                'aircraft_type': attrs.get('aircraft_type'),
-                'bada_version' : attrs.get('bada_version'),
-                'callsign': attrs.get('callsign'),
-                'aobt': attrs['aobt'],
-                'pycontrails_version': attrs.get('pycontrails_version')
-               }
-    
-    # Step 7: Compute Climate Impact 
+    # Step 7: Compute Climate Impact (GWP)
     def _gwp(self) -> Self:
-        
-        assert self.flight_with_contrails is not None, "contrails() must be called first"
-        
-        # Constants
-        EFFICACY = 0.42
-        SURFACE_EARTH = 5.101e14        # Earth's surface area in m²
-        SECONDS_PER_YEAR = 31_556_952  # seconds per year
+        if self.flight_with_contrails is None:
+            logger.error("Missing flight_with_contrails; did you call _contrails() first?")
+            raise RuntimeError("_contrails() must be called before _gwp().")
 
-        # AGWP values for CO₂ (from IPCC AR6 Table 7.SM.7) in W·m⁻²·yr·kg⁻¹
-        # Converting to J·m⁻²·kg⁻¹ by multiplying by seconds per year
-        AGWP = {
-            20: 0.0243e-12 * SECONDS_PER_YEAR,
-            50: 0.0529e-12 * SECONDS_PER_YEAR,  # Fill in AGWP₅₀ once available from AR6 — often around 0.05e-12
-            100: 0.0895e-12 * SECONDS_PER_YEAR,
-        }
+        try:
+            out = self.climate_impact(self.flight_with_contrails)  # returns FlightWithClimateImpact
+        except ClimateImpactStepError:
+            raise
+        except Exception as e:
+            logger.exception("Unexpected error during climate impact (GWP) evaluation")
+            raise RuntimeError(f"Climate impact evaluation failed: {e}") from e
 
-        HORIZONS = [20, 50, 100]
+        # keep the typed, zero-copy view
+        self.flight_with_climate_impact = FlightWithClimateImpact.from_flight(out)
+        self.current = self.flight_with_climate_impact
 
-        # Flight data and metadata
-        df = self.flight_with_contrails.to_dataframe()
-        attrs = self.flight_with_contrails.attrs
-
-        total_ef = df['ef'].sum()             # total contrail energy forcing (Joules)
-        total_co2 = attrs['total_co2']        # total CO₂ emissions (kg)
-
-        result = self.get_meta_data()
-
-        # STEP 1: Compute GWP forcing for contrails
-        gwp_contrails = {
-            h: total_ef * EFFICACY
-            for h in HORIZONS
-        }
-
-        # STEP 2: Convert contrail forcing into CO₂‑equivalent (kg CO₂eq)
-        co2eq_contrails = {
-            h: gwp_contrails[h] / AGWP[h] / SURFACE_EARTH
-            for h in HORIZONS
-        }
-
-        # STEP 3: Compute CO₂ GWP forcing (emissions multiplied by AGWP factor)
-        gwp_co2 = {
-            h: total_co2 * AGWP[h] * SURFACE_EARTH
-            for h in HORIZONS
-        }
-
-        # Format results for output
-        climate_impact_contrails = [
-            {'horizon': h, 'GWP': gwp_contrails[h], 'CO2eq': co2eq_contrails[h]}
-            for h in HORIZONS
-        ]
-
-        climate_impact_co2 = [
-            {'horizon': h, 'GWP': gwp_co2[h], 'CO2eq': total_co2}
-            for h in HORIZONS
-        ]
-
-        result['climate_impact'] = [
-            {'species': 'CO2', 'value': climate_impact_co2},
-            {'species': 'Contrails', 'value': climate_impact_contrails}
-        ]
-
-        self.climate_impact = result
+        logger.info("Climate impact (GWP) step completed successfully")
         return self
-        
+
+    def get_meta_data(self) -> dict[str, object]:
+        if self.current is None:
+            raise RuntimeError("No current flight available to extract metadata.")
+        return dict(extract_flight_meta(self.current))
     
     def eval(self) -> Self:
-       
-        # Global Processing Chain
-        
-            
+        """
+        Run the full NEATS processing pipeline on the current flight.
+
+        This method executes all processing stages in sequence:
+
+            1. `_parse_flight()` — Parse the raw trajectory data into a validated `Flight` object.
+            2. `_interpolate()` — Interpolate or reconstruct the trajectory to uniform time steps.
+            3. `_intersect_weather()` — Intersect the trajectory with meteorological data.
+            4. `_performance()` — Compute aircraft performance metrics (e.g., fuel flow, thrust).
+            5. `_emissions()` — Estimate non-CO₂ and CO₂ emissions.
+            6. `_contrails()` — Simulate contrail formation and compute energy forcing.
+            7. `_gwp()` — Convert contrail energy forcing into climate impact metrics (e.g., CO₂eq).
+
+        Returns
+        -------
+        Self
+            The `FlightRunner` instance with the final processed flight in `self.current`
+            and all intermediate results available in their respective attributes.
+        """
         return (
-            self
-            ._parse_flight()
-            ._interpolate()
-            ._intersect_weather()
-            ._performance()
-            ._emissions()
-            ._contrails()
-            ._gwp()
+            self._parse_flight()     # pylint: disable=protected-access
+            ._interpolate()          # pylint: disable=protected-access
+            ._intersect_weather()    # pylint: disable=protected-access
+            ._performance()          # pylint: disable=protected-access
+            ._emissions()            # pylint: disable=protected-access
+            ._contrails()            # pylint: disable=protected-access
+            ._gwp()                  # pylint: disable=protected-access
         )
-    
+        
