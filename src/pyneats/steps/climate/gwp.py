@@ -41,6 +41,24 @@ AGWP_AR6_WM2YR_PER_KG: Mapping[int, float] = {
     100: 0.0895e-12,
 }
 
+import numpy as np
+
+# --- ADD under your configuration defaults ---
+# Metric conversion factors from pulse emission to future emission scenario (Dietmüller et al., 2022)
+ADJUST_COEFF: Final[dict[str, float]] = {
+    "CH4": 1.0e-5,
+    "O3":  1.0e-5,
+    "H2O": 1.0e-5,
+}
+
+# Horizon conversion factors (your P20_F20 / P20_F50 / P20_F100)
+HORIZON_CONVERSION_FACTORS: Final[dict[int, dict[str, float]]] = {
+    20:  {"CH4": 10.8, "O3": 14.5, "H2O": 14.5},
+    50:  {"CH4": 42.5, "O3": 34.1, "H2O": 34.1},
+    100: {"CH4": 98.2, "O3": 58.3, "H2O": 58.3},
+}
+
+
 # ---- error type ----
 class ClimateImpactStepError(RuntimeError):
     """Raised when the climate impact step fails to evaluate or validate outputs."""
@@ -182,7 +200,92 @@ class SimpleGWPModel(ClimateImpactModel):
             ],
         }
 
-        # Attach to attrs and return a zero-copy typed view
+        # --------------------------------------------
+        # ADD: Non-CO2 species from ACCF (CH4, O3, H2O)
+        # --------------------------------------------
+        # Helper to find a column among common spellings (case-insensitive)
+
+        def _first_present_col(df: pd.DataFrame, names: list[str]) -> pd.Series | None:
+            name_map = {c.lower(): c for c in df.columns}
+            for n in names:
+                c = name_map.get(n.lower())
+                if c is not None:
+                    return pd.to_numeric(df[c], errors="coerce")
+            return None
+
+        horizons = self.params.horizons
+        agwp_j_per_m2_per_kg = {
+            h: self.params.agwp_wm2yr_per_kg[h] * self.params.seconds_per_year
+            for h in horizons
+        }
+
+        # Inputs we need
+        fuel = _first_present_col(df, ["fuel_burn"])
+        if fuel is None:
+            logger.warning("Skipping ACCF species (CH4,O3,H2O): missing 'fuel_burn' column.")
+            fuel = None
+
+        # Candidate ACCF column spellings per species
+        accf_cols = {
+            "CH4": ["aCCF_CH4", "accf_ch4", "ACCF_CH4", "accf_CH4"],
+            "O3":  ["aCCF_O3",  "accf_o3",  "ACCF_O3",  "accf_O3"],
+            "H2O": ["aCCF_H2O", "accf_h2o", "ACCF_H2O", "accf_H2O"],
+        }
+
+        added_species: list[str] = []
+        skipped_species: dict[str, str] = {}
+
+        if fuel is not None:
+            for sp in ("CH4", "O3", "H2O"):
+                accf = _first_present_col(df, accf_cols[sp])
+                if accf is None:
+                    skipped_species[sp] = "missing ACCF column"
+                    continue
+
+                try:
+                    # warming_sp ~ aCCF_sp * fuel_burn (vector); coerce NaNs to 0 for sum
+                    warming_sp = (accf * fuel).fillna(0.0)
+                    # total_ef_sp then scaled by your adjust_coeff
+                    total_ef_sp = float(np.sum(warming_sp)) / ADJUST_COEFF[sp]
+
+                    # Per-horizon GWP (J m^-2), using your factors
+                    gwp_sp = {
+                        h: total_ef_sp * HORIZON_CONVERSION_FACTORS[h][sp]
+                        for h in horizons
+                    }
+
+                    # Convert to CO2eq (kg) using the same AGWP/area recipe
+                    co2eq_sp = {
+                        h: gwp_sp[h] / agwp_j_per_m2_per_kg[h] / self.params.surface_earth
+                        for h in horizons
+                    }
+
+                    payload["results"].append({
+                        "species": sp,
+                        "value": [
+                            {"horizon": h, "GWP": gwp_sp[h], "CO2eq": co2eq_sp[h]}
+                            for h in horizons
+                        ],
+                    })
+                    added_species.append(sp)
+
+                except KeyError as e:
+                    skipped_species[sp] = f"missing factor for horizon/species: {e}"
+                except Exception as e:
+                    logger.exception("Failed ACCF-based GWP for %s", sp)
+                    skipped_species[sp] = f"exception: {e}"
+        else:
+            skipped_species = {sp: "missing fuel_burn" for sp in ("CH4", "O3", "H2O")}
+
+        # Record metadata about this augmentation
+        payload["meta"].update({
+            "accf_adjust_coeff": dict(ADJUST_COEFF),
+            "accf_horizon_conversion_factors": {h: dict(HORIZON_CONVERSION_FACTORS[h]) for h in horizons},
+            "nonco2_species_added": added_species,
+            "nonco2_species_skipped": skipped_species,
+        })
+
+        # Attach and return view (unchanged from before)
         flight.attrs["climate_impact"] = payload
         logger.info("Climate impact (GWP) step completed successfully")
         return FlightWithClimateImpact.from_flight(flight)

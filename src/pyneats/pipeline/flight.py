@@ -11,8 +11,9 @@ from pyneats.steps.trajectory import TrajectoryParserType, TrajectoryParser, Fli
 from pyneats.steps.performance import FlightWithPerformance, PerformanceModelType, PerformanceStepError, PerformanceModel
 from pyneats.steps.emissions import EmissionModel, EmissionModelType, EmissionsStepError, FlightWithEmissions
 from pyneats.steps.climate import ContrailsModelType, ContrailsModel, ContrailsParams, ContrailsStepError, FlightWithContrailsImpact, COCIPModel, FlightWithClimateImpact
-from pyneats.steps.weather import  WeatherProviderProtocol, WeatherStepError, FlightWithWeather
+from pyneats.steps.climate import NonCO2ModelType, NonCO2Params, NonCO2Model, FlightWithNonCO2Impact, ClimateStepError
 from pyneats.core.meta import extract_flight_meta
+from pyneats.steps.weather import  WeatherProviderProtocol, WeatherStepError, FlightWithWeather
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,8 @@ DEFAULT_PERFORMANCE_MODEL: Final[PerformanceModel] = PerformanceModelType.BADA.g
 DEFAULT_EMISSION_MODEL: Final[EmissionModel] = EmissionModelType.PYCONTRAILS.get()
 # PyContrail's COCIP used for contrail modelling
 DEFAULT_CONTRAILS_MODEL_TYPE: Final[ContrailsModelType] = ContrailsModelType.COCIP
+# ACCFs  used for other non-co2 species
+DEFAULT_NON_CO2_MODEL_TYPE: Final[NonCO2ModelType] = NonCO2ModelType.ACCF
 # Default climate impact : GWP
 DEFAULT_CLIMAT_IMPACT: Final[ClimateImpactModel]= ClimateImpactModelType.GWP.get()
 
@@ -44,7 +47,9 @@ class FlightRunner:
     default_performance: PerformanceModel = DEFAULT_PERFORMANCE_MODEL
     default_emission: EmissionModel = DEFAULT_EMISSION_MODEL
     default_contrails_model_type: ContrailsModelType = DEFAULT_CONTRAILS_MODEL_TYPE
+    default_non_co2_model_type : NonCO2ModelType = DEFAULT_NON_CO2_MODEL_TYPE
     default_climate_impact: ClimateImpactModel = DEFAULT_CLIMAT_IMPACT
+    
 
     def __init__(
         self,
@@ -55,7 +60,10 @@ class FlightRunner:
         performance: PerformanceModel | None = None,
         emission: EmissionModel | None = None,
         contrails_model: ContrailsModel | None = None,
+        non_co2_model: NonCO2Model | None = None,
         climate_impact: ClimateImpactModel | None = None
+        
+
     ) -> None:
         # initialize backing field before using the property
         self._source = None
@@ -76,6 +84,13 @@ class FlightRunner:
             )
         )
 
+        self.non_co2_model = non_co2_model or self.default_non_co2_model_type.get(
+            params=NonCO2Params(
+                met=self.weather.met(),
+                surface=self.weather.rad(),
+                )
+        )
+
         # Pipeline state
         self.parsed_flight: Flight | None = None
         self.interpolated_flight: Flight | None = None
@@ -84,6 +99,7 @@ class FlightRunner:
         self.flight_with_emissions: Flight | None = None
         self.flight_with_contrails: Flight | None = None
         self.flight_with_climate_impact: Flight | None = None
+        self.flight_with_nonco2: FlightWithNonCO2Impact | None = None
         self.current: Flight | None = None
 
     @property
@@ -258,14 +274,44 @@ class FlightRunner:
         logger.info("Contrails step completed successfully")
         return self
     
-    # Step 7: Compute Climate Impact (GWP)
+    # Step 7: Compute non-CO₂ (ACCF)
+    def _nonco2(self) -> Self:
+
+        # Prefer the most recent enriched flight. ACCF needs emissions + weather;
+        # both are still present in the current Flight even after contrails.
+        flight_in: Flight | None = self.current or self.flight_with_contrails or self.flight_with_emissions
+        if flight_in is None:
+            logger.error("No flight available; run _emissions() (and optionally _contrails()) first.")
+            raise RuntimeError("_emissions() must be called before _nonco2().")
+
+        try:
+            f_out: Flight = self.non_co2_model(flight_in)
+        except ClimateStepError:
+            raise
+        except Exception as e:
+            logger.exception("Unexpected error during non-CO₂ (ACCF) evaluation")
+            raise RuntimeError(f"Non-CO₂ evaluation failed: {e}") from e
+
+        # Zero-copy validated view
+        self.flight_with_nonco2 = FlightWithNonCO2Impact.from_flight(f_out)
+
+        # Advance pointer; keep contrails if you want both available.
+        self.current = self.flight_with_nonco2
+        # Optionally free memory:
+        # self.flight_with_contrails = None
+        # self.flight_with_emissions = None
+
+        logger.info("Non-CO₂ (ACCF) step completed successfully")
+        return self
+
+    # Step 8: Compute Climate Impact (GWP)
     def _gwp(self) -> Self:
-        if self.flight_with_contrails is None:
+        if self.flight_with_nonco2 is None:
             logger.error("Missing flight_with_contrails; did you call _contrails() first?")
             raise RuntimeError("_contrails() must be called before _gwp().")
 
         try:
-            out = self.climate_impact(self.flight_with_contrails)  # returns FlightWithClimateImpact
+            out = self.climate_impact(self.flight_with_nonco2)  # returns FlightWithClimateImpact
         except ClimateImpactStepError:
             raise
         except Exception as e:
@@ -311,6 +357,7 @@ class FlightRunner:
             ._performance()          # pylint: disable=protected-access
             ._emissions()            # pylint: disable=protected-access
             ._contrails()            # pylint: disable=protected-access
+            ._nonco2()           # pylint: disable=protected-access
             ._gwp()                  # pylint: disable=protected-access
         )
         

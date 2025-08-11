@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Final, Mapping, Optional, Protocol, cast
+from typing import Any, Final, Mapping, Optional, Protocol, cast, runtime_checkable
 
 import pandas as pd
 from pycontrails import Flight
@@ -107,6 +107,7 @@ class FlightWithEmissions(Flight):
 
 
 # ---- protocol for emissions step ----
+@runtime_checkable
 class EmissionModel(Protocol):
     """
     An emissions step that enriches a Flight with emissions columns.
@@ -144,13 +145,11 @@ class PyContrailsEmissionModel:
         self,
         required_cols: tuple[str, ...] = DEFAULT_REQUIRED_EMISSION_COLS,
         params: PyContrailsEmissionParams | None = None,
-        **emissions_kwargs: Any,
     ) -> None:
         self.required_cols = required_cols
         # Merge explicit param bag with direct kwargs (direct kwargs win)
         extra = dict(params.extra_kwargs) if (params and params.extra_kwargs) else {}
-        merged_kwargs = {**extra, **emissions_kwargs}
-        self._impl = Emissions(**merged_kwargs)
+        self._impl = Emissions(**extra)
 
     def __call__(self, flight: Flight) -> Flight:
         # Evaluate emissions via backend
