@@ -23,7 +23,7 @@ NJOBS: Final[int] = 5
 # Small configuration holder
 # ---------------------------
 @dataclass(frozen=True)
-class FleetRunner:
+class FleetRunnerParams:
     """
     Immutable container for fleet configuration.
     """
@@ -31,6 +31,7 @@ class FleetRunner:
     weather_folder: str
     trajectory_folder: str
     forecast_window: int  # hours
+    sample: int
 
 
 # ---------------------------
@@ -63,7 +64,7 @@ def split_list(lst: List[Any], n: int) -> List[List[Any]]:
 # ---------------------------
 # Fleet runner
 # ---------------------------
-class NeatsFleet:
+class FleetRunner:
     """
     Processes a fleet of flights (sequentially here; you can parallelize by chunking).
     One heavy weather object is built once and reused across flights.
@@ -73,14 +74,12 @@ class NeatsFleet:
         self,
         asofdate: datetime,
         timeofday: int,
-        params: FleetRunner,
-        sample: int = 0,
+        params: FleetRunnerParams,
         njobs: int = NJOBS,
     ) -> None:
         self.asofdate = asofdate
         self.timeofday = timeofday
         self.params = params
-        self.sample = sample
         self.njobs = njobs
 
         self.weather: WeatherProviderProtocol | None = None
@@ -89,7 +88,7 @@ class NeatsFleet:
         self.results: list[dict[str, Any]] | None = None
 
     # ----- public API -----
-    def eval(self) -> "NeatsFleet":
+    def eval(self) -> "FleetRunner":
         """
         Run: load weather → load trajectories → process flights.
         Results end up in `self.results` (list of climate payload dicts).
@@ -224,8 +223,8 @@ class NeatsFleet:
         selected = df_model[df_model["FLIGHT_ID"].isin(valid_flights)]
 
         # Optional sampling
-        if self.sample:
-            sample_ids = valid_flights.head(self.sample)
+        if self.params.sample!=0:
+            sample_ids = valid_flights.head(self.params.sample)
             selected = selected[selected["FLIGHT_ID"].isin(sample_ids)]
 
         # One DataFrame per flight
