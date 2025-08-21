@@ -1,173 +1,179 @@
-# trajectory.py
+# steps/trajectory.py
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Final, Mapping, Protocol, cast
+from typing import Any, Final, Mapping, Protocol, runtime_checkable
 
 import pandas as pd
 from pycontrails import Flight
 
+from pyneats.core.constants import METERS_PER_FOOT, FEET_PER_FL
+from pyneats.core.views import FlightView, ValidationError
+from pyneats.core.steps import StepError  # for consistent domain errors
+
 __all__ = [
-    "METERS_PER_FOOT",
-    "FEET_PER_FL",
     "REQUIRED_4D_COLS",
-    "ParsedFlight",
+    "Flight4D",
+    "FlightParsingError",
     "TrajectoryParser",
     "NMTrajectoryParserParams",
     "NMTrajectoryParser",
     "ADSBParser",
     "TrajectoryParserType",
-    "FlightParsingError",
 ]
 
 logger = logging.getLogger(__name__)
 
-# ---- constants ----
-METERS_PER_FOOT: Final[float] = 0.3048
-FEET_PER_FL: Final[float] = 100.0
+# ---- schema constants -----------------------------------------------------------
+
 REQUIRED_4D_COLS: Final[tuple[str, ...]] = ("latitude", "longitude", "altitude", "time")
 
 
-# ---- error type ----
-class FlightParsingError(RuntimeError):
+# ---- errors --------------------------------------------------------------------
+
+class FlightParsingError(StepError):
     """Raised when a trajectory table cannot be parsed into a valid Flight."""
 
 
-# ---- validated flight view (zero-copy) ----
-class ParsedFlight(Flight):
-    """Zero-copy view ensuring ('latitude','longitude','altitude','time') exist."""
+# ---- validated 4D view (zero-copy) ---------------------------------------------
 
-    def __init__(self, data: pd.DataFrame, attrs: dict[str, Any] | None = None) -> None:
-        super().__init__(data=data, attrs=attrs)
-
-    @classmethod
-    def from_flight(cls, flight: Flight) -> "ParsedFlight":
-        missing = [c for c in REQUIRED_4D_COLS if c not in flight]
-        if missing:
-            raise KeyError(f"ParsedFlight missing required columns: {missing}")
-        view = cls(
-            data=cast(pd.DataFrame, flight.data),
-            attrs=getattr(flight, "attrs", None),
-        )
-        view.attrs.setdefault("altitude_units", "m")
-        return view
-
-    def has_columns(self, *cols: str) -> bool:
-        return all(c in self for c in cols)
+class Flight4D(FlightView):
+    """Zero-copy, typed view ensuring ('latitude','longitude','altitude','time') exist."""
+    REQUIRED  = REQUIRED_4D_COLS
 
 
-# ---- parser protocol: return a plain Flight for composability ----
+# ---- parser protocol: return a validated ParsedFlight --------------------------
+
+@runtime_checkable
 class TrajectoryParser(Protocol):
-    def __call__(self, source: pd.DataFrame) -> Flight: ...
+    """Parses a tabular source into a validated `ParsedFlight` (zero-copy view)."""
+    def __call__(self, source: pd.DataFrame) -> Flight4D: ...
 
 
-# ---- NM (Network Manager) parser ----
+# ---- NM (Network Manager) parser ----------------------------------------------
+
 @dataclass(frozen=True)
 class NMTrajectoryParserParams:
-    mapping_4d: Mapping[str, str] = field(default_factory=lambda: {
-        "LAT": "latitude",
-        "LON": "longitude",
-        "TIME_OVER": "time",
-        "FLIGHT_LEVEL": "altitude",
-    })
+    # Map raw NM columns to canonical 4D names
+    mapping_4d: Mapping[str, str] = field(
+        default_factory=lambda: {
+            "LAT": "latitude",
+            "LON": "longitude",
+            "TIME_OVER": "time",
+            "FLIGHT_LEVEL": "altitude",   # FL (hundreds of feet)
+        }
+    )
+    # Optional additional attrs to extract from the first row
+    attrs_mapping: Mapping[str, str] = field(
+        default_factory=lambda: {
+            "flight_id": "AIRCRAFT_ID",
+            "aircraft_type": "AIRCRAFT_TYPE_ICAO_ID",
+            "callsign": "REGISTRATION",
+            "departure_airport": "ADEP",
+            "arrival_airport": "ADES",
+            "aobt": "time",
+        }
+    )
+    # Time parsing options
     date_format: str = "%Y-%m-%d %H:%M:%S"
-    timezone: str = "UTC"
-    attrs_mapping: Mapping[str, str] = field(default_factory=lambda: {
-        "flight_id": "AIRCRAFT_ID",
-        "aircraft_type": "AIRCRAFT_TYPE_ICAO_ID",
-        "callsign": "REGISTRATION",
-        "departure_airport": "ADEP",
-        "arrival_airport": "ADES",
-        "aobt": "time",
-    })
-
+    timezone: str = "UTC"  # output tz; parsing is done as UTC then converted
 
 class NMTrajectoryParser:
-    """Parse NM FTFM/RTFM/CTFM data into a `Flight` with required 4D fields."""
+    """
+    Parse NM FTFM/RTFM/CTFM data into a `ParsedFlight`.
 
-    required_after_rename = REQUIRED_4D_COLS
+    Contract
+    --------
+    __call__(df: pd.DataFrame) -> ParsedFlight
+
+    Notes
+    -----
+    - Altitude is expected as Flight Level (FL). Converted to meters.
+    - Time is parsed as tz-aware timestamps in the configured timezone.
+    - Output is a zero-copy `ParsedFlight` view (same underlying Flight).
+    """
+
+    required_after_rename: Final[tuple[str, ...]] = REQUIRED_4D_COLS
 
     def __init__(self, params: NMTrajectoryParserParams | None = None) -> None:
         self.params = params or NMTrajectoryParserParams()
 
-    def __call__(self, source: pd.DataFrame) -> Flight:
-        logger.debug("Starting NM trajectory parsing; rows=%d, cols=%d", *source.shape)
-
-        # 1) Rename columns
-        df = source.rename(columns=self.params.mapping_4d)
-        missing = [c for c in self.required_after_rename if c not in df.columns]
-        if missing:
-            logger.error("Missing required columns after rename: %s", missing)
-            raise FlightParsingError(f"Missing required columns after rename: {missing}")
-
-        # 2) Altitude: FL (hundreds of feet) -> meters
+    def __call__(self, source: pd.DataFrame) -> Flight4D:
         try:
-            df["altitude"] = df["altitude"] * FEET_PER_FL * METERS_PER_FOOT
-        except Exception as e:
-            logger.exception("Failed converting altitude to meters")
-            raise FlightParsingError(f"Failed converting altitude to meters: {e}") from e
+            logger.debug("NM parse start: rows=%d, cols=%d", *source.shape)
 
-        # 3) Parse time to tz-aware
-        try:
-            ts = pd.to_datetime(
-                df["time"],
-                format=self.params.date_format,
-                errors="coerce",
-                utc=True,
+            # 1) Rename columns to canonical 4D schema
+            df = source.rename(columns=self.params.mapping_4d)
+            missing = [c for c in self.required_after_rename if c not in df.columns]
+            if missing:
+                raise FlightParsingError(type(self).__name__, f"missing columns after rename: {missing}")
+
+            # 2) Altitude: FL (hundreds of feet) -> meters
+            try:
+                df["altitude"] = df["altitude"] * FEET_PER_FL * METERS_PER_FOOT
+            except Exception as e:
+                raise FlightParsingError(type(self).__name__, f"altitude conversion failed: {e}") from e
+
+            # 3) Parse time as tz-aware; convert if a timezone is requested
+            try:
+                ts = pd.to_datetime(df["time"], format=self.params.date_format, errors="coerce", utc=True)
+                if self.params.timezone and self.params.timezone != "UTC":
+                    ts = ts.dt.tz_convert(self.params.timezone)
+                df["time"] = ts
+            except Exception as e:
+                raise FlightParsingError(type(self).__name__, f"timestamp parsing failed: {e}") from e
+
+            # 4) Drop rows missing required fields, then sort & deduplicate by time
+            mask = df[list(self.required_after_rename)].notna().all(axis=1)
+            df = (
+                df.loc[mask]
+                  .sort_values("time")
+                  .drop_duplicates(subset="time", keep="first")
+                  .reset_index(drop=True)
             )
-            if self.params.timezone != "UTC":
-                ts = ts.dt.tz_convert(self.params.timezone)
-            df["time"] = ts
+            if df.empty:
+                raise FlightParsingError(type(self).__name__, "no valid trajectory points after cleaning")
+
+            # 5) Build attrs from first row (optional convenience metadata)
+            attrs: dict[str, Any] = {"altitude_units": "m"}
+            first = df.iloc[0]
+            for attr_key, src_col in self.params.attrs_mapping.items():
+                if src_col in df.columns:
+                    attrs[attr_key] = first[src_col]
+
+            # 6) Construct base Flight with required columns only
+            base = Flight(data=df[list(self.required_after_rename)], attrs=attrs)
+
+            # 7) Validate and return typed zero-copy view
+            return Flight4D.from_flight(base)
+
+        except ValidationError as e:
+            # Normalize view validation errors into parsing domain errors
+            raise FlightParsingError(type(self).__name__, str(e)) from e
+        except FlightParsingError:
+            # Already normalized; just propagate
+            raise
         except Exception as e:
-            logger.exception("Failed parsing timestamps")
-            raise FlightParsingError(f"Failed parsing timestamps: {e}") from e
-
-        # 4) Drop rows with missing required fields
-        mask = df[list(self.required_after_rename)].notna().all(axis=1)
-        df = df.loc[mask]
-        if df.empty:
-            logger.error("No valid trajectory points after cleaning")
-            raise FlightParsingError("No valid trajectory points after cleaning.")
-
-        # 5) Sort & deduplicate by time
-        df = (
-            df.sort_values("time")
-              .drop_duplicates(subset="time", keep="first")
-              .reset_index(drop=True)
-        )
-
-        # 6) Build attrs from first row
-        attrs: dict[str, Any] = {}
-        first = df.iloc[0]
-        for attr_key, src_col in self.params.attrs_mapping.items():
-            if src_col in df.columns:
-                attrs[attr_key] = first[src_col]
-        attrs.setdefault("altitude_units", "m")
-
-        # 7) Construct base Flight and validate (zero-copy view)
-        out = Flight(data=df[list(self.required_after_rename)], attrs=attrs)
-        try:
-            _ = ParsedFlight.from_flight(out)
-        except KeyError as e:
-            logger.error("ParsedFlight validation failed: %s", e)
-            raise FlightParsingError(f"Validation failed: {e}") from e
-
-        logger.info("NM trajectory parsing done; points=%d", len(out.data))
-        return out
+            # Unexpected failure path
+            logger.exception("Unexpected NM parsing error")
+            raise FlightParsingError(type(self).__name__, f"unexpected: {e}") from e
 
 
-# ---- ADS-B / OpenSky parser (skeleton) ----
+# ---- ADS-B / OpenSky parser (skeleton) ----------------------------------------
+
 class ADSBParser:
+    """Placeholder for an ADS-B specific parser yielding `ParsedFlight`."""
     def __init__(self) -> None:
         ...
 
-    def __call__(self, source: pd.DataFrame) -> Flight:
-        raise NotImplementedError("OpenSky/ADS-B parser not yet implemented")
+    def __call__(self, source: pd.DataFrame) -> Flight4D:
+        raise FlightParsingError(type(self).__name__, "not implemented")
 
 
-# ---- factory ----
+# ---- factory (kept like emissions) --------------------------------------------
+
 class TrajectoryParserType(Enum):
     NM = NMTrajectoryParser
     ADSB = ADSBParser

@@ -19,6 +19,8 @@ import pyBADA.atmosphere as atm
 from pyBADA.bada3 import Bada3Aircraft
 from pyBADA.bada4 import Bada4Aircraft
 
+from pyneats.core.constants import Q_FUEL
+
 from pyneats.utils.utilities import is_nan_string
 
 logger = logging.getLogger(__name__)
@@ -35,7 +37,7 @@ __all__ = [
 
 # ---- configuration ----
 COLS_MAPPING_BADA: tuple[str, ...] = ("NB_ENG", "BADA3", "BADA4", "ENGINE_ID")
-Q_FUEL: Final[float] = 43_130_000.0
+
 DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW: Final[int] = 7
 DEFAULT_REQUIRED_PERF_COLS: Final[tuple[str, ...]] = (
     "true_airspeed",

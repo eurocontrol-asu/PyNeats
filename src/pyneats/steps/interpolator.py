@@ -1,15 +1,16 @@
-# interpolator.py
+# steps/interpolator.py
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Protocol, Any
+from typing import Any, runtime_checkable, Protocol
 
 from pycontrails import Flight
 
-from pyneats.steps.trajectory import ParsedFlight  # zero-copy validator for required 4D cols
-from pyneats.core.parameters import DEFAULT_INTERPOLATION_TIME
+from pyneats.core.steps import BaseStep, Step, StepError
+from pyneats.steps.trajectory import Flight4D  # strong input/output type
+from pyneats.core.parameters import DEFAULT_INTERPOLATION_TIME  # keep your source
 
 __all__ = [
     "TrajectoryInterpolationParams",
@@ -24,75 +25,71 @@ logger = logging.getLogger(__name__)
 
 
 # ---- error type ----------------------------------------------------
-class InterpolationStepError(RuntimeError):
+class InterpolationStepError(StepError):
     """Raised when interpolation/resampling fails or yields invalid output."""
 
 
 # ---- params --------------------------------------------------------
 @dataclass(frozen=True)
 class TrajectoryInterpolationParams:
-    """Parameters for trajectory interpolation."""
-    interpolation_time: str = DEFAULT_INTERPOLATION_TIME
+    """Parameters for trajectory interpolation/resampling."""
+    interpolation_time: str = DEFAULT_INTERPOLATION_TIME  # e.g., "1min"
 
 
-# ---- protocol: return a base Flight for composability --------------
-class TrajectoryInterpolator(Protocol):
-    """Callable that takes a Flight and returns an interpolated Flight."""
-    def __call__(self, flight: Flight) -> Flight: ...
+# ---- protocol: strong contract (ParsedFlight -> ParsedFlight) -----
+@runtime_checkable
+class TrajectoryInterpolator(Step[Flight4D, Flight4D], Protocol):
+    """
+    Interpolators consume a ParsedFlight and must return a ParsedFlight
+    (zero-copy validated view).
+    """
+    # Protocol inherits: def __call__(self, flight: In) -> Out: ...
 
 
-# --- PyContrails interpolator: resample + fill ---
-class PyContrailsInterpolator:
+# ---- PyContrails interpolator: resample + fill --------------------
+class PyContrailsInterpolator(BaseStep[Flight4D, Flight4D]):
     """
     Thin wrapper around `Flight.resample_and_fill`.
 
-    - Returns a base `Flight` to keep the pipeline flexible.
-    - Immediately validates via `ParsedFlight.from_flight(out)` (zero-copy) to fail fast.
+    - input:  ParsedFlight (validated upstream)
+    - output: ParsedFlight (validated here, zero-copy)
     """
 
     def __init__(self, params: TrajectoryInterpolationParams | None = None) -> None:
+        super().__init__()
         self.params = params or TrajectoryInterpolationParams()
 
-    def __call__(self, flight: Flight) -> Flight:
+    def run(self, flight: Flight4D) -> Flight4D:
+        # (Optional) input re-validation; cheap and catches upstream drift
+        #if self.validate_inputs:
+        #    flight = Flight4D.from_flight(flight)
+
         try:
             out: Flight = flight.resample_and_fill(self.params.interpolation_time)
         except Exception as e:
-            logger.exception("Interpolation backend failed (resample_and_fill)")
-            raise InterpolationStepError(f"Interpolation failed: {e}") from e
+            raise InterpolationStepError(type(self).__name__, f"resample_and_fill failed: {e}") from e
 
-        # Validate that required 4D columns are still present
-        try:
-            _ = ParsedFlight.from_flight(out)
-        except KeyError as e:
-            logger.error("Interpolated Flight missing required 4D columns: %s", e)
-            raise InterpolationStepError(f"Interpolated Flight invalid: {e}") from e
-
-        logger.info(
-            "Interpolation completed successfully at interval=%s; points=%d",
-            self.params.interpolation_time,
-            len(out.data),
-        )
-        return out
+        # Validate schema and return typed zero-copy view
+        return Flight4D.from_flight(out)
 
 
-# --- BADA interpolator: Placeholder ---
-class BADATrajectoryPredictor:
+# ---- BADA predictor (placeholder with same contract) ---------------
+class BADATrajectoryPredictor(BaseStep[Flight4D, Flight4D]):
     """
-    Placeholder for a physics-based trajectory reconstruction (BADA).
-
-    Contract: return a base `Flight`; validate with `ParsedFlight` (zero-copy).
+    Placeholder for a physics-based trajectory reconstruction (e.g., BADA).
+    Must return a ParsedFlight (validated, zero-copy).
     """
 
     def __init__(self, params: TrajectoryInterpolationParams | None = None) -> None:
+        super().__init__()
         self.params = params or TrajectoryInterpolationParams()
 
-    def __call__(self, flight: Flight) -> Flight:
-        raise NotImplementedError("BADA trajectory predictor not yet implemented")
+    def run(self, flight: Flight4D) -> Flight4D:
+        raise InterpolationStepError(type(self).__name__, "not implemented")
 
 
-# ---- factory -------------------------------------------------------
+# ---- factory enum (kept for now) ----------------------------------
 class InterpolatorType(Enum):
-    """Enum factory for trajectory interpolators/predictors."""
     PYCONTRAILS = PyContrailsInterpolator
     BADA = BADATrajectoryPredictor
 

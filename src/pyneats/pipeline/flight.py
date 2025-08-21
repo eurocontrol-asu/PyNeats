@@ -7,7 +7,7 @@ from pycontrails import Flight
 
 from pyneats.steps.climate import ClimateImpactModelType, ClimateImpactModel, ClimateImpactStepError
 from pyneats.steps.interpolator import TrajectoryInterpolator, InterpolatorType, InterpolationStepError
-from pyneats.steps.trajectory import TrajectoryParserType, TrajectoryParser, FlightParsingError, ParsedFlight
+from pyneats.steps.trajectory import TrajectoryParserType, TrajectoryParser, FlightParsingError, Flight4D
 from pyneats.steps.performance import FlightWithPerformance, PerformanceModelType, PerformanceStepError, PerformanceModel
 from pyneats.steps.emissions import EmissionModel, EmissionModelType, EmissionsStepError, FlightWithEmissions
 from pyneats.steps.climate import ContrailsModelType, ContrailsModel, ContrailsParams, ContrailsStepError, FlightWithContrailsImpact, COCIPModel, FlightWithClimateImpact
@@ -23,7 +23,7 @@ DEFAULT_INTERPOLATOR: Final[TrajectoryInterpolator] = InterpolatorType.PYCONTRAI
 DEFAULT_TRAJECTORY_PARSER: Final[TrajectoryParser] = TrajectoryParserType.NM.get()
 # Default Performance Model is BADA as implemented via pyBADA
 DEFAULT_PERFORMANCE_MODEL: Final[PerformanceModel] = PerformanceModelType.BADA.get()
-#Default Performance Model is BFFM2 - T4/T2 as implemented in PyContrails
+#Default Emission Model is BFFM2 - T4/T2 as implemented in PyContrails
 DEFAULT_EMISSION_MODEL: Final[EmissionModel] = EmissionModelType.PYCONTRAILS.get()
 # PyContrail's COCIP used for contrail modelling
 DEFAULT_CONTRAILS_MODEL_TYPE: Final[ContrailsModelType] = ContrailsModelType.COCIP
@@ -131,7 +131,7 @@ class FlightRunner:
             raise RuntimeError(f"Trajectory parsing failed: {e}") from e
         
         # Optional: validate again (zero-copy). Since the parser already validates,
-        self.parsed_flight = ParsedFlight.from_flight(base)
+        self.parsed_flight = Flight4D.from_flight(base)
 
         self.current = self.parsed_flight
         logger.info("Flight parsing completed successfully with %d points", len(base.data))
@@ -155,7 +155,7 @@ class FlightRunner:
             raise RuntimeError(f"Interpolation failed: {e}") from e
 
         # Optional: validate again (zero-copy) for typed accessors & safety
-        self.interpolated_flight = ParsedFlight.from_flight(base)
+        self.interpolated_flight = Flight4D.from_flight(base)
         #self.interpolated_flight = base
 
         # Advance the pipeline pointer
@@ -357,7 +357,7 @@ class FlightRunner:
             ._performance()          # pylint: disable=protected-access
             ._emissions()            # pylint: disable=protected-access
             ._contrails()            # pylint: disable=protected-access
-            ._nonco2()           # pylint: disable=protected-access
-            ._gwp()                  # pylint: disable=protected-access
+            #._nonco2()           # pylint: disable=protected-access
+            #._gwp()                  # pylint: disable=protected-access
         )
         
