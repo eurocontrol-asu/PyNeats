@@ -13,6 +13,19 @@ from pyneats.core.steps import BaseStep, Step, StepError
 from pyneats.core.views import FlightView
 from pyneats.steps.performance import FlightWithPerformance  # <- strong input type
 
+
+__all__ = [
+    "DEFAULT_REQUIRED_EMISSION_COLS",
+    "FlightWithEmissions",
+    "EmissionsStepError",
+    "EmissionModel",
+    "PyContrailsEmissionParams",
+    "PyContrailsEmissionModel",
+    "EurocontrolEmissionModel",
+    "DLREmissionModel"
+]
+
+
 logger = logging.getLogger(__name__)
 
 # ---- views ----

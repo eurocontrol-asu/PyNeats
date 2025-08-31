@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from importlib.resources import files
-from typing import Any, Final,  Protocol, Tuple
+from typing import Any, Final,  Protocol, Tuple, ClassVar, runtime_checkable
 import pandas as pd
 import numpy as np
 from numpy.typing import NDArray
@@ -20,8 +20,10 @@ from pyBADA.bada3 import Bada3Aircraft
 from pyBADA.bada4 import Bada4Aircraft
 
 from pyneats.core.constants import Q_FUEL
-
 from pyneats.utils.utilities import is_nan_string
+from pyneats.core.views import FlightView
+from pyneats.steps.weather.weather_provider import FlightWithWeather
+from pyneats.core.steps import BaseStep, Step, StepError
 
 logger = logging.getLogger(__name__)
 
@@ -50,36 +52,9 @@ class PerformanceStepError(RuntimeError):
     """Raised when the performance step fails to evaluate or validate outputs."""
 
 # ---- validated view (zero-copy) ----
-class FlightWithPerformance(Flight):
-    """
-    Thin, zero-copy view guaranteeing core performance columns exist.
-
-    Use `from_flight()` to validate. Does not copy the DataFrame.
-    """
-
-    @classmethod
-    def from_flight(
-        cls,
-        flight: Flight,
-        required_cols: tuple[str, ...] = DEFAULT_REQUIRED_PERF_COLS,
-    ) -> "FlightWithPerformance":
-        missing = [c for c in required_cols if c not in flight]
-        if missing:
-            raise KeyError(f"FlightWithPerformance missing required columns: {missing}")
-        # rewrap zero-copy
-        return cls(data=flight.data, attrs=getattr(flight, "attrs", None))
-
-    @property
-    def true_airspeed(self) -> pd.Series:
-        return self.dataframe["true_airspeed"]
-
-    @property
-    def fuel_flow(self) -> pd.Series:
-        return self.dataframe["fuel_flow"]
-
-    @property
-    def engine_efficiency(self) -> pd.Series:
-        return self.dataframe["engine_efficiency"]
+class FlightWithPerformance(FlightView):
+    """Zero-copy typed view for performance-enriched flights."""
+    REQUIRED: ClassVar[tuple[str, ...]] = DEFAULT_REQUIRED_PERF_COLS
 
 # ---- external mapping loader (kept separate for testability) ----
 def load_bada_mapping() -> pd.DataFrame:
@@ -293,16 +268,34 @@ class BADAPerformanceModelParams:
 
         return nb_eng, bada3, bada4, engine_id
     
-class PerformanceModel(Protocol):
-    def __call__(self, flight: Flight) -> Flight: ...
+@runtime_checkable
+class PerformanceModel(Step[FlightWithWeather, FlightWithPerformance], Protocol):
+    """
+    Performance steps consume a weather-enriched flight and produce
+    a performance-enriched flight (zero-copy view).
+    """
+    # Protocol inherits: def __call__(self, flight: In) -> Out: ...
 
 # ---- main model ----
-class BADAPerformanceModel(PerformanceModel):
+class BADAPerformanceModel(BaseStep[FlightWithWeather, FlightWithPerformance]):
+    """
+    Thin wrapper over your BADA adapter.
+
+    - input:  FlightWithWeather (validated upstream)
+    - output: FlightWithPerformance (validated here, zero-copy)
+
+    Wire your pyBADA adapter inside `run()`: compute columns and attach to `out`.
+    """
+
     def __init__(self, params: BADAPerformanceModelParams | None = None) -> None:
+        super().__init__()
         self.params = params or BADAPerformanceModelParams()
+        # self._impl = YourBADAAdapter(self.params)  # when ready
+
 
     # public API
-    def __call__(self, flight: Flight) -> Flight:
+    def run(self, flight: FlightWithWeather) -> FlightWithPerformance:
+        
         try:
             df = self._preprocess(flight)  # shallow copy + derived columns
             icao = flight.attrs.get("aircraft_type")

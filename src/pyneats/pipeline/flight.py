@@ -92,8 +92,8 @@ class FlightRunner:
         )
 
         # Pipeline state
-        self.parsed_flight: Flight | None = None
-        self.interpolated_flight: Flight | None = None
+        self.parsed_flight: Flight4D | None = None
+        self.interpolated_flight: Flight4D | None = None
         self.flight_with_weather: Flight | None = None
         self.flight_with_performance: Flight | None = None
         self.flight_with_emissions: Flight | None = None
