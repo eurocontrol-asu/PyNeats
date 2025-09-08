@@ -1,4 +1,4 @@
-# weather_factory.py
+# steps/weather/weather_factory.py
 from __future__ import annotations
 
 import logging
@@ -6,11 +6,12 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Final, Mapping, Optional, ClassVar
+from typing import ClassVar, Final, Mapping, Optional
 
 import xarray as xr
 from pycontrails import DiskCacheStore, MetDataset
 from pycontrails.core.met_var import (
+    MetVariable,
     AirTemperature,
     CloudAreaFractionInAtmosphereLayer,
     EastwardWind,
@@ -20,13 +21,13 @@ from pycontrails.core.met_var import (
     RelativeHumidity,
     SpecificHumidity,
     VerticalVelocity,
+    TOAOutgoingLongwaveFlux,
+    TOANetDownwardShortwaveFlux,
 )
 from pycontrails.datalib.ecmwf import ERA5, PotentialVorticity, SurfaceSolarDownwardRadiation
 from pycontrails.models.cocip import Cocip
-from pycontrails.core.met_var import TOAOutgoingLongwaveFlux, TOANetDownwardShortwaveFlux
-from pycontrails.core.met_var import MetVariable
 
-from pyneats.steps.weather.weather_provider import WeatherProviderProtocol, WeatherProvider
+from .weather_provider import WeatherProvider, WeatherProviderProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -35,56 +36,96 @@ __all__ = [
     "DEFAULT_PRESSURE_LEVELS_HPA",
     "DEFAULT_HORIZONTAL_RES_DEG",
     "WeatherFactoryParams",
+    "DiskCacheSpec",
+    "ZarrCacheSpec",
+    "WeatherCacheConfig",
     "WeatherFactoryError",
     "WeatherFactoryProtocol",
     "ERA5Factory",
     "DWDFactory",
 ]
 
-# ---- configuration ----
+# ---------------- defaults ----------------
 DEFAULT_WEATHER_OFFSET_H: Final[int] = 36
 DEFAULT_PRESSURE_LEVELS_HPA: Final[tuple[float, ...]] = (
     550, 500, 450, 400, 350, 300, 250, 225, 200, 175, 150, 125
 )
 DEFAULT_HORIZONTAL_RES_DEG: Final[float] = 0.25
 
-
-# ---- error type ----
+# ---------------- error ----------------
 class WeatherFactoryError(RuntimeError):
-    """Raised when the weather factory fails to load or standardize datasets."""
+    """Raised when a weather factory fails to load or standardize datasets."""
 
+# ---------------- cache specs ----------------
+@dataclass(frozen=True)
+class DiskCacheSpec:
+    """PyContrails DiskCacheStore (used with ERA5)."""
+    cache_dir: str
+    consolidated: bool = True
+    read_only: bool = False
+    allow_clear: bool = False
+    compressor: Optional[str] = None
 
-# ---- params ----
+@dataclass(frozen=True)
+class ZarrCacheSpec:
+    """Zarr stores (used with DWD). If build_if_missing is True, we create them."""
+    met_store: str
+    rad_store: str
+    wind_store: str
+    build_if_missing: bool = True
+    consolidated: bool = True
+    # xarray chunk hints for writing (ignored for read)
+    met_chunks: Optional[Mapping[str, int]] = None
+    rad_chunks: Optional[Mapping[str, int]] = None
+    # Unit fix: convert SDR [W m-2] to [J m-2] by multiplying by dt (seconds)
+    sdr_accumulate_dt_s: Optional[int] = None  # set to your true step if needed (e.g. 3600)
+
+@dataclass(frozen=True)
+class WeatherCacheConfig:
+    """Unified cache config; pick the one relevant for the backend."""
+    disk: Optional[DiskCacheSpec] = None  # ERA5
+    zarr: Optional[ZarrCacheSpec] = None  # DWD
+
+# ---------------- params ----------------
 @dataclass(frozen=True)
 class WeatherFactoryParams:
+    # for ERA5 and for DWD live reading
     data_dir: str
     horizontal_resolution: float = DEFAULT_HORIZONTAL_RES_DEG
     pressure_levels: tuple[float, ...] = DEFAULT_PRESSURE_LEVELS_HPA
     weather_offset_hours: int = DEFAULT_WEATHER_OFFSET_H
 
+    # unified optional cache config
+    cache: Optional[WeatherCacheConfig] = None
+
+    # optional xarray chunks (read-time hints)
+    chunks: Optional[Mapping[str, int]] = None
+
     def time_bounds(self, dt: datetime) -> tuple[str, str]:
-        """Return (dt, dt + offset) as ISO strings."""
         later = dt + timedelta(hours=self.weather_offset_hours)
         fmt = "%Y-%m-%d %H:%M:%S"
         return dt.strftime(fmt), later.strftime(fmt)
 
-
-# ---- protocol for factories ----
+# ---------------- protocol ----------------
 class WeatherFactoryProtocol:
-    def __call__(self, asofdate: datetime, /) -> WeatherProviderProtocol:  # pragma: no cover
+    def __call__(self, asofdate: datetime, hour: Optional[int] = None) -> WeatherProviderProtocol:  # pragma: no cover
         raise NotImplementedError
 
-
-# ---- ERA5 factory ----
+# ---------------- ERA5 ----------------
 class ERA5Factory(WeatherFactoryProtocol):
-    """Thin wrapper building a WeatherProvider from ERA5 via pycontrails."""
-
+    """
+    Build a WeatherProvider from ERA5. If cache.disk is provided, pass a DiskCacheStore.
+    API is the same as DWD (__call__(asofdate, hour=None)); hour is ignored.
+    """
     def __init__(self, params: WeatherFactoryParams) -> None:
         self.params = params
 
-    def __call__(self, asofdate: datetime, /) -> WeatherProviderProtocol:
-        cache = DiskCacheStore(cache_dir=self.params.data_dir, allow_clear=True)
+    def __call__(self, asofdate: datetime, hour: Optional[int] = None) -> WeatherProviderProtocol:
+        disk = self.params.cache.disk if self.params.cache else None
+        cachestore = DiskCacheStore(cache_dir=disk.cache_dir, allow_clear=disk.allow_clear) if disk else None
+
         t0, t1 = self.params.time_bounds(asofdate)
+        xr_kwargs = {"chunks": self.params.chunks} if self.params.chunks else None
 
         try:
             era5_ml = ERA5(
@@ -92,45 +133,42 @@ class ERA5Factory(WeatherFactoryProtocol):
                 variables=(Cocip.met_variables + Cocip.optional_met_variables),
                 pressure_levels=self.params.pressure_levels,
                 grid=self.params.horizontal_resolution,
-                cachestore=cache,
+                cachestore=cachestore,
             )
-            met = era5_ml.open_metdataset()
+            met = era5_ml.open_metdataset(xr_kwargs=xr_kwargs)
 
             era5_sl = ERA5(
                 time=(t0, t1),
                 variables=Cocip.rad_variables,
                 grid=self.params.horizontal_resolution,
-                cachestore=cache,
+                cachestore=cachestore,
             )
-            rad = era5_sl.open_metdataset()
+            rad = era5_sl.open_metdataset(xr_kwargs=xr_kwargs)
 
         except Exception as e:
-            logger.exception("Failed to open ERA5 datasets")
+            logger.exception("ERA5 loading failed")
             raise WeatherFactoryError(f"ERA5 loading failed: {e}") from e
 
-        logger.info(
-            "ERA5 weather ready",
-            extra={
-                "time_start": t0,
-                "time_end": t1,
-                "grid_deg": self.params.horizontal_resolution,
-                "levels_hpa": len(self.params.pressure_levels),
-            },
-        )
-        # Surface wind is included in MET in ERA5 CoCiP recipes; pass MET for wind as well.
-        return WeatherProvider(met, rad, met)
+        extra: dict[str, object] = {
+            "time_start": t0,
+            "time_end": t1,
+            "grid_deg": self.params.horizontal_resolution,
+            "levels_hpa": len(self.params.pressure_levels),
+            "cache_dir": (disk.cache_dir if disk else None),
+        }
+        logger.info("ERA5 weather ready", extra=extra)
 
+        return WeatherProvider(met=met, rad=rad, wind = met)
 
-# ---- DWD ICON-2mom factory ----
+# ---------------- DWD ICON-2mom ----------------
 class DWDFactory(WeatherFactoryProtocol):
     """
-    Build a WeatherProvider from DWD ICON-2mom forecast files already on disk.
-
-    Expects files like:
-        MRV_T_<step>_<YYYYMMDD><HH>.nc   (MET + RAD variables)
-        MRV_T_UV_<step>_<YYYYMMDD><HH>.nc (surface U/V)
+    DWD factory that can either:
+      - read NetCDF files directly (no cache), or
+      - build & read Zarr stores (cache.zarr).
     """
 
+    # Maps (matching your “dirty” script)
     _required_map: ClassVar[Mapping[str, MetVariable]] = {
         "u": EastwardWind,
         "v": NorthwardWind,
@@ -139,14 +177,12 @@ class DWDFactory(WeatherFactoryProtocol):
         "qv": SpecificHumidity,
         "qi": MassFractionOfCloudIceInAir,
     }
-
     _optional_map: ClassVar[Mapping[str, MetVariable]] = {
         "geopot": Geopotential,
         "clc": CloudAreaFractionInAtmosphereLayer,
         "rhi": RelativeHumidity,
         "pv": PotentialVorticity,
     }
-
     _rad_map: ClassVar[Mapping[str, MetVariable]] = {
         "tsr": TOANetDownwardShortwaveFlux,
         "olr": TOAOutgoingLongwaveFlux,
@@ -160,86 +196,175 @@ class DWDFactory(WeatherFactoryProtocol):
     def __init__(self, params: WeatherFactoryParams) -> None:
         self.params = params
 
-    # --- public ---
+    # ---------- public API ----------
     def __call__(self, asofdate: datetime, hour: Optional[int] = None) -> WeatherProviderProtocol:
-        run_hour = hour if hour is not None else asofdate.hour
+        
+        zc = self.params.cache.zarr if self.params.cache else None
+        run_hour = asofdate.hour if hour is None else hour
         date_str = asofdate.strftime("%Y%m%d")
 
-        try:
-            # MET + RAD in one file set; standardize once, then split
-            ds_all = self._load_and_standardize(
-                prefix="MRV_T",
-                date_str=date_str,
-                hour=run_hour,
-                var_map={**self._required_map, **self._optional_map, **self._rad_map},
-            )
-            # MET selection
-            met_vars = [v.standard_name for v in {**self._required_map, **self._optional_map}.values()]
-            ds_met = ds_all[met_vars]
-            met = MetDataset(ds_met)  # zero-copy view into ds_all
+        if zc:
+            # build if requested + missing
+            if zc.build_if_missing and (not os.path.exists(zc.met_store) or not os.path.exists(zc.rad_store)):
+                self.build_cache(asofdate, hour=run_hour, overwrite=False)
 
-            # RAD selection → ensure a level dimension exists (CoCiP expects it)
+            # open zarr lazily (keep native chunks)
+            try:
+                met_ds = xr.open_zarr(zc.met_store, consolidated=zc.consolidated)
+                rad_ds = xr.open_zarr(zc.rad_store, consolidated=zc.consolidated)
+                wind_ds = xr.open_zarr(zc.wind_store, consolidated=zc.consolidated)
+
+            except Exception as e:
+                logger.exception("Failed to open DWD zarr cache")
+                raise WeatherFactoryError(f"Open zarr cache failed: {e}") from e
+
+            met = MetDataset(met_ds)
+            rad = MetDataset(rad_ds)
+            wind = MetDataset(wind_ds)
+
+            logger.info(
+                "DWD weather ready (zarr cache)",
+                extra={"met_store": zc.met_store, "rad_store": zc.rad_store, "date": date_str, "hour": run_hour},
+            )
+            return WeatherProvider(met=met, rad=rad, wind = wind)
+
+        # Fallback: live NetCDF read (no cache)
+        try:
+            ds_all = self._load_and_standardize_live(prefix="MRV_T",
+                                                     date_str=date_str,
+                                                     hour=run_hour,
+                                                     var_map={**self._required_map, **self._optional_map, **self._rad_map})
+            
+            met_vars = [v.standard_name for v in {**self._required_map, **self._optional_map}.values()]
             rad_vars = [v.standard_name for v in self._rad_map.values()]
+
+            ds_met = ds_all[met_vars]
             ds_rad = ds_all[rad_vars]
+
             if "level" not in ds_rad.dims:
                 ds_rad = ds_rad.expand_dims({"level": [-1]})
+
+            met = MetDataset(ds_met)
             rad = MetDataset(ds_rad)
 
-            # WIND (surface U/V) lives in a different file set
-            ds_wind = self._load_and_standardize(
+            # WIND
+            ds_wind = self._load_and_standardize_live(
                 prefix="MRV_T_UV",
                 date_str=date_str,
                 hour=run_hour,
-                var_map=type(self)._wind_map,   # or DWDFactory._wind_map
+                var_map=self._wind_map
             )
+
             wind = MetDataset(ds_wind)
 
-        except WeatherFactoryError:
-            raise
         except Exception as e:
-            logger.exception("Failed to construct DWD WeatherProvider")
+            logger.exception("DWD live processing failed")
             raise WeatherFactoryError(f"DWD processing failed: {e}") from e
 
-        logger.info(
-            "DWD weather ready",
-            extra={"date": date_str, "hour": run_hour, "dir": self.params.data_dir},
-        )
-        return WeatherProvider(met, rad, wind)
+        logger.info("DWD weather ready (live)", extra={"date": date_str, "hour": run_hour, "dir": self.params.data_dir})
+        return WeatherProvider(met=met, rad=rad, wind = wind)
+    
+    # ---------- cache builder ----------
+    def build_cache(self, asofdate: datetime, *, hour: Optional[int] = None, overwrite: bool = False) -> tuple[str, str]:
+        """
+        Build (or rebuild) the DWD zarr cache. Returns (met_store, rad_store) paths.
+        Mirrors your “dirty” script: rename dims, unit fixes, map vars, chunk, write, consolidate.
+        """
+        zc = self.params.cache.zarr if self.params.cache else None
+        if not zc:
+            raise WeatherFactoryError("No ZarrCacheSpec provided; cannot build zarr cache.")
 
-    # --- helpers ---
-    def _load_and_standardize(
-        self,
-        *,
-        prefix: str,
-        date_str: str,
-        hour: int,
-        var_map: Mapping[str, MetVariable],
-    ) -> xr.Dataset:
+        run_hour = asofdate.hour if hour is None else hour
+        date_str = asofdate.strftime("%Y%m%d")
+
+        if (not overwrite) and os.path.exists(zc.met_store) and os.path.exists(zc.rad_store):
+            logger.info("DWD zarr cache already exists; skipping write",
+                        extra={"met_store": zc.met_store, "rad_store": zc.rad_store})
+            return (zc.met_store, zc.rad_store)
+
+        # 1) open live NetCDF
+        ds_all = self._load_and_standardize_live(prefix="MRV_T",
+                                                 date_str=date_str,
+                                                 hour=run_hour, 
+                                                 var_map={**self._required_map, **self._optional_map, **self._rad_map})
+
+        # 2) split
+        met_vars = [v.standard_name for v in {**self._required_map, **self._optional_map}.values()]
+        rad_vars = [v.standard_name for v in self._rad_map.values()]
+        met_ds_xr = ds_all[met_vars]
+        rad_ds_xr = ds_all[rad_vars]
+        if "level" not in rad_ds_xr.dims:
+            rad_ds_xr = rad_ds_xr.expand_dims({"level": [-1]})
+
+        # 3) chunk (use defaults similar to your script)
+        met_chunks = zc.met_chunks or {"time": 1, "level": 10, "latitude": 256, "longitude": 256}
+        rad_chunks = zc.rad_chunks or {"time": 1, "level": 1,  "latitude": 256, "longitude": 256}
+        met_ds_xr = met_ds_xr.chunk(met_chunks)
+        rad_ds_xr = rad_ds_xr.chunk(rad_chunks)
+
+        # 4) write zarr (metadata already consolidated during write)
+
+        mode = "w"  # we already checked existence above
+        try:
+            met_dir = os.path.dirname(zc.met_store)
+            rad_dir = os.path.dirname(zc.rad_store)
+            os.makedirs(met_dir, exist_ok=True)
+            os.makedirs(rad_dir, exist_ok=True)
+
+            # optional SDR accumulation (W m-2 -> J m-2)
+            if (zc.sdr_accumulate_dt_s is not None) and ("surface_solar_downward_radiation" in rad_ds_xr):
+                sdr = "surface_solar_downward_radiation"
+                rad_ds_xr[sdr] = rad_ds_xr[sdr] * float(zc.sdr_accumulate_dt_s)
+                rad_ds_xr[sdr].attrs["units"] = "J m**-2"
+
+            met_ds_xr.to_zarr(zc.met_store, mode=mode, consolidated=True)
+            rad_ds_xr.to_zarr(zc.rad_store, mode=mode, consolidated=True)
+
+        except Exception as e:
+            raise WeatherFactoryError(f"Writing zarr failed: {e}") from e
+
+        logger.info("DWD zarr cache built", extra={"met_store": zc.met_store, "rad_store": zc.rad_store})
+        return (zc.met_store, zc.rad_store)
+
+    # ---------- live loader (NetCDF) mirroring your script ----------
+    def _load_and_standardize_live(self, prefix: str, date_str: str, hour: int,
+                                   var_map: Mapping[str, MetVariable],) -> xr.Dataset:
+        
         files = self._select_files(prefix, self.params.data_dir, date_str, hour)
         if not files:
-            msg = f"No files for {prefix} on {date_str} at hour {hour:02d} in {self.params.data_dir}"
-            logger.error(msg)
-            raise WeatherFactoryError(msg)
+            raise WeatherFactoryError(f"No files for {prefix} on {date_str} at hour {hour:02d} in {self.params.data_dir}")
 
         try:
-            ds = xr.open_mfdataset(files, combine="by_coords")  # lazy, no copy
+            ds = xr.open_mfdataset(files, combine="by_coords")
             ds = self._standardize_dims(ds)
-            # Convert Pa→hPa if 'level' is a coordinate in Pa; tolerate if already hPa
-            if "level" in ds.coords:
-                # Heuristics: pressure in Pa is typically > 1000*100; hPa <= 1100
-                sample = float(ds["level"].values[0])
-                if sample > 2000:  # Pa
-                    ds = ds.assign_coords(level=ds["level"].astype("float64") / 100.0)
+            # Convert Pa → hPa on level coord if needed
+            if "level" in ds and float(ds["level"].values[0]) > 2000.0:
+                ds = ds.assign_coords(level=ds["level"].astype("float64") / 100.0)
 
+            # Unit fixes BEFORE mapping (match your script)
+            if "clc" in ds:
+                #ds["clc"] = ds["clc"] / 100.0
+                ds["clc"].attrs["units"] = "1"
+            if "rhi" in ds and ds["rhi"].attrs.get("units", "-") in ("-", "%"):
+                # heuristic: if looks like percent, scale
+                #try:
+                    #if ds["rhi"].max().load() > 2:
+                    #ds["rhi"] = ds["rhi"] / 100.0
+                #except Exception:
+                #    pass
+                ds["rhi"].attrs["units"] = "1"
+            # SDR conversion is done later during zarr build if requested
+
+            # Map variables and sanity check units
+            #ds = self._standardize_vars(ds, {**self._required_map, **self._optional_map, **self._rad_map})
             ds = self._standardize_vars(ds, var_map)
 
-            # provenance
+            
+
             ds.attrs.update({"provider": "DWD", "dataset": "ICON-2mom", "product": "forecast"})
 
-        except WeatherFactoryError:
-            raise
+
         except Exception as e:
-            logger.exception("Failed to open/standardize DWD dataset")
             raise WeatherFactoryError(f"DWD standardization failed: {e}") from e
 
         return ds
@@ -252,32 +377,54 @@ class DWDFactory(WeatherFactoryProtocol):
 
     @staticmethod
     def _standardize_dims(ds: xr.Dataset) -> xr.Dataset:
-        # rename both dims and coords if present; idempotent if already standard
         remap = {"plev": "level", "lat": "latitude", "lon": "longitude"}
-        existing_vars = {k: v for k, v in remap.items() if k in ds.variables}
-        existing_dims = {k: v for k, v in remap.items() if k in ds.dims}
+        if any(k in ds.dims for k in remap):
+            ds = ds.rename_dims({k: v for k, v in remap.items() if k in ds.dims})
+        if any(k in ds.variables for k in remap):
+            ds = ds.rename_vars({k: v for k, v in remap.items() if k in ds.variables})
 
-        if existing_dims:
-            ds = ds.rename_dims(existing_dims)
-        if existing_vars:
-            ds = ds.rename_vars(existing_vars)
-
-        # Sometimes surface wind is 'U'/'V'
-        if "U" in ds.variables or "V" in ds.variables:
-            rename_uv = {}
-            if "U" in ds.variables:
-                rename_uv["U"] = "u"
-            if "V" in ds.variables:
-                rename_uv["V"] = "v"
-            ds = ds.rename_vars(rename_uv)
+        # uppercase U/V variants
+        uv = {}
+        if "U" in ds.variables: uv["U"] = "u"
+        if "V" in ds.variables: uv["V"] = "v"
+        if uv:
+            ds = ds.rename_vars(uv)
         return ds
 
     @staticmethod
-    def _standardize_vars(ds: xr.Dataset, var_map: Mapping[str, MetVariable]) -> xr.Dataset:
+    def _norm_units(u: Optional[str]) -> str:
+        if not u:
+            return ""
+        # light normalization: remove spaces/asterisks; fold "**" → "^"
+        return u.replace("**", "^").replace("*", "").replace(" ", "")
+
+    def _standardize_vars(self, ds: xr.Dataset, var_map: Mapping[str, MetVariable]) -> xr.Dataset:
         for raw, mv in var_map.items():
-            if raw in ds:
-                std = mv.standard_name
-                ds[raw].attrs.update({"long_name": mv.long_name, "standard_name": std, "units": mv.units})
-                if raw != std:
-                    ds = ds.rename({raw: std})
+            if raw not in ds:
+                logger.debug("%s not found in dataset", raw)
+                continue
+
+            std = mv.standard_name
+            src_da = ds[raw]
+
+            src_units: str = str(src_da.attrs.get("units", "") or "")
+            tgt_units_raw: Optional[str] = getattr(mv, "units", None)
+            tgt_units: str = self._norm_units(tgt_units_raw)
+            src_units_n: str = self._norm_units(src_units)
+
+            if src_units_n and tgt_units and src_units_n != tgt_units:
+                logger.warning("Unit mismatch for %s: src=%s tgt=%s", raw, src_units, tgt_units_raw or "")
+
+            # update attrs safely; only set 'units' if we actually have one
+            new_attrs = {
+                "long_name": mv.long_name,
+                "standard_name": std,
+            }
+            if tgt_units_raw:  # avoid writing None
+                new_attrs["units"] = tgt_units_raw
+            src_da.attrs.update(new_attrs)
+
+            if raw != std:
+                ds = ds.rename({raw: std})
+
         return ds

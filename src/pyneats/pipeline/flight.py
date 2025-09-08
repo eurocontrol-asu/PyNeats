@@ -5,15 +5,58 @@ from typing_extensions import Self, cast
 
 from pycontrails import Flight
 
-from pyneats.steps.climate import ClimateImpactModelType, ClimateImpactModel, ClimateImpactStepError
-from pyneats.steps.interpolator import TrajectoryInterpolator, InterpolatorType, InterpolationStepError
-from pyneats.steps.trajectory import TrajectoryParserType, TrajectoryParser, FlightParsingError, Flight4D
-from pyneats.steps.performance import FlightWithPerformance, PerformanceModelType, PerformanceStepError, PerformanceModel
-from pyneats.steps.emissions import EmissionModel, EmissionModelType, EmissionsStepError, FlightWithEmissions
-from pyneats.steps.climate import ContrailsModelType, ContrailsModel, ContrailsParams, ContrailsStepError, FlightWithContrailsImpact, COCIPModel, FlightWithClimateImpact
-from pyneats.steps.climate import NonCO2ModelType, NonCO2Params, NonCO2Model, FlightWithNonCO2Impact, ClimateStepError
+from pyneats.steps.climate import (
+    ClimateImpactModelType,
+    ClimateImpactModel,
+    ClimateImpactStepError,
+    ContrailsModelType,
+    ContrailsModel,
+    ContrailsParams,
+    ContrailsStepError,
+    FlightWithContrailsImpact,
+    COCIPModel,
+    FlightWithClimateImpact,
+    NonCO2ModelType,
+    NonCO2Params,
+    NonCO2Model,
+    FlightWithNonCO2Impact,
+    ClimateStepError,
+)
+
+from pyneats.steps.interpolator import (
+    TrajectoryInterpolator,
+    InterpolatorType,
+    InterpolationStepError,
+)
+
+from pyneats.steps.trajectory import (
+    TrajectoryParserType,
+    TrajectoryParser,
+    FlightParsingError,
+    Flight4D,
+)
+
+from pyneats.steps.performance import (
+    FlightWithPerformance,
+    PerformanceModelType,
+    PerformanceStepError,
+    PerformanceModel,
+)
+
+from pyneats.steps.emissions import (
+    EmissionModel,
+    EmissionModelType,
+    EmissionsStepError,
+    FlightWithEmissions,
+)
+
+from pyneats.steps.weather import (
+    WeatherProviderProtocol,
+    WeatherStepError,
+    FlightWithWeather,
+)
+
 from pyneats.core.meta import extract_flight_meta
-from pyneats.steps.weather import  WeatherProviderProtocol, WeatherStepError, FlightWithWeather
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +137,9 @@ class FlightRunner:
         # Pipeline state
         self.parsed_flight: Flight4D | None = None
         self.interpolated_flight: Flight4D | None = None
-        self.flight_with_weather: Flight | None = None
-        self.flight_with_performance: Flight | None = None
-        self.flight_with_emissions: Flight | None = None
+        self.flight_with_weather: FlightWithWeather | None = None
+        self.flight_with_performance: FlightWithPerformance | None = None
+        self.flight_with_emissions: FlightWithEmissions | None = None
         self.flight_with_contrails: Flight | None = None
         self.flight_with_climate_impact: Flight | None = None
         self.flight_with_nonco2: FlightWithNonCO2Impact | None = None
@@ -202,10 +245,10 @@ class FlightRunner:
         perf = self.performance
         src  = self.flight_with_weather
 
-        src_f  = cast(Flight, src)
+        #src_f  = cast(Flight, src)
 
         try:
-            enriched: Flight = perf(src_f)
+            enriched: Flight = perf(src)
         except PerformanceStepError:
             raise
         except Exception as e:
