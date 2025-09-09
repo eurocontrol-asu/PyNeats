@@ -23,7 +23,7 @@ from pyneats.core.constants import Q_FUEL
 from pyneats.utils.utilities import is_nan_string
 from pyneats.core.views import FlightView
 from pyneats.steps.weather.weather_provider import FlightWithWeather
-from pyneats.core.steps import BaseStep, Step, StepError
+from pyneats.core.steps import BaseStep, Step
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ class BADA4Adapter(BaseBADAAdapter):
     ) -> Tuple[float, float, str, str]:
         theta, delta, sigma = atm.atmosphereProperties(h=alt_ft, DeltaTau=delta_tau)
         v = conv.ms2kt(tas_kt)
-        M, CAS, TAS = atm.convertSpeed(v=v, speedType="TAS", theta=theta, delta=delta, sigma=sigma)
+        m, cas, tas = atm.convertSpeed(v=v, speedType="TAS", theta=theta, delta=delta, sigma=sigma)
         tau_const = theta * const.tau_0 / (theta * const.tau_0 - delta_tau)
         rocd = conv.ft2m(vs_fpm) / 60
         acc = dtas_ktpm
@@ -125,45 +125,48 @@ class BADA4Adapter(BaseBADAAdapter):
             phase=phase,
             theta=theta,
             delta=delta,
-            v=CAS,
+            v=cas,
             mass=mass,
             DeltaTau=delta_tau,
             nz=1.2,
         )
 
-        HLid, LG = self._obj.flightEnvelope.getAeroConfig(config=cfg)
+        hlid, lg = self._obj.flightEnvelope.getAeroConfig(config=cfg)
 
-        CL = self._obj.CL(M=M, delta=delta, mass=mass)
-        CD = self._obj.CD(M=M, CL=CL, HLid=HLid, LG=LG)
-        Drag = self._obj.D(M=M, delta=delta, CD=CD)
-        ROCD_term = rocd * mass * const.g * tau_const / TAS
-        Thrust = ROCD_term + mass * acc + Drag
+        cl = self._obj.CL(M=m, delta=delta, mass=mass)
+        cd = self._obj.CD(M=m, CL=cl, HLid=hlid, LG=lg)
+        drag = self._obj.D(M=m, delta=delta, CD=cd)
+        rocd_term = rocd * mass * const.g * tau_const / tas
+        thrust = rocd_term + mass * acc + drag
 
-        Thrust_idle = self._obj.Thrust(rating="LIDL", delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
-        Thrust_MCMB = self._obj.Thrust(rating="MCMB", delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
+        thrust_idle = self._obj.Thrust(rating="LIDL", delta=delta, theta=theta, M=m, DeltaTau=delta_tau)
+        thrust_mcmb = self._obj.Thrust(rating="MCMB", delta=delta, theta=theta, M=m, DeltaTau=delta_tau)
 
-        CT = self._obj.CT(Thrust=Thrust, delta=delta)
-        ff = self._obj.ff(CT=CT, delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
-        ff_idle = self._obj.ff(rating="LIDL", delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
-        ff_MCMB = self._obj.ff(rating="MCMB", delta=delta, theta=theta, M=M, DeltaTau=delta_tau)
+        ct = self._obj.CT(Thrust=thrust, delta=delta)
+        ff = self._obj.ff(CT=ct, delta=delta, theta=theta, M=m, DeltaTau=delta_tau)
+        ff_idle = self._obj.ff(rating="LIDL", delta=delta, theta=theta, M=m, DeltaTau=delta_tau)
+        ff_mcmb = self._obj.ff(rating="MCMB", delta=delta, theta=theta, M=m, DeltaTau=delta_tau)
 
         # in BADA4Adapter.thrust_fuel_segment, after computing the six scalars:
         if (
-            ff is None or Thrust is None or
-            ff_idle is None or Thrust_idle is None or
-            ff_MCMB is None or Thrust_MCMB is None
+            ff is None or thrust is None or
+            ff_idle is None or thrust_idle is None or
+            ff_mcmb is None or thrust_mcmb is None
         ):
             raise PerformanceStepError("BADA returned None in thrust/fuel computation")
 
-        ff = float(ff); Thrust = float(Thrust)
-        ff_idle = float(ff_idle); Thrust_idle = float(Thrust_idle)
-        ff_MCMB = float(ff_MCMB); Thrust_MCMB = float(Thrust_MCMB)
+        ff = float(ff)
+        thrust = float(thrust)
+        ff_idle = float(ff_idle)
+        thrust_idle = float(thrust_idle)
+        ff_mcmb = float(ff_mcmb)
+        thrust_mcmb = float(thrust_mcmb)
 
-        if ff < ff_idle or Thrust < Thrust_idle:
-            return ff_idle, Thrust_idle, phase, "LIDL"
-        if ff > ff_MCMB or Thrust > Thrust_MCMB:
-            return ff_MCMB, Thrust_MCMB, phase, "MCMB"
-        return ff, Thrust, phase, "TOTAL"
+        if ff < ff_idle or thrust < thrust_idle:
+            return ff_idle, thrust_idle, phase, "LIDL"
+        if ff > ff_mcmb or thrust > thrust_mcmb:
+            return ff_mcmb, thrust_mcmb, phase, "MCMB"
+        return ff, thrust, phase, "TOTAL"
         
 
 class BADA3Adapter(BaseBADAAdapter):
@@ -202,44 +205,44 @@ class BADA3Adapter(BaseBADAAdapter):
             h=alt_ft, phase=phase, v=CAS, mass=mass, DeltaTau=delta_tau
         )
 
-        CL = self._obj.CL(tas=TAS, sigma=sigma, mass=mass)
-        CD = self._obj.CD(CL=CL, config=cfg)
-        Drag = self._obj.D(tas=TAS, sigma=sigma, CD=CD)
+        cl = self._obj.CL(tas=TAS, sigma=sigma, mass=mass)
+        cd = self._obj.CD(CL=cl, config=cfg)
+        drag = self._obj.D(tas=TAS, sigma=sigma, CD=cd)
 
-        Thrust_idle = self._obj.Thrust(rating="LIDL", v=TAS, h=alt_ft, config="CR", DeltaTau=delta_tau)
-        Thrust_MCMB = self._obj.Thrust(rating="MCMB", v=TAS, h=alt_ft, DeltaTau=delta_tau)
-        Thrust = rocd * mass * const.g * tau_const / TAS + mass * acc + Drag
+        thrust_idle = self._obj.Thrust(rating="LIDL", v=TAS, h=alt_ft, config="CR", DeltaTau=delta_tau)
+        thrust_mcmb = self._obj.Thrust(rating="MCMB", v=TAS, h=alt_ft, DeltaTau=delta_tau)
+        thrust = rocd * mass * const.g * tau_const / TAS + mass * acc + drag
 
         if phase == "cr":
-            ff = self._obj.ff(rating="MCRZ", v=TAS, h=alt_ft, T=Thrust)
+            ff = self._obj.ff(rating="MCRZ", v=TAS, h=alt_ft, T=thrust)
         elif phase == "cl":
-            ff = self._obj.ff(rating="MCMB", v=TAS, h=alt_ft, T=Thrust)
+            ff = self._obj.ff(rating="MCMB", v=TAS, h=alt_ft, T=thrust)
         else:  # "des"
-            ff = self._obj.ff(h=alt_ft, v=TAS, T=Thrust)
+            ff = self._obj.ff(h=alt_ft, v=TAS, T=thrust)
 
         ff_idle = self._obj.ff(rating="LIDL", h=alt_ft)
-        ff_MCMB = self._obj.ff(rating="MCMB", v=TAS, h=alt_ft, T=Thrust_MCMB)
+        ff_mcmb = self._obj.ff(rating="MCMB", v=TAS, h=alt_ft, T=thrust_mcmb)
 
         # Minimal None-guard + cast (keeps math identical, satisfies type checker)
         if (
-            ff is None or Thrust is None or
-            ff_idle is None or Thrust_idle is None or
-            ff_MCMB is None or Thrust_MCMB is None
+            ff is None or thrust is None or
+            ff_idle is None or thrust_idle is None or
+            ff_mcmb is None or thrust_mcmb is None
         ):
             raise PerformanceStepError("BADA returned None in thrust/fuel computation")
 
         ff = float(ff)
-        Thrust = float(Thrust)
+        thrust = float(thrust)
         ff_idle = float(ff_idle)
-        Thrust_idle = float(Thrust_idle)
-        ff_MCMB = float(ff_MCMB)
-        Thrust_MCMB = float(Thrust_MCMB)
+        thrust_idle = float(thrust_idle)
+        ff_mcmb = float(ff_mcmb)
+        thrust_mcmb = float(thrust_mcmb)
 
-        if ff < ff_idle or Thrust < Thrust_idle:
-            return ff_idle, Thrust_idle, phase, "LIDL"
-        if ff > ff_MCMB or Thrust > Thrust_MCMB:
-            return ff_MCMB, Thrust_MCMB, phase, "MCMB"
-        return ff, Thrust, phase, "TOTAL"
+        if ff < ff_idle or thrust < thrust_idle:
+            return ff_idle, thrust_idle, phase, "LIDL"
+        if ff > ff_mcmb or thrust > thrust_mcmb:
+            return ff_mcmb, thrust_mcmb, phase, "MCMB"
+        return ff, thrust, phase, "TOTAL"
 
 # ---- params & model protocol ----
 @dataclass(frozen=True)
@@ -333,7 +336,7 @@ class BADAPerformanceModel(BaseStep[FlightWithWeather, FlightWithPerformance]):
             out.attrs["bada_version"] = bada_version
 
             # validate core cols; convert to view only when needed
-            _ = FlightWithPerformance.from_flight(out)
+            out = FlightWithPerformance.from_flight(out)
 
             logger.info(
                 "Performance step completed",

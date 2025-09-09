@@ -1,7 +1,7 @@
 import logging
 from typing import Final
 import pandas as pd
-from typing_extensions import Self, cast
+from typing_extensions import Self
 
 from pycontrails import Flight
 
@@ -165,7 +165,7 @@ class FlightRunner:
 
         # Run the parser (may raise FlightParsingError)
         try:
-            base: Flight = self.parser(self.source)
+            parsed_flight: Flight4D = self.parser(self.source)
         except FlightParsingError:
             # Already logged inside the parser; just propagate with original traceback
             raise
@@ -174,10 +174,10 @@ class FlightRunner:
             raise RuntimeError(f"Trajectory parsing failed: {e}") from e
         
         # Optional: validate again (zero-copy). Since the parser already validates,
-        self.parsed_flight = Flight4D.from_flight(base)
+        self.parsed_flight = parsed_flight
 
         self.current = self.parsed_flight
-        logger.info("Flight parsing completed successfully with %d points", len(base.data))
+        logger.info("Flight parsing completed successfully with %d points", len(self.parsed_flight.data))
         return self
     
     # Step 2: Interpolate/reconstruct trajectory
@@ -189,7 +189,7 @@ class FlightRunner:
 
         # Run the interpolator (may raise InterpolationStepError)
         try:
-            base: Flight = self.interpolator(self.parsed_flight)
+            interpolated_flight: Flight4D = self.interpolator(self.parsed_flight)
         except InterpolationStepError:
             # Already logged inside the interpolator; propagate with original traceback
             raise
@@ -198,8 +198,7 @@ class FlightRunner:
             raise RuntimeError(f"Interpolation failed: {e}") from e
 
         # Optional: validate again (zero-copy) for typed accessors & safety
-        self.interpolated_flight = Flight4D.from_flight(base)
-        #self.interpolated_flight = base
+        self.interpolated_flight = interpolated_flight
 
         # Advance the pipeline pointer
         self.current = self.interpolated_flight
@@ -209,7 +208,7 @@ class FlightRunner:
 
         logger.info(
             "Interpolation completed successfully with %d points",
-            len(base.data),
+            len(interpolated_flight.data),
         )
         return self
     
@@ -243,12 +242,13 @@ class FlightRunner:
     # Step 4: Run Performance model
     def _performance(self) -> Self:
         perf = self.performance
-        src  = self.flight_with_weather
 
-        #src_f  = cast(Flight, src)
+        if self.flight_with_weather is None:
+            logger.error("Missing flight_with_weather; did you call _intersect_weather() first?")
+            raise RuntimeError("_intersect_weather() must be called before _performance().")
 
         try:
-            enriched: Flight = perf(src)
+            enriched: FlightWithPerformance = perf(self.flight_with_weather)
         except PerformanceStepError:
             raise
         except Exception as e:
