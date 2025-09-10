@@ -78,6 +78,7 @@ class DWDZarrCacheSpec:
     # xarray chunk hints for writing (ignored for read)
     met_chunks: Optional[Mapping[str, int]] = None
     rad_chunks: Optional[Mapping[str, int]] = None
+    wind_chunks: Optional[Mapping[str, int]] = None
     # Unit fix: convert SDR [W m-2] to [J m-2] by multiplying by dt (seconds)
     sdr_accumulate_dt_s: Optional[int] = None  # set to your true step if needed (e.g. 3600)
 
@@ -321,6 +322,20 @@ class DWDFactory(WeatherFactoryProtocol):
 
         except Exception as e:
             raise WeatherFactoryError(f"Writing zarr failed: {e}") from e
+        
+        if zc.wind_store:
+            ds_wind = self._load_and_standardize_live(
+                prefix="MRV_T_UV", date_str=date_str, hour=run_hour, var_map=self._wind_map
+            )
+            # choose sensible 2D chunks (add level if present)
+
+            wind_ds_xr = ds_wind[[v.standard_name for v in self._wind_map.values()]]
+            wind_chunks = zc.wind_chunks or {"time": 1, "level": 1,  "latitude": 256, "longitude": 256}
+            wind_ds_xr = wind_ds_xr.chunk(wind_chunks)
+
+
+            os.makedirs(os.path.dirname(zc.wind_store), exist_ok=True)
+            ds_wind.to_zarr(zc.wind_store, mode="w", consolidated=True)
 
         logger.info("DWD zarr cache built", extra={"met_store": zc.met_store, "rad_store": zc.rad_store})
         return (zc.met_store, zc.rad_store)

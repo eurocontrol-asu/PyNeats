@@ -24,7 +24,7 @@ MODEL_TYPE = "CTFM"
 #Instantiate Fleet Object
 params = FleetRunnerParams(
     model_type=MODEL_TYPE,
-    weather_folder=WEATHER_PATH,      # used only for sequential mode / fallback
+    weather_folder=WEATHER_PATH,      
     trajectory_folder=TRAJECTORIES_PATH,
     forecast_window=FORECAST_WINDOW,
     sample=SAMPLE,
