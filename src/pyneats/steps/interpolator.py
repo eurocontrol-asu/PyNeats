@@ -24,13 +24,17 @@ logger = logging.getLogger(__name__)
 
 # ---- error type ----------------------------------------------------
 class InterpolationStepError(StepError):
-    """Raised when interpolation/resampling fails or yields invalid output."""
+    """Raised when interpolation/resampling fails or yields invalid output.
+
+    """
 
 
 # ---- params --------------------------------------------------------
 @dataclass(frozen=True)
 class TrajectoryInterpolationParams:
-    """Parameters for trajectory interpolation/resampling."""
+    """Parameters for trajectory interpolation/resampling.
+    Currently only supports PyContrails-based resampling.
+    """
     interpolation_time: str = DEFAULT_INTERPOLATION_TIME  # e.g., "1min"
 
 
@@ -58,16 +62,13 @@ class PyContrailsInterpolator(BaseStep[Flight4D, Flight4D]):
         self.params = params or TrajectoryInterpolationParams()
 
     def run(self, flight: Flight4D) -> Flight4D:
-        # (Optional) input re-validation; cheap and catches upstream drift
-        #if self.validate_inputs:
-        #    flight = Flight4D.from_flight(flight)
-
+        # Validate schema and return typed zero-copy view
         try:
             out: Flight4D = flight.resample_and_fill(self.params.interpolation_time)
         except Exception as e:
             raise InterpolationStepError(type(self).__name__, f"resample_and_fill failed: {e}") from e
 
-        # Validate schema and return typed zero-copy view
+
         return out
 
 
@@ -88,9 +89,24 @@ class BADATrajectoryPredictor(BaseStep[Flight4D, Flight4D]):
 
 # ---- factory enum (kept for now) ----------------------------------
 class InterpolatorType(Enum):
+    """Factory enum for creating trajectory interpolators.
+    
+    This enum serves as a simple factory for instantiating different types of trajectory 
+    interpolators. Currently supports two types:
+    
+    Attributes:
+        PYCONTRAILS: Uses PyContrails library for trajectory interpolation and resampling
+        BADA: Uses Base of Aircraft Data (BADA) model for physics-based trajectory prediction
+    
+    """
     PYCONTRAILS = PyContrailsInterpolator
     BADA = BADATrajectoryPredictor
 
     def get(self, *args: Any, **kwargs: Any) -> TrajectoryInterpolator:
+        """Create and return an instance of the selected interpolator type.
+        
+        Returns:
+            TrajectoryInterpolator: An instance of the selected interpolator type
+        """
         impl = self.value  # type: ignore[assignment]
         return impl(*args, **kwargs)  # type: ignore[misc]

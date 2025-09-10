@@ -7,21 +7,33 @@ import copy
 import gc
 import logging
 import os
-from typing import Any, Final, List
+from typing import Any, Final, List, Optional, Mapping, Iterable
+import itertools
 
 import pandas as pd
+from joblib import Parallel, delayed
 
 from pyneats.pipeline.flight import FlightRunner
-from pyneats.steps.weather import DWDFactory, WeatherFactoryParams, WeatherProviderProtocol
+from pyneats.steps.weather import (
+    DWDFactory,
+    WeatherFactoryParams,
+    WeatherProviderProtocol,
+)
+from pyneats.steps.weather.weather_store import (
+    ZarrPaths,              # central, shared definition
+    get_weather_from_zarr,  # centralized Zarr opener (+ per-process cache)
+)
 
 logger = logging.getLogger(__name__)
 
-NJOBS: Final[int] = 5
+DEFAULT_NJOBS: Final[int] = 5
+DEFAULT_FLIGHT_CHUNK: Final[int] = 16  # tune 8–32
 
 
 # ---------------------------
-# Small configuration holder
+# Configuration holder
 # ---------------------------
+
 @dataclass(frozen=True)
 class FleetRunnerParams:
     """
@@ -31,17 +43,18 @@ class FleetRunnerParams:
     weather_folder: str
     trajectory_folder: str
     forecast_window: int  # hours
-    sample: int
+    sample: int = 0
+    # If provided, enables parallel mode that opens weather lazily from Zarr in workers.
+    zarr_paths: Optional[ZarrPaths] = None
+    # Optional read-time chunks for workers opening zarr; leave None to keep native chunks
+    zarr_read_chunks: Optional[Mapping[str, int]] = None
 
 
 # ---------------------------
 # Helpers
 # ---------------------------
+
 def _extract_climate_payload(neats_flight: FlightRunner, df_flight: pd.DataFrame) -> dict[str, Any]:
-    """
-    Return a standalone dict with the climate payload from a processed FlightRunner.
-    Ensures FLIGHT_ID is present in meta for easy grouping later.
-    """
     current = neats_flight.current
     if current is None or "climate_impact" not in getattr(current, "attrs", {}):
         raise RuntimeError("No climate_impact found on the processed flight.")
@@ -51,23 +64,26 @@ def _extract_climate_payload(neats_flight: FlightRunner, df_flight: pd.DataFrame
     payload["meta"].setdefault("FLIGHT_ID", fid)
     return payload
 
-
-def split_list(lst: List[Any], n: int) -> List[List[Any]]:
-    """Split list `lst` into `n` nearly equal-sized chunks."""
-    if n <= 0:
-        return [lst]
-    k, m = divmod(len(lst), n)
-    return [lst[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n)]
-
+def _split_chunks(seq: List[Any], k: int) -> Iterable[List[Any]]:
+    it = iter(seq)
+    while True:
+        batch = list(itertools.islice(it, k))
+        if not batch:
+            break
+        yield batch
 
 
 # ---------------------------
 # Fleet runner
 # ---------------------------
+
 class FleetRunner:
     """
-    Processes a fleet of flights (sequentially here; you can parallelize by chunking).
-    One heavy weather object is built once and reused across flights.
+    Processes a fleet of flights:
+      - Sequential mode (default): build WeatherProvider once and loop.
+      - Parallel mode (if params.zarr_paths is provided and njobs > 1):
+        each worker opens Zarr via weather_store.get_weather_from_zarr,
+        which handles consolidation auto-detect + per-process caching.
     """
 
     def __init__(
@@ -75,12 +91,14 @@ class FleetRunner:
         asofdate: datetime,
         timeofday: int,
         params: FleetRunnerParams,
-        njobs: int = NJOBS,
+        njobs: int = DEFAULT_NJOBS,
+        flight_chunk: int = DEFAULT_FLIGHT_CHUNK,
     ) -> None:
         self.asofdate = asofdate
         self.timeofday = timeofday
         self.params = params
-        self.njobs = njobs
+        self.njobs = max(1, njobs)
+        self.flight_chunk = max(1, flight_chunk)
 
         self.weather: WeatherProviderProtocol | None = None
         self.raw_trajectories: pd.DataFrame | None = None
@@ -89,20 +107,18 @@ class FleetRunner:
 
     # ----- public API -----
     def eval(self) -> "FleetRunner":
-        """
-        Run: load weather → load trajectories → process flights.
-        Results end up in `self.results` (list of climate payload dicts).
-        """
-        self._get_weather()
+        """Run: load trajectories → weather (sequential only) → process flights."""
         self._get_trajectories()
-        self._process_loop()
+        if self._use_parallel():
+            logger.info("Fleet: running in PARALLEL (n_jobs=%d)...", self.njobs)
+            self._process_parallel()
+        else:
+            logger.info("Fleet: running SEQUENTIALLY...")
+            self._get_weather()
+            self._process_sequential()
         return self
 
     def results_as_dataframe(self) -> pd.DataFrame:
-        """
-        Flatten self.results into a tidy DataFrame:
-        columns: FLIGHT_ID, species, horizon, GWP, CO2eq, error?
-        """
         rows: list[dict[str, Any]] = []
         for payload in (self.results or []):
             if "error" in payload:
@@ -129,12 +145,16 @@ class FleetRunner:
                     })
         return pd.DataFrame(rows)
 
-    # ----- internals -----
-    def _process_loop(self) -> None:
+    # ----- mode selection -----
+    def _use_parallel(self) -> bool:
+        return self.params.zarr_paths is not None and self.njobs > 1
+
+    # ----- sequential path -----
+    def _process_sequential(self) -> None:
         if self.flights is None:
-            raise RuntimeError("Flights not loaded. Call eval() which sets it up.")
+            raise RuntimeError("Flights not loaded.")
         if self.weather is None:
-            raise RuntimeError("Weather not loaded. Call eval() which sets it up.")
+            raise RuntimeError("Weather not loaded.")
 
         self.results = []
         logger.info("Processing %d flights …", len(self.flights))
@@ -151,14 +171,64 @@ class FleetRunner:
             finally:
                 gc.collect()
 
+    # ----- parallel path -----
+    def _process_parallel(self) -> None:
+        if self.flights is None:
+            raise RuntimeError("Flights not loaded.")
+        zp = self.params.zarr_paths
+        assert zp is not None  # guarded by _use_parallel()
+
+        # Avoid BLAS oversubscription; let processes do the parallelism
+        for v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                  "NUMEXPR_NUM_THREADS", "BLOSC_NTHREADS"):
+            os.environ.setdefault(v, "1")
+
+        # Time window slicing (reduces dask graph size in workers)
+        window_start = (self.asofdate + timedelta(hours=self.timeofday)).strftime("%Y-%m-%d %H:%M:%S")
+        window_end = (self.asofdate + timedelta(hours=self.timeofday + self.params.forecast_window)).strftime("%Y-%m-%d %H:%M:%S")
+        chunks = self.params.zarr_read_chunks  # None → keep native zarr chunks
+
+        def _process_chunk(flight_dfs: list[pd.DataFrame]) -> list[dict[str, Any]]:
+            # This call uses weather_store's per-process cache transparently
+            wp = get_weather_from_zarr(zp, t0=window_start, t1=window_end, chunks=chunks)
+            #out: list[dict[str, Any]] = []
+            out = []
+            for df_flight in flight_dfs:
+                try:
+                    neats_flight = FlightRunner(weather=wp)
+                    neats_flight.source = df_flight
+                    neats_flight.eval()
+                    #out.append(_extract_climate_payload(neats_flight, df_flight))
+                    out.append([df_flight["FLIGHT_ID"].iloc[0]] + list(neats_flight.flight_with_contrails.to_dataframe()[['fuel_flow','fuel_burn','ef']].sum()))
+
+                except Exception as e:
+                    fid = df_flight["FLIGHT_ID"].iloc[0] if "FLIGHT_ID" in df_flight else "UNKNOWN"
+                    logger.error("[worker] Error processing flight %s: %s", fid, e)
+                    #out.append({"meta": {"FLIGHT_ID": fid}, "error": str(e)})
+                    out.append([fid, 'ERROR', 'ERROR', 'ERROR'])
+            gc.collect()
+            return out
+
+        flight_chunks = list(_split_chunks(self.flights, self.flight_chunk))
+        logger.info("Submitting %d chunks (~%d flights/chunk) to %d workers …",
+                    len(flight_chunks), self.flight_chunk, self.njobs)
+
+        nested = Parallel(
+            n_jobs=self.njobs,
+            prefer="processes",
+            batch_size=1,   # we already chunked
+            verbose=10,
+        )(delayed(_process_chunk)(chunk) for chunk in flight_chunks)
+
+        self.results = [r for sub in nested for r in sub]
+
+    # ----- load weather (sequential only) -----
     def _get_weather(self) -> None:
-        """
-        Load weather data (heavy object) once, in the main process.
-        """
         logger.info("Loading weather from %s", self.params.weather_folder)
         factory = DWDFactory(WeatherFactoryParams(data_dir=self.params.weather_folder))
         self.weather = factory(self.asofdate, self.timeofday)
 
+    # ----- load trajectories (shared) -----
     def _get_trajectories(self) -> None:
         self._get_raw_trajectories()
         self._filter_flights()
@@ -167,17 +237,11 @@ class FleetRunner:
         filename = f"Flights_{self.asofdate.strftime('%Y%m%d')}.csv"
         file_path = os.path.join(self.params.trajectory_folder, filename)
         try:
-            df = pd.read_csv(
-                file_path,
-                sep=";",
-                decimal=",",
-                dayfirst=True,
-            )
+            df = pd.read_csv(file_path, sep=";", decimal=",", dayfirst=True)
             logger.info("Loaded %d trajectory rows from %s", len(df), file_path)
         except FileNotFoundError:
             logger.error("Trajectory file not found: %s", file_path)
             df = pd.DataFrame()
-
         self.raw_trajectories = df
 
     def _filter_flights(self) -> None:
@@ -190,44 +254,36 @@ class FleetRunner:
         window_end = window_start + timedelta(hours=self.params.forecast_window)
 
         df = self.raw_trajectories
-        # Filter by model type
         df_model = df[df["MODEL_TYPE"] == self.params.model_type].copy()
+        df_model = df_model[df_model["AIRCRAFT_TYPE_ICAO_ID"]=="A320"].copy()
 
-        # Build FLIGHT_ID
         flight_id_cols = ["AIRCRAFT_ID", "ADEP", "ADES", "REGISTRATION"]
         df_model["FLIGHT_ID"] = df_model[flight_id_cols].astype(str).agg("_".join, axis=1)
 
-        # Parse times
-        timeover_parsed = pd.to_datetime(
-            df_model["TIME_OVER"],
-            format="%Y-%m-%d %H:%M:%S",
-            errors="coerce",
-        )
-        df_model_sel = df_model.assign(TIMEOVER_PARSED=timeover_parsed)
+        #timeover_parsed = pd.to_datetime(df_model["TIME_OVER"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
+        #df_model_sel = df_model.assign(TIMEOVER_PARSED=timeover_parsed)
 
-        # First waypoint per flight → approximate departure time
-        first_departure = (
-            df_model_sel
-            .sort_values(["FLIGHT_ID", "TIMEOVER_PARSED"])
-            .groupby("FLIGHT_ID", as_index=False)
-            .first()[["FLIGHT_ID", "TIMEOVER_PARSED"]]
-            .rename(columns={"TIMEOVER_PARSED": "DEPARTURE_TIME"})
-        )
+        #first_departure = (
+        #    df_model_sel
+        #    .sort_values(["FLIGHT_ID", "TIMEOVER_PARSED"])
+        #    .groupby("FLIGHT_ID", as_index=False)
+        #    .first()[["FLIGHT_ID", "TIMEOVER_PARSED"]]
+        #    .rename(columns={"TIMEOVER_PARSED": "DEPARTURE_TIME"})
+        #)
 
-        # Keep flights starting in the forecast window
-        valid_flights = first_departure[
-            (first_departure["DEPARTURE_TIME"] >= window_start) &
-            (first_departure["DEPARTURE_TIME"] < window_end)
-        ]["FLIGHT_ID"]
+        #valid_flights = first_departure[
+        #    (first_departure["DEPARTURE_TIME"] >= window_start) &
+        #    (first_departure["DEPARTURE_TIME"] < window_end)
+        #]["FLIGHT_ID"]
 
+        valid_flights = df_model["FLIGHT_ID"].drop_duplicates()
         selected = df_model[df_model["FLIGHT_ID"].isin(valid_flights)]
 
-        # Optional sampling
-        if self.params.sample!=0:
+
+        if self.params.sample:
             sample_ids = valid_flights.head(self.params.sample)
             selected = selected[selected["FLIGHT_ID"].isin(sample_ids)]
 
-        # One DataFrame per flight
         self.flights = [group for _, group in selected.groupby("FLIGHT_ID")]
         logger.info("Selected %d flights in window [%s, %s).",
                     len(self.flights), window_start, window_end)

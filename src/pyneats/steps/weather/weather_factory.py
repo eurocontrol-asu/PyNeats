@@ -27,7 +27,8 @@ from pycontrails.core.met_var import (
 from pycontrails.datalib.ecmwf import ERA5, PotentialVorticity, SurfaceSolarDownwardRadiation
 from pycontrails.models.cocip import Cocip
 
-from .weather_provider import WeatherProvider, WeatherProviderProtocol
+from pyneats.steps.weather.weather_provider import WeatherProvider, WeatherProviderProtocol
+from pyneats.steps.weather.weather_store import ZarrPaths, get_weather_from_zarr 
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,8 @@ __all__ = [
     "DEFAULT_PRESSURE_LEVELS_HPA",
     "DEFAULT_HORIZONTAL_RES_DEG",
     "WeatherFactoryParams",
-    "DiskCacheSpec",
-    "ZarrCacheSpec",
+    "ERA5DiskCacheSpec",
+    "DWDZarrCacheSpec",
     "WeatherCacheConfig",
     "WeatherFactoryError",
     "WeatherFactoryProtocol",
@@ -58,7 +59,7 @@ class WeatherFactoryError(RuntimeError):
 
 # ---------------- cache specs ----------------
 @dataclass(frozen=True)
-class DiskCacheSpec:
+class ERA5DiskCacheSpec:
     """PyContrails DiskCacheStore (used with ERA5)."""
     cache_dir: str
     consolidated: bool = True
@@ -66,14 +67,14 @@ class DiskCacheSpec:
     allow_clear: bool = False
     compressor: Optional[str] = None
 
+
 @dataclass(frozen=True)
-class ZarrCacheSpec:
-    """Zarr stores (used with DWD). If build_if_missing is True, we create them."""
+class DWDZarrCacheSpec:
     met_store: str
     rad_store: str
-    wind_store: str
+    wind_store: Optional[str] = None     # make optional
     build_if_missing: bool = True
-    consolidated: bool = True
+    consolidated: bool = True            # kept for backward compat; not used on read anymore
     # xarray chunk hints for writing (ignored for read)
     met_chunks: Optional[Mapping[str, int]] = None
     rad_chunks: Optional[Mapping[str, int]] = None
@@ -83,8 +84,8 @@ class ZarrCacheSpec:
 @dataclass(frozen=True)
 class WeatherCacheConfig:
     """Unified cache config; pick the one relevant for the backend."""
-    disk: Optional[DiskCacheSpec] = None  # ERA5
-    zarr: Optional[ZarrCacheSpec] = None  # DWD
+    disk: Optional[ERA5DiskCacheSpec] = None  # ERA5
+    zarr: Optional[DWDZarrCacheSpec] = None  # DWD
 
 # ---------------- params ----------------
 @dataclass(frozen=True)
@@ -204,29 +205,27 @@ class DWDFactory(WeatherFactoryProtocol):
         date_str = asofdate.strftime("%Y%m%d")
 
         if zc:
-            # build if requested + missing
-            if zc.build_if_missing and (not os.path.exists(zc.met_store) or not os.path.exists(zc.rad_store)):
-                self.build_cache(asofdate, hour=run_hour, overwrite=False)
+            # build if requested + missing (consider wind_store too if provided)
+            if zc.build_if_missing:
+                need_build = (not os.path.exists(zc.met_store)) or (not os.path.exists(zc.rad_store))
+                if zc.wind_store is not None:
+                    need_build = need_build or (not os.path.exists(zc.wind_store))
+                if need_build:
+                    self.build_cache(asofdate, hour=run_hour, overwrite=False)
 
-            # open zarr lazily (keep native chunks)
+            # compute a time window (optional) and open via weather_store
+            t0, t1 = self.params.time_bounds(asofdate)
             try:
-                met_ds = xr.open_zarr(zc.met_store, consolidated=zc.consolidated)
-                rad_ds = xr.open_zarr(zc.rad_store, consolidated=zc.consolidated)
-                wind_ds = xr.open_zarr(zc.wind_store, consolidated=zc.consolidated)
-
+                zp = ZarrPaths(zc.met_store, zc.rad_store, zc.wind_store)
+                wp = get_weather_from_zarr(zp, t0=t0, t1=t1, chunks=self.params.chunks)
             except Exception as e:
                 logger.exception("Failed to open DWD zarr cache")
                 raise WeatherFactoryError(f"Open zarr cache failed: {e}") from e
 
-            met = MetDataset(met_ds)
-            rad = MetDataset(rad_ds)
-            wind = MetDataset(wind_ds)
-
-            logger.info(
-                "DWD weather ready (zarr cache)",
-                extra={"met_store": zc.met_store, "rad_store": zc.rad_store, "date": date_str, "hour": run_hour},
-            )
-            return WeatherProvider(met=met, rad=rad, wind = wind)
+            logger.info("DWD weather ready (zarr cache)",
+                        extra={"met_store": zc.met_store, "rad_store": zc.rad_store,
+                               "wind_store": zc.wind_store, "date": date_str, "hour": run_hour})
+            return wp
 
         # Fallback: live NetCDF read (no cache)
         try:
