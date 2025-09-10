@@ -400,7 +400,7 @@ class FlightRunner:
             ._performance()          # pylint: disable=protected-access
             ._emissions()            # pylint: disable=protected-access
             ._contrails()            # pylint: disable=protected-access
-            #._nonco2()           # pylint: disable=protected-access
-            #._gwp()                  # pylint: disable=protected-access
+            ._nonco2()           # pylint: disable=protected-access
+            ._gwp()                  # pylint: disable=protected-access
         )
         

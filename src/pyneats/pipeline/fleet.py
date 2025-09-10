@@ -198,14 +198,14 @@ class FleetRunner:
                     neats_flight = FlightRunner(weather=wp)
                     neats_flight.source = df_flight
                     neats_flight.eval()
-                    #out.append(_extract_climate_payload(neats_flight, df_flight))
-                    out.append([df_flight["FLIGHT_ID"].iloc[0]] + list(neats_flight.flight_with_contrails.to_dataframe()[['fuel_flow','fuel_burn','ef']].sum()))
+                    out.append(_extract_climate_payload(neats_flight, df_flight))
+                    #out.append([df_flight["FLIGHT_ID"].iloc[0]] + list(neats_flight.flight_with_contrails.to_dataframe()[['fuel_flow','fuel_burn','ef']].sum()))
 
                 except Exception as e:
                     fid = df_flight["FLIGHT_ID"].iloc[0] if "FLIGHT_ID" in df_flight else "UNKNOWN"
                     logger.error("[worker] Error processing flight %s: %s", fid, e)
-                    #out.append({"meta": {"FLIGHT_ID": fid}, "error": str(e)})
-                    out.append([fid, 'ERROR', 'ERROR', 'ERROR'])
+                    out.append({"meta": {"FLIGHT_ID": fid}, "error": str(e)})
+                    #out.append([fid, 'ERROR', 'ERROR', str(e)])
             gc.collect()
             return out
 
