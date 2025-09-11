@@ -1,7 +1,9 @@
+from datetime import datetime
+import os
+
 from pyneats.steps.weather.weather_factory import (
     WeatherFactoryParams, WeatherCacheConfig, DWDZarrCacheSpec, DWDFactory
 )
-from datetime import datetime
 
 
 WEATHER_PATH = "/path/to/DWD/files"

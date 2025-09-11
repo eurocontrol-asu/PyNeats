@@ -2,8 +2,10 @@ import logging
 from typing import Final
 import pandas as pd
 from typing_extensions import Self
+import numpy as np
 
 from pycontrails import Flight
+from pycontrails.core.met import MetDataset
 
 from pyneats.steps.climate import (
     ClimateImpactModelType,
@@ -127,12 +129,14 @@ class FlightRunner:
             )
         )
 
+        '''
         self.non_co2_model = non_co2_model or self.default_non_co2_model_type.get(
             params=NonCO2Params(
                 met=self.weather.met(),
                 surface=self.weather.rad(),
                 )
         )
+        '''
 
         # Pipeline state
         self.parsed_flight: Flight4D | None = None
@@ -144,6 +148,9 @@ class FlightRunner:
         self.flight_with_climate_impact: Flight | None = None
         self.flight_with_nonco2: FlightWithNonCO2Impact | None = None
         self.current: Flight | None = None
+
+        self._ds_met : MetDataset | None = None
+        self._ds_rad : MetDataset | None = None
 
     @property
     def source(self) -> pd.DataFrame | None:
@@ -236,6 +243,9 @@ class FlightRunner:
         self.current = self.flight_with_weather
         self.interpolated_flight = None
 
+        self._ds_met = self.weather.ds_met()
+        self._ds_rad = self.weather.ds_rad()
+
         logger.info("Weather intersection completed successfully with %d points", len(wx_flight.data))
         return self
     
@@ -326,6 +336,28 @@ class FlightRunner:
         if flight_in is None:
             logger.error("No flight available; run _emissions() (and optionally _contrails()) first.")
             raise RuntimeError("_emissions() must be called before _nonco2().")
+
+        #lon_buf = (0.0, 0.0)    # deg
+        #lat_buf = (0.0, 0.0)    # deg
+        #time_buf = (np.timedelta64(0, "h"), np.timedelta64(0, "h"))
+        #level_buf = (0.0, 0.0)  # hPa
+
+        # Downselect from the provider to shrink the graph
+        #ds_met = flight_in.downselect_met(self.weather.met(),  longitude_buffer=lon_buf,
+        #                                latitude_buffer=lat_buf, time_buffer=time_buf, level_buffer=level_buf)
+        #ds_sfc = flight_in.downselect_met(self.weather.rad(),  longitude_buffer=lon_buf,
+        #                                latitude_buffer=lat_buf, time_buffer=time_buf, level_buffer=level_buf)
+
+        #met_sel  = MetDataset(ds_met)
+        #surf_sel = MetDataset(ds_sfc)
+
+
+        self.non_co2_model = self.default_non_co2_model_type.get(
+            params=NonCO2Params(
+                met=self._ds_met,
+                surface=self._ds_rad,
+                )
+        )
 
         try:
             f_out: Flight = self.non_co2_model(flight_in)

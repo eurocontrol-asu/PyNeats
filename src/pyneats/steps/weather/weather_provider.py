@@ -69,6 +69,8 @@ class WeatherProviderParams:
 class WeatherProviderProtocol(Step[Flight, FlightWithWeather], Protocol):
     def met(self) -> MetDataset: ...
     def rad(self) -> MetDataset: ...
+    def ds_met(self) -> MetDataset: ...
+    def ds_rad(self) -> MetDataset: ...
     def downselect(self, flight: Flight) -> MetDataset: ...
     def intersect(self, flight: Flight) -> Flight: ...
 
@@ -82,9 +84,18 @@ class WeatherProvider(BaseStep[Flight, FlightWithWeather]):
         self.wind = wind
         self.params = params or WeatherProviderParams()
 
+        self._ds_met: MetDataset | None = None
+        self._ds_rad: MetDataset | None = None
+
     def met(self) -> MetDataset:  # accessor
         return self._met
 
+    def ds_met(self) -> MetDataset | None:  # accessor
+        return self._ds_met
+    
+    def ds_rad(self) -> MetDataset | None:  # accessor
+        return self._ds_rad
+    
     def rad(self) -> MetDataset:  # accessor
         return self._rad
 
@@ -96,10 +107,10 @@ class WeatherProvider(BaseStep[Flight, FlightWithWeather]):
         out = self(flight)            # FlightWithWeather (subclass of Flight)
         return out                    # zero-copy; fine to return as Flight
 
-    def downselect(self, flight: Flight) -> MetDataset:
+    def downselect(self, flight: Flight, met: MetDataset) -> MetDataset:
         try:
             return flight.downselect_met(
-                self._met,
+                met,
                 longitude_buffer=self.params.lon_buf,
                 latitude_buffer=self.params.lat_buf,
                 time_buffer=self.params.time_buf,
@@ -109,17 +120,19 @@ class WeatherProvider(BaseStep[Flight, FlightWithWeather]):
             raise WeatherStepError(type(self).__name__, f"downselect failed: {e}") from e
 
     def run(self, flight: Flight) -> FlightWithWeather:
-        ds_met = self.downselect(flight)
+        
+        self._ds_met = self.downselect(flight, self._met)
+        self._ds_rad = self.downselect(flight, self._rad)
 
         df = cast(pd.DataFrame, flight.data)
         try:
             for met_var, out_col in self.params.var_map.items():
-                if met_var not in ds_met:
+                if met_var not in self._ds_met:
                     if out_col in DEFAULT_REQUIRED_WEATHER_COLS:
                         raise KeyError(f"required met var '{met_var}' missing in downselected MET")
                     continue
                 vals = flight.intersect_met(
-                    ds_met[met_var],
+                    self._ds_met[met_var],
                     method=self.params.method,
                     use_indices=self.params.use_indices,
                 )

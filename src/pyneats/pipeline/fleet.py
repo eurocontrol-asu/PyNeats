@@ -255,7 +255,7 @@ class FleetRunner:
 
         df = self.raw_trajectories
         df_model = df[df["MODEL_TYPE"] == self.params.model_type].copy()
-        df_model = df_model[df_model["AIRCRAFT_TYPE_ICAO_ID"]=="A320"].copy()
+        #df_model = df_model[df_model["AIRCRAFT_TYPE_ICAO_ID"]=="A320"].copy()
 
         flight_id_cols = ["AIRCRAFT_ID", "ADEP", "ADES", "REGISTRATION"]
         df_model["FLIGHT_ID"] = df_model[flight_id_cols].astype(str).agg("_".join, axis=1)
