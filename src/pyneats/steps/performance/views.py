@@ -1,0 +1,15 @@
+from __future__ import annotations
+from typing import ClassVar, Final
+from pyneats.core.views import FlightView
+
+__all__ = ["DEFAULT_REQUIRED_PERF_COLS", "FlightWithPerformance"]
+
+DEFAULT_REQUIRED_PERF_COLS: Final[tuple[str, ...]] = (
+    "true_airspeed",
+    "fuel_flow",
+    "engine_efficiency",
+)
+
+class FlightWithPerformance(FlightView):
+    """Zero-copy typed view for performance-enriched flights."""
+    REQUIRED: ClassVar[tuple[str, ...]] = DEFAULT_REQUIRED_PERF_COLS

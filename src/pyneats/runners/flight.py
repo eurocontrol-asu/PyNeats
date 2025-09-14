@@ -24,7 +24,7 @@ from pyneats.steps.climate import (
     ClimateStepError,
 )
 
-from pyneats.steps.interpolator import (
+from pyneats.steps.interpolation import (
     TrajectoryInterpolator,
     InterpolatorType,
     InterpolationStepError,
@@ -92,8 +92,7 @@ class FlightRunner:
     default_emission: EmissionModel = DEFAULT_EMISSION_MODEL
     default_contrails_model_type: ContrailsModelType = DEFAULT_CONTRAILS_MODEL_TYPE
     default_non_co2_model_type : NonCO2ModelType = DEFAULT_NON_CO2_MODEL_TYPE
-    default_climate_impact: ClimateImpactModel = DEFAULT_CLIMAT_IMPACT
-    
+    default_climate_impact: ClimateImpactModel = DEFAULT_CLIMAT_IMPACT  
 
     def __init__(
         self,
@@ -106,8 +105,6 @@ class FlightRunner:
         contrails_model: ContrailsModel | None = None,
         non_co2_model: NonCO2Model | None = None,
         climate_impact: ClimateImpactModel | None = None
-        
-
     ) -> None:
         # initialize backing field before using the property
         self._source = None
@@ -177,7 +174,6 @@ class FlightRunner:
     
     # Step 1: Parse flights (NM trajectories, ADS-B flights)
     def _parse_flight(self) -> Self:
-
         if self.source is None:
             logger.error("No source data provided before _parse_flight()")
             raise RuntimeError("Source data must be set before parsing flights.")

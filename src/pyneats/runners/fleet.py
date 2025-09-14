@@ -13,7 +13,7 @@ import itertools
 import pandas as pd
 from joblib import Parallel, delayed
 
-from pyneats.pipeline.flight import FlightRunner
+from pyneats.runners.flight import FlightRunner
 from pyneats.steps.weather import (
     DWDFactory,
     WeatherFactoryParams,
