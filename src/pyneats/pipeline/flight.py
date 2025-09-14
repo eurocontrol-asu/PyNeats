@@ -2,7 +2,6 @@ import logging
 from typing import Final
 import pandas as pd
 from typing_extensions import Self
-import numpy as np
 
 from pycontrails import Flight
 from pycontrails.core.met import MetDataset
@@ -62,10 +61,10 @@ from pyneats.core.meta import extract_flight_meta
 
 logger = logging.getLogger(__name__)
 
-#Default Trajectory in NEATS is Interpolator/reconstructor from PyContrails 
-DEFAULT_INTERPOLATOR: Final[TrajectoryInterpolator] = InterpolatorType.PYCONTRAILS.get()
 #Default Trajectory in NEATS are NM's FTFM, RTFM and CTFM
 DEFAULT_TRAJECTORY_PARSER: Final[TrajectoryParser] = TrajectoryParserType.NM.get()
+#Default Trajectory in NEATS is Interpolator/reconstructor from PyContrails
+DEFAULT_INTERPOLATOR: Final[TrajectoryInterpolator] = InterpolatorType.PYCONTRAILS.get()
 # Default Performance Model is BADA as implemented via pyBADA
 DEFAULT_PERFORMANCE_MODEL: Final[PerformanceModel] = PerformanceModelType.BADA.get()
 #Default Emission Model is BFFM2 - T4/T2 as implemented in PyContrails
@@ -83,7 +82,7 @@ class FlightRunner:
     Parses, interpolates, and holds flight trajectory with met data.
     """
 
-    # Explicit attribute type so Pylance can infer the property's return type
+    # Explicit attribute types for static analysis
     _source: pd.DataFrame | None
 
     # Defaults (unchanged)
@@ -112,12 +111,12 @@ class FlightRunner:
     ) -> None:
         # initialize backing field before using the property
         self._source = None
-        # let the setter make a defensive copy (avoid double copy)
         self.source = source
+
+        self.weather = weather
 
         self.parser = parser or self.default_trajectory_parser
         self.interpolator = interpolator or self.default_interpolator
-        self.weather = weather
         self.performance = performance or self.default_performance
         self.emission = emission or self.default_emission
         self.climate_impact = climate_impact or self.default_climate_impact
@@ -149,20 +148,33 @@ class FlightRunner:
         self.flight_with_nonco2: FlightWithNonCO2Impact | None = None
         self.current: Flight | None = None
 
+        # Cached met/rad datasets after downselection for this flight
         self._ds_met : MetDataset | None = None
         self._ds_rad : MetDataset | None = None
 
     @property
     def source(self) -> pd.DataFrame | None:
-        """Get the trajectory dataframe."""
-        return self._source
+        """
+        Returns a shallow copy of the source DataFrame if it exists, otherwise returns None.
+
+        Returns:
+            pd.DataFrame | None: A shallow copy of the source DataFrame, or None if the source is not set.
+        """
+        return None if self._source is None else self._source.copy(deep=False)
 
     @source.setter
     def source(self, value: pd.DataFrame | None) -> None:
-        """Set the trajectory dataframe (defensive copy to avoid side effects)."""
-        # Use deep=True if callers might mutate nested objects; deep=False is fine for plain numeric frames
-        self._source = value.copy(deep=True) if value is not None else None
-            
+        """Set the trajectory dataframe with a defensive copy to avoid side effects."""
+        if value is None:
+            self._source = None
+            return
+
+        if not isinstance(value, pd.DataFrame):  # type: ignore[unnecessary-isinstance]
+            raise TypeError(f"source must be a pandas DataFrame, got {type(value)}")
+
+        # Shallow copy is enough for numeric frames, deep copy if unsure
+        self._source = value.copy(deep=False)
+    
     # Step 1: Parse flights (NM trajectories, ADS-B flights)
     def _parse_flight(self) -> Self:
 
@@ -180,10 +192,10 @@ class FlightRunner:
             logger.exception("Unexpected error while parsing trajectory")
             raise RuntimeError(f"Trajectory parsing failed: {e}") from e
         
-        # Optional: validate again (zero-copy). Since the parser already validates,
+        # Cache the parsed flight
         self.parsed_flight = parsed_flight
-
         self.current = self.parsed_flight
+
         logger.info("Flight parsing completed successfully with %d points", len(self.parsed_flight.data))
         return self
     
@@ -204,13 +216,10 @@ class FlightRunner:
             logger.exception("Unexpected error during interpolation")
             raise RuntimeError(f"Interpolation failed: {e}") from e
 
-        # Optional: validate again (zero-copy) for typed accessors & safety
         self.interpolated_flight = interpolated_flight
-
         # Advance the pipeline pointer
         self.current = self.interpolated_flight
-
-        # Release previous reference (often same object; clarifies stage ownership)
+        # Release previous reference 
         self.parsed_flight = None
 
         logger.info(
@@ -228,25 +237,25 @@ class FlightRunner:
 
         # Run the weather intersection step (returns a base Flight)
         try:
-            wx_flight: Flight = self.weather.intersect(self.interpolated_flight)
+            wx_flight: FlightWithWeather = self.weather(self.interpolated_flight)
         except WeatherStepError:
-            # Already logged inside the weather provider; propagate with original traceback
             raise
         except Exception as e:
             logger.exception("Unexpected error during weather intersection")
             raise RuntimeError(f"Weather intersection failed: {e}") from e
 
-        # Typed, zero-copy view for downstream convenience/safety
-        self.flight_with_weather = FlightWithWeather.from_flight(wx_flight)
+        self.flight_with_weather = wx_flight
 
         # Advance pointer & release previous stage reference
         self.current = self.flight_with_weather
         self.interpolated_flight = None
 
+        # Cache the downsampled met/rad datasets for later use (e.g accfs)
         self._ds_met = self.weather.ds_met()
         self._ds_rad = self.weather.ds_rad()
 
-        logger.info("Weather intersection completed successfully with %d points", len(wx_flight.data))
+        logger.info("Weather intersection completed successfully with %d points",
+                    len(wx_flight.data))
         return self
     
     # Step 4: Run Performance model
@@ -332,7 +341,12 @@ class FlightRunner:
 
         # Prefer the most recent enriched flight. ACCF needs emissions + weather;
         # both are still present in the current Flight even after contrails.
-        flight_in: Flight | None = self.current or self.flight_with_contrails or self.flight_with_emissions
+        flight_in: Flight | None = (
+            self.current
+            or self.flight_with_contrails
+            or self.flight_with_emissions
+        )
+
         if flight_in is None:
             logger.error("No flight available; run _emissions() (and optionally _contrails()) first.")
             raise RuntimeError("_emissions() must be called before _nonco2().")
@@ -432,7 +446,7 @@ class FlightRunner:
             ._performance()          # pylint: disable=protected-access
             ._emissions()            # pylint: disable=protected-access
             ._contrails()            # pylint: disable=protected-access
-            ._nonco2()           # pylint: disable=protected-access
+            ._nonco2()               # pylint: disable=protected-access
             ._gwp()                  # pylint: disable=protected-access
         )
         

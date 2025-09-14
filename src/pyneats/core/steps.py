@@ -69,3 +69,42 @@ class BaseStep(Generic[InFlight, OutFlight]):
         # Use structured logging fields so runners can aggregate timings
         self.logger.info("%s ok", self.name(), extra={"step": self.name(), "dt": dt})
         return out
+
+
+InT = TypeVar("InT", contravariant=True)
+OutT = TypeVar("OutT", covariant=True)
+
+@runtime_checkable
+class Stage(Protocol[InT, OutT]):
+    """Generic callable stage: (InT) -> OutT."""
+    def __call__(self, source: InT) -> OutT: ...
+
+@dataclass
+class BaseStage(Generic[InT, OutT]):
+    """
+    Uniform wrapper for generic stages (parsers, loaders, serializers):
+    timing, structured logging, and consistent error handling via StepError.
+    """
+    logger: logging.Logger = field(default_factory=lambda: logging.getLogger(__name__))
+
+    @classmethod
+    def name(cls) -> str:
+        return cls.__name__
+
+    def run(self, source: InT) -> OutT:  # pragma: no cover
+        raise NotImplementedError
+
+    def __call__(self, source: InT) -> OutT:
+        t0 = perf_counter()
+        try:
+            out = self.run(source)
+        except StepError:
+            self.logger.error("%s failed", self.name(), exc_info=True, extra={"stage": self.name()})
+            raise
+        except Exception as e:
+            self.logger.exception("Unexpected %s error", self.name(), extra={"stage": self.name()})
+            raise StepError(self.name(), f"unexpected: {e}") from e
+
+        dt = perf_counter() - t0
+        self.logger.info("%s ok", self.name(), extra={"stage": self.name(), "dt": dt})
+        return out

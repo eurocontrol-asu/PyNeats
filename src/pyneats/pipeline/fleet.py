@@ -7,9 +7,9 @@ import copy
 import gc
 import logging
 import os
-from typing import Any, Final, List, Optional, Mapping, Iterable
+from typing import Any, Final, List, Optional, Mapping, Iterable, cast
+from itertools import chain
 import itertools
-
 import pandas as pd
 from joblib import Parallel, delayed
 
@@ -213,14 +213,15 @@ class FleetRunner:
         logger.info("Submitting %d chunks (~%d flights/chunk) to %d workers …",
                     len(flight_chunks), self.flight_chunk, self.njobs)
 
-        nested = Parallel(
+        raw: Any = Parallel(
             n_jobs=self.njobs,
             prefer="processes",
-            batch_size=1,   # we already chunked
+            batch_size=1,  # type: ignore[arg-type]  # until stubs are fixed
             verbose=10,
-        )(delayed(_process_chunk)(chunk) for chunk in flight_chunks)
+        )(delayed(_process_chunk)(c) for c in flight_chunks)
+        nested = cast(list[list[dict[str, Any]]], raw)
 
-        self.results = [r for sub in nested for r in sub]
+        self.results = list(chain.from_iterable(nested))
 
     # ----- load weather (sequential only) -----
     def _get_weather(self) -> None:
@@ -255,7 +256,7 @@ class FleetRunner:
 
         df = self.raw_trajectories
         df_model = df[df["MODEL_TYPE"] == self.params.model_type].copy()
-        #df_model = df_model[df_model["AIRCRAFT_TYPE_ICAO_ID"]=="A320"].copy()
+        df_model = df_model[df_model["AIRCRAFT_TYPE_ICAO_ID"]=="A320"].copy()
 
         flight_id_cols = ["AIRCRAFT_ID", "ADEP", "ADES", "REGISTRATION"]
         df_model["FLIGHT_ID"] = df_model[flight_id_cols].astype(str).agg("_".join, axis=1)

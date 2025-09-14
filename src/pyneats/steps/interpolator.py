@@ -6,9 +6,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, runtime_checkable, Protocol
 
+from pycontrails import Flight
+
 from pyneats.core.steps import BaseStep, Step, StepError
 from pyneats.steps.trajectory import Flight4D  # strong input/output type
 from pyneats.core.parameters import DEFAULT_INTERPOLATION_TIME  # keep your source
+from pyneats.core.views import ValidationError
 
 __all__ = [
     "TrajectoryInterpolationParams",
@@ -64,12 +67,20 @@ class PyContrailsInterpolator(BaseStep[Flight4D, Flight4D]):
     def run(self, flight: Flight4D) -> Flight4D:
         # Validate schema and return typed zero-copy view
         try:
-            out: Flight4D = flight.resample_and_fill(self.params.interpolation_time)
+            tmp: Flight = flight.resample_and_fill(self.params.interpolation_time)
         except Exception as e:
-            raise InterpolationStepError(type(self).__name__, f"resample_and_fill failed: {e}") from e
+            raise InterpolationStepError(type(self).__name__,
+                                         f"resample_and_fill failed: {e}") from e
 
-
-        return out
+        try:
+            # Schema/type validation + zero-copy cast to Flight4D
+            return Flight4D.from_flight(tmp)
+        except ValidationError as ve:
+            # Surface a step-scoped domain error with clear context
+            raise InterpolationStepError(
+                type(self).__name__,
+                f"invalid resampled schema: {ve}"
+            ) from ve
 
 
 # ---- BADA predictor (placeholder with same contract) ---------------
