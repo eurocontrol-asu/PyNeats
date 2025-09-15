@@ -7,12 +7,14 @@ from pyneats.steps.emissions.views import (
     FlightWithEmissions,
     DEFAULT_REQUIRED_EMISSION_COLS,
 )
-from pyneats.steps.emissions.pycontrails_emissions import EmissionsStepError
+from pyneats.steps.emissions.protocol import EmissionsStepError
+from pyneats.core.steps_registry import register
 
 __all__ = ["EurocontrolEmissionModel"]
 
 logger = logging.getLogger(__name__)
 
+@register("emissions", "eurocontrol")
 class EurocontrolEmissionModel(BaseStep[FlightWithPerformance, FlightWithEmissions]):
     def __init__(self, required_cols: tuple[str, ...] = DEFAULT_REQUIRED_EMISSION_COLS) -> None:
         super().__init__()

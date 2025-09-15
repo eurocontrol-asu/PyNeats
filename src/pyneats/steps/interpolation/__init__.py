@@ -5,7 +5,6 @@ from pyneats.steps.interpolation.pycontrails_interpolation import (
     PyContrailsInterpolator,
 )
 from pyneats.steps.interpolation.bada_interpolation import BADATrajectoryPredictor
-from pyneats.steps.interpolation.factory import InterpolatorType
 
 __all__ = [
     "TrajectoryInterpolator",
@@ -13,5 +12,4 @@ __all__ = [
     "InterpolationStepError",
     "PyContrailsInterpolator",
     "BADATrajectoryPredictor",
-    "InterpolatorType",
 ]

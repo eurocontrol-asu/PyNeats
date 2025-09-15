@@ -7,17 +7,17 @@ from typing import Any, Final, Mapping
 import pandas as pd
 from pycontrails import Flight
 
-from pyneats.core.steps import BaseStage, StepError
+from pyneats.core.steps import BaseStage
 from pyneats.core.views import ValidationError
 from pyneats.core.constants import METERS_PER_FOOT, FEET_PER_FL
 from pyneats.steps.trajectory.views import Flight4D, REQUIRED_4D_COLS
+from pyneats.core.steps_registry import register
+from pyneats.steps.trajectory.protocol import FlightParsingError
 
-__all__ = ["FlightParsingError", "NMTrajectoryParserParams", "NMTrajectoryParser"]
+__all__ = ["NMTrajectoryParserParams", "NMTrajectoryParser"]
 
 logger = logging.getLogger(__name__)
 
-class FlightParsingError(StepError):
-    """Raised when a trajectory table cannot be parsed into a valid Flight."""
 
 @dataclass(frozen=True)
 class NMTrajectoryParserParams:
@@ -43,6 +43,7 @@ class NMTrajectoryParserParams:
     date_format: str = "%Y-%m-%d %H:%M:%S"
     timezone: str = "UTC"  # output tz; parsing is done as UTC then converted
 
+@register("trajectory_parser", "nm")
 class NMTrajectoryParser(BaseStage[pd.DataFrame, Flight4D]):
     """
     Parse NM FTFM/RTFM/CTFM data into a `Flight4D`.

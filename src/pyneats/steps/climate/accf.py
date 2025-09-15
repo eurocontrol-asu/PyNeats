@@ -3,10 +3,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Final, Mapping, Protocol, cast
+from typing import Any, Final, Mapping, Protocol, runtime_checkable
 
-import pandas as pd
 import xarray as xr
 
 from pycontrails import Flight
@@ -14,6 +12,11 @@ from pycontrails.core.met import MetDataset
 from pycontrails.models.accf import ACCF  # pycontrails’ wrapper for ClimAccf
 from pycontrails.datalib.ecmwf import TopNetThermalRadiation, SurfaceSolarDownwardRadiation
 from pycontrails.core.met_var  import TOAOutgoingLongwaveFlux
+
+from pyneats.core.views import FlightView
+from pyneats.core.steps import Step, BaseStep
+from pyneats.core.steps_registry import register
+from pyneats.steps.emissions.views import FlightWithEmissions
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +26,6 @@ __all__ = [
     "NonCO2Model",
     "NonCO2Params",
     "ACCFModel",
-    "NonCO2ModelType",
     "ClimateStepError",
     "make_accf_surface_view",
 ]
@@ -39,33 +41,15 @@ DEFAULT_REQUIRED_CLIMATE_COLS: Final[tuple[str, ...]] = ("aCCF_NOx",)
 class ClimateStepError(RuntimeError):
     """Raised when ACCF evaluation fails or yields invalid output."""
 
-# ---- validated flight view (zero-copy) -----------------------------
-class FlightWithNonCO2Impact(Flight):
-    """
-    Zero-copy view of a Flight guaranteed to contain climate impact columns (e.g., 'accf_total').
-    """
+class FlightWithNonCO2Impact(FlightView):
+    """Zero-copy typed view for emissions-enriched flights."""
+    REQUIRED = DEFAULT_REQUIRED_CLIMATE_COLS
 
-    def __init__(self, data: pd.DataFrame, attrs: dict[str, Any] | None = None) -> None:
-        super().__init__(data=data, attrs=attrs)
 
-    @classmethod
-    def from_flight(
-        cls,
-        flight: Flight,
-        required_cols: tuple[str, ...] = DEFAULT_REQUIRED_CLIMATE_COLS,
-    ) -> "FlightWithNonCO2Impact":
-        missing = [c for c in required_cols if c not in flight]
-        if missing:
-            raise KeyError(f"FlightWithClimateImpact missing required columns: {missing}")
-        return cls(
-            data=cast(pd.DataFrame, flight.data),
-            attrs=getattr(flight, "attrs", None),
-        )
-
-# ---- protocol ------------------------------------------------------
-class NonCO2Model(Protocol):
+@runtime_checkable
+class NonCO2Model(Step[FlightWithEmissions, FlightWithNonCO2Impact], Protocol):
     """A climate step that enriches a Flight with non-CO₂ impact columns."""
-    def __call__(self, flight: Flight) -> Flight: ...
+    def __call__(self, flight: FlightWithEmissions) -> FlightWithNonCO2Impact: ...
 
 # ---- params --------------------------------------------------------
 @dataclass(frozen=True)
@@ -137,8 +121,9 @@ def make_accf_surface_view(surface: MetDataset) -> MetDataset:
     )
     return accf_surface
 
-# ---- ACCF wrapper --------------------------------------------------
-class ACCFModel:
+
+@register("non_co2_model", "accf")
+class ACCFModel(BaseStep[FlightWithEmissions, FlightWithNonCO2Impact]):
     """
     Thin wrapper around `pycontrails.models.accf.ACCF` (ClimAccf).
 
@@ -155,6 +140,8 @@ class ACCFModel:
         if params.met is None or params.surface is None:
             raise ClimateStepError("ACCF requires both 'met' and 'surface' datasets.")
 
+        self.logger = logging.getLogger(__name__)  # <-- and keep a logger on self
+        
         # Build a non-mutating view of surface for ACCF (Cocip can still use the base surface as-is)
         try:
             print("make_accf_surface_view in")
@@ -181,27 +168,15 @@ class ACCFModel:
         except Exception as e:
             logger.exception("Failed to initialize ACCF model")
             raise ClimateStepError(f"ACCF initialization failed: {e}") from e
+    
 
-    def __call__(self, flight: Flight) -> Flight:
+    def run(self, flight: FlightWithEmissions) -> FlightWithNonCO2Impact:
         try:
             out: Flight = self._impl.eval(flight)
-        except Exception as e:
-            logger.exception("ACCF backend evaluation failed")
-            raise ClimateStepError(f"ACCF evaluation failed: {e}") from e
-
-        try:
-            _ = FlightWithNonCO2Impact.from_flight(out, required_cols=self.required_cols)
         except KeyError as e:
-            logger.error("ACCF output missing required columns: %s", e)
+            logger.error("ACCFbackend: %s", e)
             raise ClimateStepError(f"ACCF output missing required columns: {e}") from e
 
-        logger.info("ACCF step completed successfully")
-        return out
+        self.logger.info("ACCF step completed successfully")
+        return FlightWithNonCO2Impact.from_flight(out, require=self.required_cols)
 
-# ---- factory -------------------------------------------------------
-class NonCO2ModelType(Enum):
-    ACCF = ACCFModel
-
-    def get(self, *args: Any, **kwargs: Any) -> NonCO2Model:
-        impl = self.value  # type: ignore[assignment]
-        return impl(*args, **kwargs)  # type: ignore[misc]

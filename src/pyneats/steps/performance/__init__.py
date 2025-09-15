@@ -5,10 +5,13 @@ from pyneats.steps.performance.params import (
     BADAPerformanceModelParams,
 )
 from pyneats.steps.performance.adapters import (
-    AircraftProtocol, BaseBADAAdapter, BADA3Adapter, BADA4Adapter,
+    AircraftProtocol, 
+    BaseBADAAdapter,
+    BADA3Adapter,
+    BADA4Adapter,
+    PerformanceStepError
 )
-from pyneats.steps.performance.bada_model import PerformanceStepError, BADAPerformanceModel
-from pyneats.steps.performance.factory import PerformanceModelType
+from pyneats.steps.performance.bada_model import BADAPerformanceModel
 
 __all__ = [
     "DEFAULT_REQUIRED_PERF_COLS",
@@ -20,5 +23,4 @@ __all__ = [
     "BaseBADAAdapter", "BADA3Adapter", "BADA4Adapter",
     "PerformanceStepError",
     "BADAPerformanceModel",
-    "PerformanceModelType",
 ]

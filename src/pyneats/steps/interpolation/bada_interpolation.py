@@ -4,12 +4,14 @@ import logging
 from pyneats.core.steps import BaseStep
 from pyneats.steps.trajectory import Flight4D
 from pyneats.steps.interpolation.params import TrajectoryInterpolationParams
-from pyneats.steps.interpolation.pycontrails_interpolation import InterpolationStepError
+from pyneats.steps.interpolation.protocol import InterpolationStepError
+from pyneats.core.steps_registry import register
 
 __all__ = ["BADATrajectoryPredictor"]
 
 logger = logging.getLogger(__name__)
 
+@register("interpolator", "bada-predictor")
 class BADATrajectoryPredictor(BaseStep[Flight4D, Flight4D]):
     """
     Placeholder for a physics-based trajectory reconstruction (e.g., BADA).

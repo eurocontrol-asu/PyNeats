@@ -7,14 +7,16 @@ from pyneats.core.steps import BaseStep
 from pyneats.core.views import ValidationError
 from pyneats.steps.trajectory import Flight4D
 from pyneats.steps.interpolation.params import TrajectoryInterpolationParams
+from pyneats.steps.interpolation.protocol import InterpolationStepError
+from pyneats.core.steps_registry import register
 
-__all__ = ["InterpolationStepError", "PyContrailsInterpolator"]
+__all__ = ["PyContrailsInterpolator"]
 
 logger = logging.getLogger(__name__)
 
-class InterpolationStepError(Exception):
-    """Raised when interpolation/resampling fails or yields invalid output."""
 
+
+@register("interpolator", "pycontrails")
 class PyContrailsInterpolator(BaseStep[Flight4D, Flight4D]):
     """
     Thin wrapper around `Flight.resample_and_fill`.

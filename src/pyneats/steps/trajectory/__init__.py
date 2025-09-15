@@ -6,7 +6,6 @@ from pyneats.steps.trajectory.nm_parser import (
     NMTrajectoryParser,
 )
 from pyneats.steps.trajectory.adsb_parser import ADSBParser
-from pyneats.steps.trajectory.factory import TrajectoryParserType
 
 __all__ = [
     "Flight4D", "REQUIRED_4D_COLS",
@@ -14,5 +13,4 @@ __all__ = [
     "FlightParsingError",
     "NMTrajectoryParserParams", "NMTrajectoryParser",
     "ADSBParser",
-    "TrajectoryParserType",
 ]

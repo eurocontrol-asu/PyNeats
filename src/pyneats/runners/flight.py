@@ -1,7 +1,8 @@
 import logging
-from typing import Final
-import pandas as pd
+from typing import Final, Any, Optional
+from dataclasses import dataclass, field
 from typing_extensions import Self
+import pandas as pd
 
 from pycontrails import Flight
 from pycontrails.core.met import MetDataset
@@ -10,45 +11,37 @@ from pyneats.steps.climate import (
     ClimateImpactModelType,
     ClimateImpactModel,
     ClimateImpactStepError,
-    ContrailsModelType,
     ContrailsModel,
     ContrailsParams,
     ContrailsStepError,
     FlightWithContrailsImpact,
-    COCIPModel,
     FlightWithClimateImpact,
-    NonCO2ModelType,
     NonCO2Params,
-    NonCO2Model,
     FlightWithNonCO2Impact,
     ClimateStepError,
 )
 
 from pyneats.steps.interpolation import (
     TrajectoryInterpolator,
-    InterpolatorType,
     InterpolationStepError,
 )
 
 from pyneats.steps.trajectory import (
-    TrajectoryParserType,
-    TrajectoryParser,
     FlightParsingError,
     Flight4D,
+    TrajectoryParser
 )
 
 from pyneats.steps.performance import (
     FlightWithPerformance,
-    PerformanceModelType,
     PerformanceStepError,
     PerformanceModel,
 )
 
 from pyneats.steps.emissions import (
-    EmissionModel,
-    EmissionModelType,
     EmissionsStepError,
     FlightWithEmissions,
+    EmissionModel
 )
 
 from pyneats.steps.weather import (
@@ -57,25 +50,43 @@ from pyneats.steps.weather import (
     FlightWithWeather,
 )
 
+from pyneats.core.neats_defaults import (
+    DEFAULT_INTERPOLATOR,
+    DEFAULT_TRAJECTORY_PARSER,
+    DEFAULT_EMISSIONS,
+    DEFAULT_PERFORMANCE,
+    DEFAULT_CONTRAILS_MODEL,
+    DEFAULT_NON_CO2_MODEL
+)
+
 from pyneats.core.meta import extract_flight_meta
+from pyneats.core.steps_registry import build
 
 logger = logging.getLogger(__name__)
 
-#Default Trajectory in NEATS are NM's FTFM, RTFM and CTFM
-DEFAULT_TRAJECTORY_PARSER: Final[TrajectoryParser] = TrajectoryParserType.NM.get()
-#Default Trajectory in NEATS is Interpolator/reconstructor from PyContrails
-DEFAULT_INTERPOLATOR: Final[TrajectoryInterpolator] = InterpolatorType.PYCONTRAILS.get()
-# Default Performance Model is BADA as implemented via pyBADA
-DEFAULT_PERFORMANCE_MODEL: Final[PerformanceModel] = PerformanceModelType.BADA.get()
-#Default Emission Model is BFFM2 - T4/T2 as implemented in PyContrails
-DEFAULT_EMISSION_MODEL: Final[EmissionModel] = EmissionModelType.PYCONTRAILS.get()
-# PyContrail's COCIP used for contrail modelling
-DEFAULT_CONTRAILS_MODEL_TYPE: Final[ContrailsModelType] = ContrailsModelType.COCIP
-# ACCFs  used for other non-co2 species
-DEFAULT_NON_CO2_MODEL_TYPE: Final[NonCO2ModelType] = NonCO2ModelType.ACCF
-# Default climate impact : GWP
 DEFAULT_CLIMAT_IMPACT: Final[ClimateImpactModel]= ClimateImpactModelType.GWP.get()
 
+@dataclass
+class RunnerConfig:
+    # Names correspond to registry entries (case-insensitive)
+    interpolator: str = DEFAULT_INTERPOLATOR
+    trajectory_parser: str = DEFAULT_TRAJECTORY_PARSER
+    performance: str = DEFAULT_PERFORMANCE
+    emissions: str = DEFAULT_EMISSIONS
+    contrails_model: str = DEFAULT_CONTRAILS_MODEL
+    non_co2_model: str = DEFAULT_NON_CO2_MODEL
+    climate_impact: str = "gwp"
+
+    # Component-specific parameter blocks, e.g.:
+    # params = {
+    #   "interpolator": {"spacing_nm": 1.0},
+    #   "performance": {"bada_version": "BADA4"},
+    #   "emission": {"nvpm_model": "T4"},
+    #   "cocip": {"radiation_scaling": 0.9},
+    #   "accf": {"horizons": [20, 50, 100]},
+    #   "climate_impact": {"metric": "GWP", "horizon": 100},
+    # }
+    params: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 class FlightRunner:
     """
@@ -85,54 +96,61 @@ class FlightRunner:
     # Explicit attribute types for static analysis
     _source: pd.DataFrame | None
 
-    # Defaults (unchanged)
-    default_trajectory_parser: TrajectoryParser = DEFAULT_TRAJECTORY_PARSER
-    default_interpolator: TrajectoryInterpolator = DEFAULT_INTERPOLATOR
-    default_performance: PerformanceModel = DEFAULT_PERFORMANCE_MODEL
-    default_emission: EmissionModel = DEFAULT_EMISSION_MODEL
-    default_contrails_model_type: ContrailsModelType = DEFAULT_CONTRAILS_MODEL_TYPE
-    default_non_co2_model_type : NonCO2ModelType = DEFAULT_NON_CO2_MODEL_TYPE
+    #non_co2_model: NonCO2Model | None
     default_climate_impact: ClimateImpactModel = DEFAULT_CLIMAT_IMPACT  
 
     def __init__(
         self,
         weather: WeatherProviderProtocol,
         source: pd.DataFrame | None = None,
-        parser: TrajectoryParser | None = None,
-        interpolator: TrajectoryInterpolator | None = None,
-        performance: PerformanceModel | None = None,
-        emission: EmissionModel | None = None,
-        contrails_model: ContrailsModel | None = None,
-        non_co2_model: NonCO2Model | None = None,
-        climate_impact: ClimateImpactModel | None = None
+        climate_impact: ClimateImpactModel | None = None,
+        cfg: Optional[RunnerConfig] = None,
     ) -> None:
-        # initialize backing field before using the property
-        self._source = None
-        self.source = source
-
+        
+        self.cfg = cfg or RunnerConfig()
+        
+        self._source = None # initialize backing field before using the property
+        self.source = source  # use the property setter for validation
         self.weather = weather
 
-        self.parser = parser or self.default_trajectory_parser
-        self.interpolator = interpolator or self.default_interpolator
-        self.performance = performance or self.default_performance
-        self.emission = emission or self.default_emission
-        self.climate_impact = climate_impact or self.default_climate_impact
+        
+        self.parser: TrajectoryParser = build(
+            "trajectory_parser",
+            self.cfg.trajectory_parser,
+            **self.cfg.params.get("trajectory_parser", {}),
+        )
 
-        self.contrails_model = contrails_model or COCIPModel(
-            params=ContrailsParams(
-                met=self.weather.met(),
-                rad=self.weather.rad(),
+        self.interpolator: TrajectoryInterpolator =  build(
+            "interpolator",
+            self.cfg.interpolator,
+            **self.cfg.params.get("interpolator", {}),
+        )
+
+        self.performance: PerformanceModel =  build(
+            "performance",
+            self.cfg.performance,
+            **self.cfg.params.get("performance", {}),
+        )
+    
+        self.emission: EmissionModel = build(
+            "emissions",
+            self.cfg.emissions,
+            **self.cfg.params.get("emissions", {}),
+        )
+        
+        
+        self.contrails_model: ContrailsModel = build(
+            "contrails_model",
+            self.cfg.contrails_model,
+            **self.cfg.params.get("contrails_model",
+                                  {"params":ContrailsParams(met=self.weather.met(),
+                                                            rad=self.weather.rad())}
             )
         )
 
-        '''
-        self.non_co2_model = non_co2_model or self.default_non_co2_model_type.get(
-            params=NonCO2Params(
-                met=self.weather.met(),
-                surface=self.weather.rad(),
-                )
-        )
-        '''
+
+        self.climate_impact = climate_impact or self.default_climate_impact
+
 
         # Pipeline state
         self.parsed_flight: Flight4D | None = None
@@ -140,7 +158,7 @@ class FlightRunner:
         self.flight_with_weather: FlightWithWeather | None = None
         self.flight_with_performance: FlightWithPerformance | None = None
         self.flight_with_emissions: FlightWithEmissions | None = None
-        self.flight_with_contrails: Flight | None = None
+        self.flight_with_contrails: FlightWithContrailsImpact | None = None
         self.flight_with_climate_impact: Flight | None = None
         self.flight_with_nonco2: FlightWithNonCO2Impact | None = None
         self.current: Flight | None = None
@@ -270,11 +288,7 @@ class FlightRunner:
             logger.exception("Unexpected error during performance evaluation")
             raise RuntimeError(f"Performance evaluation failed: {e}") from e
 
-        try:
-            self.flight_with_performance = FlightWithPerformance.from_flight(enriched)
-        except KeyError as e:
-            logger.error("Performance output missing required columns: %s", e)
-            raise RuntimeError(f"Performance validation failed: {e}") from e
+        self.flight_with_performance = enriched
 
         self.current = self.flight_with_performance
         self.flight_with_weather = None
@@ -289,7 +303,7 @@ class FlightRunner:
             raise RuntimeError("performance() must be called before _emissions().")
 
         try:
-            enriched: Flight = self.emission(self.flight_with_performance)
+            enriched: FlightWithEmissions = self.emission(self.flight_with_performance)
         except EmissionsStepError:
             # Already logged inside the emissions step; just propagate.
             raise
@@ -298,7 +312,7 @@ class FlightRunner:
             raise RuntimeError(f"Emissions evaluation failed: {e}") from e
 
         # Get the typed, zero-copy view
-        self.flight_with_emissions = FlightWithEmissions.from_flight(enriched)
+        self.flight_with_emissions = enriched
         self.current = self.flight_with_emissions
         self.flight_with_performance = None
 
@@ -314,7 +328,7 @@ class FlightRunner:
 
         # Run the contrails step (COCIP). It returns a base Flight.
         try:
-            f_out: Flight = self.contrails_model(self.flight_with_emissions)
+            f_out: FlightWithContrailsImpact = self.contrails_model(self.flight_with_emissions)
         except ContrailsStepError:
             # Already logged inside the model; keep original traceback.
             raise
@@ -323,7 +337,7 @@ class FlightRunner:
             raise RuntimeError(f"Contrails evaluation failed: {e}") from e
 
         # Zero-copy validated view for ergonomic access (e.g., .ef property)
-        self.flight_with_contrails = FlightWithContrailsImpact.from_flight(f_out)
+        self.flight_with_contrails = f_out
 
         # Advance pointer & release previous stage
         self.current = self.flight_with_contrails
@@ -335,42 +349,26 @@ class FlightRunner:
     # Step 7: Compute non-CO₂ (ACCF)
     def _nonco2(self) -> Self:
 
-        # Prefer the most recent enriched flight. ACCF needs emissions + weather;
-        # both are still present in the current Flight even after contrails.
-        flight_in: Flight | None = (
-            self.current
-            or self.flight_with_contrails
-            or self.flight_with_emissions
+        if self.flight_with_contrails is None:
+            logger.error("Missing flight_with_contrails; did you call _contrails() first?")
+            raise RuntimeError("_contrails() must be called before.")
+
+
+        self.non_co2_model = build(
+            "non_co2_model",
+            self.cfg.non_co2_model,
+            **self.cfg.params.get("non_co2_model",
+                                  {"params":NonCO2Params(
+                                                    met=self._ds_met,
+                                                    surface=self._ds_rad,
+                                                    )}
+            )
         )
 
-        if flight_in is None:
-            logger.error("No flight available; run _emissions() (and optionally _contrails()) first.")
-            raise RuntimeError("_emissions() must be called before _nonco2().")
-
-        #lon_buf = (0.0, 0.0)    # deg
-        #lat_buf = (0.0, 0.0)    # deg
-        #time_buf = (np.timedelta64(0, "h"), np.timedelta64(0, "h"))
-        #level_buf = (0.0, 0.0)  # hPa
-
-        # Downselect from the provider to shrink the graph
-        #ds_met = flight_in.downselect_met(self.weather.met(),  longitude_buffer=lon_buf,
-        #                                latitude_buffer=lat_buf, time_buffer=time_buf, level_buffer=level_buf)
-        #ds_sfc = flight_in.downselect_met(self.weather.rad(),  longitude_buffer=lon_buf,
-        #                                latitude_buffer=lat_buf, time_buffer=time_buf, level_buffer=level_buf)
-
-        #met_sel  = MetDataset(ds_met)
-        #surf_sel = MetDataset(ds_sfc)
-
-
-        self.non_co2_model = self.default_non_co2_model_type.get(
-            params=NonCO2Params(
-                met=self._ds_met,
-                surface=self._ds_rad,
-                )
-        )
+        f_in = FlightWithEmissions.from_flight(self.flight_with_contrails)
 
         try:
-            f_out: Flight = self.non_co2_model(flight_in)
+            f_out: FlightWithNonCO2Impact = self.non_co2_model(f_in)
         except ClimateStepError:
             raise
         except Exception as e:
@@ -378,7 +376,7 @@ class FlightRunner:
             raise RuntimeError(f"Non-CO₂ evaluation failed: {e}") from e
 
         # Zero-copy validated view
-        self.flight_with_nonco2 = FlightWithNonCO2Impact.from_flight(f_out)
+        self.flight_with_nonco2 = f_out
 
         # Advance pointer; keep contrails if you want both available.
         self.current = self.flight_with_nonco2

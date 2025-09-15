@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Final, Mapping, Protocol
-
+import numpy as np
 import pandas as pd
 from pycontrails import Flight
 
@@ -41,7 +41,7 @@ AGWP_AR6_WM2YR_PER_KG: Mapping[int, float] = {
     100: 0.0895e-12,
 }
 
-import numpy as np
+
 
 # --- ADD under your configuration defaults ---
 # Metric conversion factors from pulse emission to future emission scenario (Dietmüller et al., 2022)

@@ -6,20 +6,25 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 from pycontrails import Flight
-from pycontrails.physics.jet import acceleration as pc_acceleration, overall_propulsion_efficiency
+from pycontrails.physics.jet import (acceleration as pc_acceleration,
+                                     overall_propulsion_efficiency)
 
 from pyneats.core.steps import BaseStep
 from pyneats.utils.utilities import is_nan_string
 from pyneats.steps.weather.weather_provider import FlightWithWeather
 from pyneats.steps.performance.views import FlightWithPerformance
 from pyneats.steps.performance.params import BADAPerformanceModelParams
-from pyneats.steps.performance.adapters import BaseBADAAdapter, BADA3Adapter, BADA4Adapter, PerformanceStepError
+from pyneats.steps.performance.adapters import (BaseBADAAdapter,
+                                                BADA3Adapter,
+                                                BADA4Adapter,
+                                                PerformanceStepError)
+from pyneats.core.steps_registry import register
 
 __all__ = ["BADAPerformanceModel"]
 
 logger = logging.getLogger(__name__)
 
-
+@register("performance", "bada")
 class BADAPerformanceModel(BaseStep[FlightWithWeather, FlightWithPerformance]):
     """
     Thin wrapper over your BADA adapter.

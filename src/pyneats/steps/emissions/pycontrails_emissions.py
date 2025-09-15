@@ -6,28 +6,28 @@ from typing import Any, Mapping, Optional
 from pycontrails import Flight
 from pycontrails.models.emissions import Emissions
 
-from pyneats.core.steps import BaseStep, StepError
+from pyneats.core.steps import BaseStep
 from pyneats.steps.performance import FlightWithPerformance
+from pyneats.steps.emissions.protocol import EmissionsStepError
 from pyneats.steps.emissions.views import (
     FlightWithEmissions,
     DEFAULT_REQUIRED_EMISSION_COLS,
 )
+from pyneats.core.steps_registry import register
 
 __all__ = [
-    "EmissionsStepError",
     "PyContrailsEmissionParams",
     "PyContrailsEmissionModel",
 ]
 
 logger = logging.getLogger(__name__)
 
-class EmissionsStepError(StepError):
-    """Normalized domain error for the emissions step."""
 
 @dataclass(frozen=True)
 class PyContrailsEmissionParams:
     extra_kwargs: Optional[Mapping[str, Any]] = None
 
+@register("emissions", "pycontrails")
 class PyContrailsEmissionModel(BaseStep[FlightWithPerformance, FlightWithEmissions]):
     """
     Thin wrapper over pycontrails.Emissions:

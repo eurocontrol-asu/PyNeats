@@ -10,7 +10,6 @@ from pyneats.steps.emissions.pycontrails_emissions import (
 )
 from pyneats.steps.emissions.eurocontrol_emissions import EurocontrolEmissionModel
 from pyneats.steps.emissions.dlr_emissions import DLREmissionModel
-from pyneats.steps.emissions.factory import EmissionModelType
 
 __all__ = [
     # views
@@ -24,6 +23,4 @@ __all__ = [
     "PyContrailsEmissionModel",
     "EurocontrolEmissionModel",
     "DLREmissionModel",
-    # factory
-    "EmissionModelType",
 ]
