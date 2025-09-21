@@ -69,7 +69,7 @@ class ContrailsParams:
 
 
 # ---- PyContrails COCIP wrapper ------------------------------------
-@register("contrails_model", "cocip")
+@register(ContrailsModel, "cocip")
 class CoCiPModel(BaseStep[FlightWithEmissions, FlightWithContrailsImpact]):
     def __init__(
         self,

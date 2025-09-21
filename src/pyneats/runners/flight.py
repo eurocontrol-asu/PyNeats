@@ -19,6 +19,7 @@ from pyneats.steps.climate import (
     NonCO2Params,
     FlightWithNonCO2Impact,
     ClimateStepError,
+    NonCO2Model
 )
 
 from pyneats.steps.interpolation import (
@@ -95,8 +96,8 @@ class FlightRunner:
 
     # Explicit attribute types for static analysis
     _source: pd.DataFrame | None
+    non_co2_model: NonCO2Model | None
 
-    #non_co2_model: NonCO2Model | None
     default_climate_impact: ClimateImpactModel = DEFAULT_CLIMAT_IMPACT  
 
     def __init__(
@@ -115,32 +116,32 @@ class FlightRunner:
 
         
         self.parser: TrajectoryParser = build(
-            "trajectory_parser",
+            TrajectoryParser,
             self.cfg.trajectory_parser,
             **self.cfg.params.get("trajectory_parser", {}),
         )
 
         self.interpolator: TrajectoryInterpolator =  build(
-            "interpolator",
+            TrajectoryInterpolator,
             self.cfg.interpolator,
             **self.cfg.params.get("interpolator", {}),
         )
 
         self.performance: PerformanceModel =  build(
-            "performance",
+            PerformanceModel,
             self.cfg.performance,
             **self.cfg.params.get("performance", {}),
         )
     
         self.emission: EmissionModel = build(
-            "emissions",
+            EmissionModel,
             self.cfg.emissions,
             **self.cfg.params.get("emissions", {}),
         )
         
         
         self.contrails_model: ContrailsModel = build(
-            "contrails_model",
+            ContrailsModel,
             self.cfg.contrails_model,
             **self.cfg.params.get("contrails_model",
                                   {"params":ContrailsParams(met=self.weather.met(),
@@ -348,7 +349,7 @@ class FlightRunner:
 
 
         self.non_co2_model = build(
-            "non_co2_model",
+            NonCO2Model,
             self.cfg.non_co2_model,
             **self.cfg.params.get("non_co2_model",
                                   {"params":NonCO2Params(

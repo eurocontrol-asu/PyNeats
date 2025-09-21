@@ -121,7 +121,7 @@ def make_accf_surface_view(surface: MetDataset) -> MetDataset:
     return accf_surface
 
 
-@register("non_co2_model", "accf")
+@register(NonCO2Model, "accf")
 class ACCFModel(BaseStep[FlightWithEmissions, FlightWithNonCO2Impact]):
     """
     Thin wrapper around `pycontrails.models.accf.ACCF` (ClimAccf).

@@ -14,6 +14,7 @@ from pyneats.steps.emissions.views import (
     DEFAULT_REQUIRED_EMISSION_COLS,
 )
 from pyneats.core.steps_registry import register
+from pyneats.steps.emissions.protocol import EmissionModel
 
 __all__ = [
     "PyContrailsEmissionParams",
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 class PyContrailsEmissionParams:
     extra_kwargs: Optional[Mapping[str, Any]] = None
 
-@register("emissions", "pycontrails")
+@register(EmissionModel, "pycontrails")
 class PyContrailsEmissionModel(BaseStep[FlightWithPerformance, FlightWithEmissions]):
     """
     Thin wrapper over pycontrails.Emissions:

@@ -7,12 +7,13 @@ from pyneats.core.steps import BaseStage
 from pyneats.steps.trajectory.views import Flight4D
 from pyneats.steps.trajectory.nm_parser import FlightParsingError
 from pyneats.core.steps_registry import register
+from pyneats.steps.trajectory.protocol import TrajectoryParser
 
 __all__ = ["ADSBParser"]
 
 logger = logging.getLogger(__name__)
 
-@register("trajectory_parser", "adsb")
+@register(TrajectoryParser, "adsb")
 class ADSBParser(BaseStage[pd.DataFrame, Flight4D]):
     """Placeholder for an ADS-B specific parser yielding `Flight4D`."""
     def __init__(self) -> None:

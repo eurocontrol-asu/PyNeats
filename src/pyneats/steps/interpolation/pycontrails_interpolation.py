@@ -9,6 +9,7 @@ from pyneats.steps.trajectory import Flight4D
 from pyneats.steps.interpolation.params import TrajectoryInterpolationParams
 from pyneats.steps.interpolation.protocol import InterpolationStepError
 from pyneats.core.steps_registry import register
+from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
 
 __all__ = ["PyContrailsInterpolator"]
 
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 
-@register("interpolator", "pycontrails")
+@register(TrajectoryInterpolator, "pycontrails")
 class PyContrailsInterpolator(BaseStep[Flight4D, Flight4D]):
     """
     Thin wrapper around `Flight.resample_and_fill`.

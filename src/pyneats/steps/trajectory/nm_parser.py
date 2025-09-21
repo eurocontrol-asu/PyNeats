@@ -13,6 +13,7 @@ from pyneats.core.constants import METERS_PER_FOOT, FEET_PER_FL
 from pyneats.steps.trajectory.views import Flight4D, REQUIRED_4D_COLS
 from pyneats.core.steps_registry import register
 from pyneats.steps.trajectory.protocol import FlightParsingError
+from pyneats.steps.trajectory.protocol import TrajectoryParser
 
 __all__ = ["NMTrajectoryParserParams", "NMTrajectoryParser"]
 
@@ -43,7 +44,7 @@ class NMTrajectoryParserParams:
     date_format: str = "%Y-%m-%d %H:%M:%S"
     timezone: str = "UTC"  # output tz; parsing is done as UTC then converted
 
-@register("trajectory_parser", "nm")
+@register(TrajectoryParser, "nm")
 class NMTrajectoryParser(BaseStage[pd.DataFrame, Flight4D]):
     """
     Parse NM FTFM/RTFM/CTFM data into a `Flight4D`.

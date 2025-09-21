@@ -1,77 +1,102 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Mapping
+from typing import Any, Callable, Dict, Mapping, TypeVar, cast
 from threading import RLock
+import warnings
 
 __all__ = [
+    # public API
     "register",
     "build",
     "known",
-    "ensure_kind",
-    "RegistryError",
-]
+    "RegistryError"]
+
 
 class RegistryError(ValueError):
     pass
 
-# Single global registry, but thread-safe.
-_REGISTRIES: Dict[str, Dict[str, Callable[..., Any]]] = {
-    "interpolator": {},
-    "trajectory_parser": {},
-    "performance": {},
-    "emissions": {},
-    "contrails_model": {},
-    "non_co2_model": {},
-    "climate_impact": {},
-}
-_LOCK = RLock()
+# Constructor type for a given T (class or factory function)
+T = TypeVar("T")
+Ctor = Callable[..., T]
 
-def ensure_kind(kind: str) -> None:
-    if kind not in _REGISTRIES:
-        raise RegistryError(
-            f"Unknown registry kind='{kind}'. "
-            f"Known kinds: {', '.join(sorted(_REGISTRIES)) or '(none)'}"
-        )
 
-def register(kind: str, name: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+# ---- Single, type-keyed registry --------------------------------------------
+
+class _BigRegistry:
     """
-    Decorator to register a constructor/class under a kind and a name.
+    Single registry keyed by *interface type* then by entry name.
+
+    Internals:
+      _items: Dict[type[Any], Dict[str, Callable[..., Any]]]
+    We keep it Any-typed inside and cast at the edges to preserve strong
+    generics on the public API without mypy gymnastics.
+    """
+
+    def __init__(self) -> None:
+        self._items: Dict[type[Any], Dict[str, Callable[..., Any]]] = {}
+        self._lock = RLock()
+
+    def register(self, t: type[T], name: str) -> Callable[[Ctor[T]], Ctor[T]]:
+        key = name.lower().strip()
+
+        def deco(ctor: Ctor[T]) -> Ctor[T]:
+            with self._lock:
+                bucket = self._items.setdefault(t, {})
+                if key in bucket:
+                    warnings.warn(
+                        f"Overwriting registry entry for {t.__name__!s}.{key} -> {ctor}",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
+                # Store as Callable[..., Any] internally
+                bucket[key] = cast(Callable[..., Any], ctor)
+            return ctor
+
+        return deco
+
+    def build(self, t: type[T], name: str, **params: Any) -> T:
+        key = name.lower().strip()
+        with self._lock:
+            try:
+                ctor_any = self._items[t][key]
+            except KeyError as e:
+                known = ", ".join(sorted(self._items.get(t, {}))) or "(none)"
+                raise RegistryError(
+                    f"Unknown {t.__name__} name='{name}'. Known: {known}"
+                ) from e
+        ctor = cast(Ctor[T], ctor_any)
+        return ctor(**params)
+
+    def known(self, t: type[T]) -> Mapping[str, Ctor[T]]:
+        with self._lock:
+            # Return a shallow copy, cast back to the precise ctor type
+            bucket = self._items.get(t, {})
+            return {k: cast(Ctor[T], v) for k, v in bucket.items()}
+
+
+# global singleton
+_REGISTRY = _BigRegistry()
+
+
+# ---- Public API (thin wrappers around the singleton) -------------------------
+
+def register(t: type[T], name: str) -> Callable[[Ctor[T]], Ctor[T]]:
+    """
+    Decorator to register a constructor/class under an *interface type* and a name.
 
     Usage:
-        @register("interpolator", "pycontrails")
-        class PyContrailsInterpolator(...): ...
+        @register_t(Interpolator, "pycontrails")
+        class PCInterpolator: ...
     """
-    def deco(ctor: Callable[..., Any]) -> Callable[..., Any]:
-        key = name.lower().strip()
-        with _LOCK:
-            ensure_kind(kind)
-            if key in _REGISTRIES[kind]:
-                # Allow re-registration to avoid import order pain, but warn loudly.
-                # Raise instead if you prefer stricter semantics.
-                import warnings
-                warnings.warn(
-                    f"Overwriting registry entry: {kind}.{key} -> {ctor}",
-                    RuntimeWarning,
-                    stacklevel=2,
-                )
-            _REGISTRIES[kind][key] = ctor
-        return ctor
-    return deco
+    return _REGISTRY.register(t, name)
 
-def build(kind: str, name: str, **params: Any) -> Any:
-    key = name.lower().strip()
-    with _LOCK:
-        ensure_kind(kind)
-        try:
-            ctor = _REGISTRIES[kind][key]
-        except KeyError as e:
-            raise RegistryError(
-                f"Unknown {kind}='{name}'. Known: {', '.join(sorted(_REGISTRIES[kind])) or '(none)'}"
-            ) from e
-    return ctor(**params)
+def build(t: type[T], name: str, **params: Any) -> T:
+    """
+    Build an instance registered under interface type `t` with the given `name`.
+    Strongly typed: returns `T` inferred from `t`.
+    """
+    return _REGISTRY.build(t, name, **params)
 
-def known(kind: str) -> Mapping[str, Callable[..., Any]]:
-    with _LOCK:
-        ensure_kind(kind)
-        # Return a shallow, read-only view
-        return dict(_REGISTRIES[kind])
+def known(t: type[T]) -> Mapping[str, Ctor[T]]:
+    """Return a read-only mapping of registered names -> constructors for interface `t`."""
+    return _REGISTRY.known(t)

@@ -13,6 +13,7 @@ from pyneats.core.steps import BaseStep
 from pyneats.utils.utilities import is_nan_string
 from pyneats.steps.weather.weather_provider import FlightWithWeather
 from pyneats.steps.performance.views import FlightWithPerformance
+from pyneats.steps.performance.protocol import PerformanceModel
 from pyneats.steps.performance.params import BADAPerformanceModelParams
 from pyneats.steps.performance.adapters import (BaseBADAAdapter,
                                                 BADA3Adapter,
@@ -24,7 +25,7 @@ __all__ = ["BADAPerformanceModel"]
 
 logger = logging.getLogger(__name__)
 
-@register("performance", "bada")
+@register(PerformanceModel, "bada")
 class BADAPerformanceModel(BaseStep[FlightWithWeather, FlightWithPerformance]):
     """
     Thin wrapper over your BADA adapter.
