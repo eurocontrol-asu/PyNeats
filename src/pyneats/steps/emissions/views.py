@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from typing import Final
-from pyneats.core.views import FlightView
+#from pyneats.core.views import FlightView
+from pyneats.steps.performance.views import FlightWithPerformance
 
 __all__ = [
     "DEFAULT_REQUIRED_EMISSION_COLS",
@@ -11,6 +12,7 @@ __all__ = [
 # Columns that this step promises to attach
 DEFAULT_REQUIRED_EMISSION_COLS: Final[tuple[str, ...]] = ("nvpm_ei_m",)
 
-class FlightWithEmissions(FlightView):
+#class FlightWithEmissions(FlightView):
+class FlightWithEmissions(FlightWithPerformance):
     """Zero-copy typed view for emissions-enriched flights."""
     REQUIRED = DEFAULT_REQUIRED_EMISSION_COLS

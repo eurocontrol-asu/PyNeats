@@ -13,7 +13,6 @@ from pycontrails.models.accf import ACCF  # pycontrails’ wrapper for ClimAccf
 from pycontrails.datalib.ecmwf import TopNetThermalRadiation, SurfaceSolarDownwardRadiation
 from pycontrails.core.met_var  import TOAOutgoingLongwaveFlux
 
-from pyneats.core.views import FlightView
 from pyneats.core.steps import Step, BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.emissions.views import FlightWithEmissions
@@ -41,7 +40,7 @@ DEFAULT_REQUIRED_CLIMATE_COLS: Final[tuple[str, ...]] = ("aCCF_NOx",)
 class ClimateStepError(RuntimeError):
     """Raised when ACCF evaluation fails or yields invalid output."""
 
-class FlightWithNonCO2Impact(FlightView):
+class FlightWithNonCO2Impact(FlightWithEmissions):
     """Zero-copy typed view for emissions-enriched flights."""
     REQUIRED = DEFAULT_REQUIRED_CLIMATE_COLS
 

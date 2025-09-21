@@ -12,7 +12,7 @@ from pycontrails.core.met import MetDataset
 from pycontrails.models.cocip import Cocip
 from pycontrails.models.humidity_scaling import ConstantHumidityScaling
 
-from pyneats.core.views import FlightView
+
 from pyneats.steps.emissions.views import FlightWithEmissions
 from pyneats.core.steps import Step, BaseStep
 from pyneats.core.steps_registry import register
@@ -42,7 +42,7 @@ class ContrailsStepError(RuntimeError):
     """Raised when contrail impact evaluation fails or yields invalid output."""
 
 
-class FlightWithContrailsImpact(FlightView):
+class FlightWithContrailsImpact(FlightWithEmissions):
     """Zero-copy typed view for emissions-enriched flights."""
     REQUIRED = DEFAULT_REQUIRED_CONTRAIL_COLS
 

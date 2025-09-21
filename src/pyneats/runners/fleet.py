@@ -55,10 +55,10 @@ class FleetRunnerParams:
 # ---------------------------
 
 def _extract_climate_payload(neats_flight: FlightRunner, df_flight: pd.DataFrame) -> dict[str, Any]:
-    current = neats_flight.current
-    if current is None or "climate_impact" not in getattr(current, "attrs", {}):
+    flight_with_climate_impact = neats_flight.flight_with_climate_impact
+    if flight_with_climate_impact is None or "climate_impact" not in getattr(flight_with_climate_impact, "attrs", {}):
         raise RuntimeError("No climate_impact found on the processed flight.")
-    payload = copy.deepcopy(current.attrs["climate_impact"])
+    payload = copy.deepcopy(flight_with_climate_impact.attrs["climate_impact"])
     fid = df_flight["FLIGHT_ID"].iloc[0] if "FLIGHT_ID" in df_flight else "UNKNOWN"
     payload.setdefault("meta", {})
     payload["meta"].setdefault("FLIGHT_ID", fid)

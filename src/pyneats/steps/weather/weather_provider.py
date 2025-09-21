@@ -12,7 +12,7 @@ from pycontrails.core.met import MetDataset
 from pycontrails.models.humidity_scaling import ConstantHumidityScaling
 
 from pyneats.core.steps import BaseStep, Step, StepError
-from pyneats.core.views import FlightView, ValidationError
+from pyneats.core.views import ValidationError
 from pyneats.steps.trajectory import Flight4D  
 
 __all__ = [
@@ -39,7 +39,7 @@ DEFAULT_REQUIRED_WEATHER_COLS: Final[tuple[str, ...]] = (
 DEFAULT_OPTIONAL_WEATHER_COLS: Final[tuple[str, ...]] = ("air_pressure",)
 
 
-class FlightWithWeather(FlightView):
+class FlightWithWeather(Flight4D):
     """Typed, zero-copy view asserting required weather columns exist."""
     REQUIRED = DEFAULT_REQUIRED_WEATHER_COLS
     OPTIONAL = DEFAULT_OPTIONAL_WEATHER_COLS
