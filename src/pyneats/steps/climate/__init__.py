@@ -21,7 +21,6 @@ from pyneats.steps.climate.gwp import (
     GWPParams,
     ClimateImpactModel,
     SimpleGWPModel,
-    ClimateImpactModelType,
     ClimateImpactStepError,
 )
 __all__ = ["FlightWithContrailsImpact",
@@ -40,5 +39,4 @@ __all__ = ["FlightWithContrailsImpact",
     "GWPParams",
     "ClimateImpactModel",
     "SimpleGWPModel",
-    "ClimateImpactModelType",
 ]

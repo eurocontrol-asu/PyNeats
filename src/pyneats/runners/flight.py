@@ -1,14 +1,12 @@
 import logging
-from typing import Final, Any, Optional
+from typing import Any, Optional
 from dataclasses import dataclass, field
 from typing_extensions import Self
 import pandas as pd
 
-from pycontrails import Flight
 from pycontrails.core.met import MetDataset
 
 from pyneats.steps.climate import (
-    ClimateImpactModelType,
     ClimateImpactModel,
     ClimateImpactStepError,
     ContrailsModel,
@@ -57,7 +55,8 @@ from pyneats.core.neats_defaults import (
     DEFAULT_EMISSIONS,
     DEFAULT_PERFORMANCE,
     DEFAULT_CONTRAILS_MODEL,
-    DEFAULT_NON_CO2_MODEL
+    DEFAULT_NON_CO2_MODEL,
+    DEFAULT_CLIMATE_IMPACT
 )
 
 from pyneats.core.meta import extract_flight_meta
@@ -65,7 +64,6 @@ from pyneats.core.steps_registry import build
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CLIMAT_IMPACT: Final[ClimateImpactModel]= ClimateImpactModelType.GWP.get()
 
 @dataclass
 class RunnerConfig:
@@ -76,7 +74,7 @@ class RunnerConfig:
     emissions: str = DEFAULT_EMISSIONS
     contrails_model: str = DEFAULT_CONTRAILS_MODEL
     non_co2_model: str = DEFAULT_NON_CO2_MODEL
-    climate_impact: str = "gwp"
+    climate_impact: str = DEFAULT_CLIMATE_IMPACT
 
     # Component-specific parameter blocks, e.g.:
     # params = {
@@ -98,13 +96,10 @@ class FlightRunner:
     _source: pd.DataFrame | None
     non_co2_model: NonCO2Model | None
 
-    default_climate_impact: ClimateImpactModel = DEFAULT_CLIMAT_IMPACT  
-
     def __init__(
         self,
         weather: WeatherProviderProtocol,
         source: pd.DataFrame | None = None,
-        climate_impact: ClimateImpactModel | None = None,
         cfg: Optional[RunnerConfig] = None,
     ) -> None:
         
@@ -149,8 +144,13 @@ class FlightRunner:
             )
         )
 
-
-        self.climate_impact = climate_impact or self.default_climate_impact
+        self.climate_impact: ClimateImpactModel = build(
+            ClimateImpactModel,
+            self.cfg.climate_impact,
+            **self.cfg.params.get("climate_impact",
+                                  {"params":{}}
+            )
+        )
 
 
         # Pipeline state
@@ -161,7 +161,7 @@ class FlightRunner:
         self.flight_with_emissions: FlightWithEmissions | None = None
         self.flight_with_contrails: FlightWithContrailsImpact | None = None
         self.flight_with_nonco2: FlightWithNonCO2Impact | None = None
-        self.flight_with_climate_impact: Flight | None = None
+        self.flight_with_climate_impact: FlightWithClimateImpact | None = None
         #self.current: Flight | None = None
 
         # Cached met/rad datasets after downselection for this flight
@@ -388,7 +388,7 @@ class FlightRunner:
             raise RuntimeError("_contrails() must be called before _gwp().")
 
         try:
-            out = self.climate_impact(self.flight_with_nonco2)  # returns FlightWithClimateImpact
+            enriched: FlightWithClimateImpact = self.climate_impact(self.flight_with_nonco2)  # returns FlightWithClimateImpact
         except ClimateImpactStepError:
             raise
         except Exception as e:
@@ -396,7 +396,7 @@ class FlightRunner:
             raise RuntimeError(f"Climate impact evaluation failed: {e}") from e
 
         # keep the typed, zero-copy view
-        self.flight_with_climate_impact = FlightWithClimateImpact.from_flight(out)
+        self.flight_with_climate_impact = enriched
         #self.current = self.flight_with_climate_impact
 
         logger.info("Climate impact (GWP) step completed successfully")

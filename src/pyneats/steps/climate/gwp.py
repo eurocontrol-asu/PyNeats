@@ -3,14 +3,15 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Final, Mapping, Protocol
+from typing import Any, Final, Mapping, Protocol, runtime_checkable
 import numpy as np
 import pandas as pd
-from pycontrails import Flight
 
 from pyneats.core.meta import extract_flight_meta   # single source of truth for metadata
 from pyneats.steps.climate.contrails import FlightWithContrailsImpact # validated view guaranteeing 'ef'
+from pyneats.steps.climate.accf import FlightWithNonCO2Impact  # validated view guaranteeing ACCF cols
+from pyneats.core.steps import Step, BaseStep
+from pyneats.core.steps_registry import register
 
 __all__ = [
     "DEFAULT_HORIZONS",
@@ -23,7 +24,6 @@ __all__ = [
     "GWPParams",
     "ClimateImpactModel",
     "SimpleGWPModel",
-    "ClimateImpactModelType",
 ]
 
 logger = logging.getLogger(__name__)
@@ -64,19 +64,13 @@ class ClimateImpactStepError(RuntimeError):
     """Raised when the climate impact step fails to evaluate or validate outputs."""
 
 
-class FlightWithClimateImpact(Flight):
+class FlightWithClimateImpact(FlightWithNonCO2Impact):
     """
     Zero-copy view guaranteeing that attrs['climate_impact'] exists.
 
     Provides convenient accessors for the climate impact metadata and results.
     """
 
-    @classmethod
-    def from_flight(cls, flight: Flight) -> "FlightWithClimateImpact":
-        if "climate_impact" not in getattr(flight, "attrs", {}):
-            raise KeyError("Flight missing attrs['climate_impact'] – run the GWP step first.")
-        # zero-copy rewrap
-        return cls(data=flight.data, attrs=flight.attrs)
 
     @property
     def climate_payload(self) -> dict[str, Any]:
@@ -111,12 +105,18 @@ class GWPParams:
 
 
 # ---- protocol ----
-class ClimateImpactModel(Protocol):
-    def __call__(self, flight: Flight) -> Flight: ...
 
+@runtime_checkable
+class ClimateImpactModel(Step[FlightWithNonCO2Impact, FlightWithClimateImpact], Protocol):
+    """
+    Cilmate Impatct Model steps consume a FlightWithNonCO2Impact and produce
+    an climate-metrics-enriched flight (zero-copy typed view).
+    """
+    # def __call__(self, flight: FlightWithContrailsImpact) -> FlightWithClimateImpact: ...
 
 # ---- concrete model ----
-class SimpleGWPModel(ClimateImpactModel):
+@register(ClimateImpactModel, "gwp")
+class SimpleGWPModel(BaseStep[FlightWithNonCO2Impact, FlightWithClimateImpact]):
     """
     Compute GWP-like summaries:
       - Sums contrail EF (J) from 'ef' column
@@ -128,7 +128,10 @@ class SimpleGWPModel(ClimateImpactModel):
     def __init__(self, params: GWPParams | None = None) -> None:
         self.params = params or GWPParams()
 
-    def __call__(self, flight: Flight) -> FlightWithClimateImpact:
+        self.logger = logging.getLogger(__name__)
+        
+
+    def run(self, flight: FlightWithNonCO2Impact) -> FlightWithClimateImpact:
         # Validate presence of EF (zero-copy)
         try:
             _ = FlightWithContrailsImpact.from_flight(flight)
@@ -289,12 +292,3 @@ class SimpleGWPModel(ClimateImpactModel):
         flight.attrs["climate_impact"] = payload
         logger.info("Climate impact (GWP) step completed successfully")
         return FlightWithClimateImpact.from_flight(flight)
-
-
-# ---- factory ----
-class ClimateImpactModelType(Enum):
-    GWP = SimpleGWPModel
-
-    def get(self, *args: Any, **kwargs: Any) -> ClimateImpactModel:
-        impl = self.value  # type: ignore[assignment]
-        return impl(*args, **kwargs)  # type: ignore[misc]
