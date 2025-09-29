@@ -20,6 +20,7 @@ _META_KEYS = {
     "bada_version": "bada_version",
     "callsign": "callsign",
     "aobt": "aobt",
+    "bada_code": "bada_code",
     "pycontrails_version": "pycontrails_version",
 }
 
