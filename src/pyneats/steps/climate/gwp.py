@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 
 from pyneats.core.meta import extract_flight_meta   # single source of truth for metadata
-from pyneats.steps.climate.contrails import FlightWithContrailsImpact # validated view guaranteeing 'ef'
-from pyneats.steps.climate.accf import FlightWithNonCO2Impact  # validated view guaranteeing ACCF cols
+from pyneats.steps.climate.contrails import FlightWithContrailsImpact 
+from pyneats.steps.climate.accf import FlightWithNonCO2Impact  
 from pyneats.core.steps import Step, BaseStep
 from pyneats.core.steps_registry import register
 
@@ -49,6 +49,7 @@ ADJUST_COEFF: Final[dict[str, float]] = {
     "CH4": 1.0e-5,
     "O3":  1.0e-5,
     "H2O": 1.0e-5,
+    "NOx": 1.0e-5,
 }
 
 # Horizon conversion factors (your P20_F20 / P20_F50 / P20_F100)
@@ -143,6 +144,11 @@ class SimpleGWPModel(BaseStep[FlightWithNonCO2Impact, FlightWithClimateImpact]):
         try:
             df: pd.DataFrame = flight.to_dataframe()
             total_ef = float(pd.to_numeric(df["ef"], errors="coerce").sum())  # J
+            total_fuel_flow = float(pd.to_numeric(df["fuel_flow"], errors="coerce").sum())  
+            total_fuel_burn = float(pd.to_numeric(df["fuel_burn"], errors="coerce").sum())  
+            non_co2_computation_time = float(flight.attrs["non_co2_computation_time"])
+            contrails_computation_time = float(flight.attrs["contrails_computation_time"])
+            
         except Exception as e:
             logger.exception("Failed to aggregate contrail EF")
             raise ClimateImpactStepError(f"Failed to aggregate contrail EF: {e}") from e
@@ -176,14 +182,15 @@ class SimpleGWPModel(BaseStep[FlightWithNonCO2Impact, FlightWithClimateImpact]):
         }
 
         # Build payload with shared metadata (no duplication)
-        payload = {
+        climate_impact = {
             "meta": {
                 **extract_flight_meta(flight),
-                "efficacy": self.params.efficacy,
-                "surface_earth_m2": self.params.surface_earth,
-                "seconds_per_year": self.params.seconds_per_year,
-                "agwp_wm2yr_per_kg": dict(self.params.agwp_wm2yr_per_kg),
-                "horizons": list(self.params.horizons),
+                "contrails_ef": total_ef,
+                "total_fuel_flow": total_fuel_flow,
+                "total_fuel_burn": total_fuel_burn,
+                "co2_baseline": total_co2,
+                "contrails_computation_time": contrails_computation_time,
+                "non_co2_computation_time": non_co2_computation_time,
             },
             "results": [
                 {
@@ -233,13 +240,14 @@ class SimpleGWPModel(BaseStep[FlightWithNonCO2Impact, FlightWithClimateImpact]):
             "CH4": ["aCCF_CH4", "accf_ch4", "ACCF_CH4", "accf_CH4"],
             "O3":  ["aCCF_O3",  "accf_o3",  "ACCF_O3",  "accf_O3"],
             "H2O": ["aCCF_H2O", "accf_h2o", "ACCF_H2O", "accf_H2O"],
+            "NOx": ["aCCF_NOx", "accf_nox", "ACCF_NOx", "accf_NOx"],
         }
 
         added_species: list[str] = []
         skipped_species: dict[str, str] = {}
 
         if fuel is not None:
-            for sp in ("CH4", "O3", "H2O"):
+            for sp in ("CH4", "O3", "H2O","NOx"):
                 accf = _first_present_col(df, accf_cols[sp])
                 if accf is None:
                     skipped_species[sp] = "missing ACCF column"
@@ -250,6 +258,10 @@ class SimpleGWPModel(BaseStep[FlightWithNonCO2Impact, FlightWithClimateImpact]):
                     warming_sp = (accf * fuel).fillna(0.0)
                     # total_ef_sp then scaled by your adjust_coeff
                     total_ef_sp = float(np.sum(warming_sp)) / ADJUST_COEFF[sp]
+
+                    if sp=="NOx":
+                        # NOx is a special case: cooling effect, so we skip adding it to results
+                        climate_impact["meta"]["NOx_effect"] = float(np.sum(accf.fillna(0.0)))
 
                     # Per-horizon GWP (J m^-2), using your factors
                     gwp_sp = {
@@ -263,7 +275,7 @@ class SimpleGWPModel(BaseStep[FlightWithNonCO2Impact, FlightWithClimateImpact]):
                         for h in horizons
                     }
 
-                    payload["results"].append({
+                    climate_impact["results"].append({
                         "species": sp,
                         "value": [
                             {"horizon": h, "GWP": gwp_sp[h], "CO2eq": co2eq_sp[h]}
@@ -281,7 +293,7 @@ class SimpleGWPModel(BaseStep[FlightWithNonCO2Impact, FlightWithClimateImpact]):
             skipped_species = {sp: "missing fuel_burn" for sp in ("CH4", "O3", "H2O")}
 
         # Record metadata about this augmentation
-        payload["meta"].update({
+        climate_impact["meta"].update({
             "accf_adjust_coeff": dict(ADJUST_COEFF),
             "accf_horizon_conversion_factors": {h: dict(HORIZON_CONVERSION_FACTORS[h]) for h in horizons},
             "nonco2_species_added": added_species,
@@ -289,6 +301,6 @@ class SimpleGWPModel(BaseStep[FlightWithNonCO2Impact, FlightWithClimateImpact]):
         })
 
         # Attach and return view (unchanged from before)
-        flight.attrs["climate_impact"] = payload
+        flight.attrs["climate_impact"] = climate_impact
         logger.info("Climate impact (GWP) step completed successfully")
         return FlightWithClimateImpact.from_flight(flight)

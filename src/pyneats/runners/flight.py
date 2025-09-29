@@ -3,6 +3,7 @@ from typing import Any, Optional
 from dataclasses import dataclass, field
 from typing_extensions import Self
 import pandas as pd
+import time
 
 from pycontrails.core.met import MetDataset
 
@@ -316,6 +317,7 @@ class FlightRunner:
     # Step 6: Compute Contrails EF
     def _contrails(self) -> Self:
 
+        start = time.time()
         if self.flight_with_emissions is None:
             logger.error("Missing flight_with_emissions; did you call _emissions() first?")
             raise RuntimeError("_emissions() must be called before _contrails().")
@@ -338,11 +340,14 @@ class FlightRunner:
         self.flight_with_emissions = None
 
         logger.info("Contrails step completed successfully")
+        end = time.time()
+        self.flight_with_contrails.attrs["contrails_computation_time"] = end - start
         return self
     
     # Step 7: Compute non-CO₂ (ACCF)
     def _nonco2(self) -> Self:
 
+        start = time.time()
         if self.flight_with_contrails is None:
             logger.error("Missing flight_with_contrails; did you call _contrails() first?")
             raise RuntimeError("_contrails() must be called before.")
@@ -379,6 +384,9 @@ class FlightRunner:
         # self.flight_with_emissions = None
 
         logger.info("Non-CO₂ (ACCF) step completed successfully")
+        end = time.time()
+        self.flight_with_nonco2.attrs["non_co2_computation_time"] = end - start
+        #self.flight_with_nonco2.contrails_computation_time = self.flight_with_contrails.contrails_computation_time
         return self
 
     # Step 8: Compute Climate Impact (GWP)

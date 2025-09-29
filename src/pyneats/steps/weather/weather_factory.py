@@ -80,7 +80,7 @@ class DWDZarrCacheSpec:
     rad_chunks: Optional[Mapping[str, int]] = None
     wind_chunks: Optional[Mapping[str, int]] = None
     # Unit fix: convert SDR [W m-2] to [J m-2] by multiplying by dt (seconds)
-    sdr_accumulate_dt_s: Optional[int] = None  # set to your true step if needed (e.g. 3600)
+    sdr_accumulate_dt_s: Optional[int] = 3600  # 1 hour by default; None to skip 
 
 @dataclass(frozen=True)
 class WeatherCacheConfig:
@@ -357,15 +357,9 @@ class DWDFactory(WeatherFactoryProtocol):
 
             # Unit fixes BEFORE mapping (match your script)
             if "clc" in ds:
-                #ds["clc"] = ds["clc"] / 100.0
+                ds["clc"] = ds["clc"] / 100.0
                 ds["clc"].attrs["units"] = "1"
             if "rhi" in ds and ds["rhi"].attrs.get("units", "-") in ("-", "%"):
-                # heuristic: if looks like percent, scale
-                #try:
-                    #if ds["rhi"].max().load() > 2:
-                    #ds["rhi"] = ds["rhi"] / 100.0
-                #except Exception:
-                #    pass
                 ds["rhi"].attrs["units"] = "1"
             # SDR conversion is done later during zarr build if requested
 

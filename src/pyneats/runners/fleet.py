@@ -26,7 +26,7 @@ from pyneats.steps.weather.weather_store import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_NJOBS: Final[int] = 5
+DEFAULT_NJOBS: Final[int] = 30
 DEFAULT_FLIGHT_CHUNK: Final[int] = 16  # tune 8–32
 
 
@@ -186,11 +186,15 @@ class FleetRunner:
         # Time window slicing (reduces dask graph size in workers)
         window_start = (self.asofdate + timedelta(hours=self.timeofday)).strftime("%Y-%m-%d %H:%M:%S")
         window_end = (self.asofdate + timedelta(hours=self.timeofday + self.params.forecast_window)).strftime("%Y-%m-%d %H:%M:%S")
+
+        window_start_weather = (self.asofdate + timedelta(hours=self.timeofday)).strftime("%Y-%m-%d %H:%M:%S")
+        window_end_weather = (self.asofdate + timedelta(hours=self.timeofday + 36)).strftime("%Y-%m-%d %H:%M:%S")
         chunks = self.params.zarr_read_chunks  # None → keep native zarr chunks
 
         def _process_chunk(flight_dfs: list[pd.DataFrame]) -> list[dict[str, Any]]:
             # This call uses weather_store's per-process cache transparently
-            wp = get_weather_from_zarr(zp, t0=window_start, t1=window_end, chunks=chunks)
+            wp = get_weather_from_zarr(zp, t0=window_start_weather, t1=window_end_weather, chunks=chunks)
+            #wp = get_weather_from_zarr(zp, chunks=chunks)
             #out: list[dict[str, Any]] = []
             out = []
             for df_flight in flight_dfs:
@@ -216,7 +220,7 @@ class FleetRunner:
         raw: Any = Parallel(
             n_jobs=self.njobs,
             prefer="processes",
-            batch_size=1,  # type: ignore[arg-type]  # until stubs are fixed
+            batch_size=4,  # type: ignore[arg-type]  # until stubs are fixed
             verbose=10,
         )(delayed(_process_chunk)(c) for c in flight_chunks)
         nested = cast(list[list[dict[str, Any]]], raw)
@@ -256,34 +260,44 @@ class FleetRunner:
 
         df = self.raw_trajectories
         df_model = df[df["MODEL_TYPE"] == self.params.model_type].copy()
-        df_model = df_model[df_model["AIRCRAFT_TYPE_ICAO_ID"]=="A320"].copy()
+        #df_model = df_model[df_model["AIRCRAFT_TYPE_ICAO_ID"]=="A320"].copy()
 
         flight_id_cols = ["AIRCRAFT_ID", "ADEP", "ADES", "REGISTRATION"]
         df_model["FLIGHT_ID"] = df_model[flight_id_cols].astype(str).agg("_".join, axis=1)
 
-        #timeover_parsed = pd.to_datetime(df_model["TIME_OVER"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
-        #df_model_sel = df_model.assign(TIMEOVER_PARSED=timeover_parsed)
 
-        #first_departure = (
-        #    df_model_sel
-        #    .sort_values(["FLIGHT_ID", "TIMEOVER_PARSED"])
-        #    .groupby("FLIGHT_ID", as_index=False)
-        #    .first()[["FLIGHT_ID", "TIMEOVER_PARSED"]]
-        #    .rename(columns={"TIMEOVER_PARSED": "DEPARTURE_TIME"})
-        #)
+        
+        timeover_parsed = pd.to_datetime(df_model["TIME_OVER"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
+        df_model_sel = df_model.assign(TIMEOVER_PARSED=timeover_parsed)
 
-        #valid_flights = first_departure[
-        #    (first_departure["DEPARTURE_TIME"] >= window_start) &
-        #    (first_departure["DEPARTURE_TIME"] < window_end)
-        #]["FLIGHT_ID"]
+        
+        first_departure = (
+            df_model_sel
+            .sort_values(["FLIGHT_ID", "TIMEOVER_PARSED"])
+            .groupby("FLIGHT_ID", as_index=False)
+            .first()[["FLIGHT_ID", "TIMEOVER_PARSED"]]
+            .rename(columns={"TIMEOVER_PARSED": "DEPARTURE_TIME"})
+        )
 
-        valid_flights = df_model["FLIGHT_ID"].drop_duplicates()
+
+        print(" window_start : ", window_start)
+        print(" window_end : ", window_end)
+        valid_flights = first_departure[
+            (first_departure["DEPARTURE_TIME"] >= window_start) &
+            (first_departure["DEPARTURE_TIME"] < window_end)
+        ]["FLIGHT_ID"].drop_duplicates()
+        
+
+        #valid_flights = df_model["FLIGHT_ID"].drop_duplicates()
         selected = df_model[df_model["FLIGHT_ID"].isin(valid_flights)]
 
+        print("len valid_flights", len(valid_flights))
 
         if self.params.sample:
             sample_ids = valid_flights.head(self.params.sample)
             selected = selected[selected["FLIGHT_ID"].isin(sample_ids)]
+
+            print("len sample_ids", len(sample_ids))
 
         self.flights = [group for _, group in selected.groupby("FLIGHT_ID")]
         logger.info("Selected %d flights in window [%s, %s).",

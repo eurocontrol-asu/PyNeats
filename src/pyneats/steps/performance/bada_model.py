@@ -80,6 +80,7 @@ class BADAPerformanceModel(BaseStep[FlightWithWeather, FlightWithPerformance]):
             out.attrs["n_engine"] = adapter.nb_eng
             out.attrs["wingspan"] = adapter.span
             out.attrs["bada_version"] = bada_version
+            out.attrs["bada_code"] = adapter.bada_code
 
             # validate core cols; convert to view only when needed
             out = FlightWithPerformance.from_flight(out)
@@ -145,8 +146,8 @@ class BADAPerformanceModel(BaseStep[FlightWithWeather, FlightWithPerformance]):
         return df
 
     def _thrust_fuel_flight(self, adapter: BaseBADAAdapter, df: pd.DataFrame) -> dict[str, list[Any]]:
-        payload_factor = 0.867
-        mass_curr: float = float(payload_factor * float(adapter.MTOW))
+        payload_factor: float = 0.867
+        mass_curr: float = payload_factor * float(adapter.MTOW)
 
         n = len(df)
         mass_arr = [0.0] * n

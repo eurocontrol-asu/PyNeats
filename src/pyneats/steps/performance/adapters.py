@@ -19,6 +19,8 @@ class AircraftProtocol(Protocol):
     def span(self) -> float: ...
     @property
     def MTOW(self) -> float: ...
+    @property
+    def bada_code(self) -> str: ...
 
 class BaseBADAAdapter(AircraftProtocol, Protocol):
     def thrust_fuel_segment(
@@ -34,6 +36,7 @@ class BaseBADAAdapter(AircraftProtocol, Protocol):
 class BADA4Adapter(BaseBADAAdapter):
     def __init__(self, config_path: str, bada4_code: str) -> None:
         self._obj = Bada4Aircraft(config_path, bada4_code)
+        self._bada_code = bada4_code
 
     @property
     def nb_eng(self) -> int: return self._obj.n_eng
@@ -41,6 +44,8 @@ class BADA4Adapter(BaseBADAAdapter):
     def span(self) -> float: return self._obj.span
     @property
     def MTOW(self) -> float: return self._obj.MTOW
+    @property
+    def bada_code(self) -> str: return self._bada_code
 
      # --- Core math (unchanged logic) ---
     def thrust_fuel_segment(
@@ -112,6 +117,7 @@ class BADA4Adapter(BaseBADAAdapter):
 class BADA3Adapter(BaseBADAAdapter):
     def __init__(self, config_path: str, bada3_code: str) -> None:
         self._obj = Bada3Aircraft(config_path, bada3_code)
+        self._bada_code = bada3_code
 
     @property
     def nb_eng(self) -> int: return self._obj.engines
@@ -119,6 +125,8 @@ class BADA3Adapter(BaseBADAAdapter):
     def span(self) -> float: return self._obj.span
     @property
     def MTOW(self) -> float: return self._obj.MTOW
+    @property
+    def bada_code(self) -> str: return self._bada_code
 
     def thrust_fuel_segment(
         self,
