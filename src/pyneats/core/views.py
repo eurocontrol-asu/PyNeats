@@ -1,27 +1,32 @@
-# core/views.py
 from __future__ import annotations
-from typing import ClassVar, Iterable, TypeVar, cast
+
+from typing import ClassVar, Iterable, TypeVar, Tuple, cast
 from pycontrails import Flight
+from pyneats.core.steps import StepError
 
-from .steps import StepError
+__all__ = [
+    "ValidationError",
+    "FlightView",
+]
 
-__all__ = ["ValidationError", "FlightView"]
 
 class ValidationError(StepError):
     """Raised when a validated Flight view cannot guarantee its schema."""
 
+
 TView = TypeVar("TView", bound="FlightView")
+
 
 class FlightView(Flight):
     """Zero-copy, typed *view* over a Flight with declarative column requirements."""
 
-    REQUIRED: ClassVar[tuple[str, ...]] = ()
-    OPTIONAL: ClassVar[tuple[str, ...]] = ()
+    REQUIRED: ClassVar[Tuple[str, ...]] = ()
+    OPTIONAL: ClassVar[Tuple[str, ...]] = ()
 
     # --- helpers ------------------------------------------------------
 
     @classmethod
-    def _all_required(cls, extra: Iterable[str] | None = None) -> tuple[str, ...]:
+    def _all_required(cls, extra: Iterable[str] | None = None) -> Tuple[str, ...]:
         # Merge REQUIRED across the whole MRO (parents first), dedup while preserving order
         seen: set[str] = set()
         out: list[str] = []
@@ -61,8 +66,10 @@ class FlightView(Flight):
     ) -> TView:
         required = cls._all_required(require)
         missing = [c for c in required if c not in flight]
+
         if missing:
             raise ValidationError(cls.__name__, f"missing columns: {missing}")
+
         # Zero-copy: we only *narrow the type* for the caller
         return cast(TView, flight)
 
@@ -80,4 +87,3 @@ class FlightView(Flight):
     def matches(cls, flight: Flight) -> bool:
         """Runtime check (non-typing) that the flight satisfies this view."""
         return all(c in flight for c in cls._all_required())
-

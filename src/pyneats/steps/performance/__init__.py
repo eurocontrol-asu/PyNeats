@@ -1,26 +1,27 @@
-from pyneats.steps.performance.views import DEFAULT_REQUIRED_PERF_COLS, FlightWithPerformance
-from pyneats.steps.performance.protocol import PerformanceModel
-from pyneats.steps.performance.params import (
-    DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW,
-    BADAPerformanceModelParams,
-)
+from pyneats.steps.performance.views import REQUIRED_PERF_COLS, FlightWithPerformance
+from pyneats.steps.performance.protocol import PerformanceModel, PerformanceStepError
+from pyneats.steps.performance.params import PerformanceModelParams
 from pyneats.steps.performance.adapters import (
-    AircraftProtocol, 
+    AircraftProtocol,
     BaseBADAAdapter,
     BADA3Adapter,
     BADA4Adapter,
-    PerformanceStepError
 )
-from pyneats.steps.performance.bada_model import BADAPerformanceModel
+from pyneats.steps.performance.bada_model import (
+    BADAPerformanceModel,
+    BADAPerformanceModelParams,
+)
 
 __all__ = [
-    "DEFAULT_REQUIRED_PERF_COLS",
+    "REQUIRED_PERF_COLS",
     "FlightWithPerformance",
     "PerformanceModel",
-    "DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW",
-    "BADAPerformanceModelParams",
-    "AircraftProtocol",
-    "BaseBADAAdapter", "BADA3Adapter", "BADA4Adapter",
     "PerformanceStepError",
+    "PerformanceModelParams",
+    "AircraftProtocol",
+    "BaseBADAAdapter",
+    "BADA3Adapter",
+    "BADA4Adapter",
+    "BADAPerformanceModelParams",
     "BADAPerformanceModel",
 ]

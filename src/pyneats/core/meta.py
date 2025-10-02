@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any, Mapping, TypedDict
 from pycontrails import Flight
 
+
 class FlightMeta(TypedDict, total=False):
     aircraft_id: str | None
     departure_airport: str | None
@@ -11,6 +12,7 @@ class FlightMeta(TypedDict, total=False):
     callsign: str | None
     aobt: Any  # keep as Any if it can be datetime/string
     pycontrails_version: str | None
+
 
 _META_KEYS = {
     "aircraft_id": "flight_id",
@@ -24,8 +26,16 @@ _META_KEYS = {
     "pycontrails_version": "pycontrails_version",
 }
 
+
 def extract_flight_meta(flight: Flight) -> FlightMeta:
-    """Zero-copy extraction of common metadata from a Flight's attrs."""
+    """Zero-copy extraction of common metadata from a Flight's attrs.
+
+    Args:
+        flight (Flight): flight
+
+    Returns:
+        FlightMeta: metadata dictionart
+    """
     attrs: Mapping[str, Any] = getattr(flight, "attrs", {}) or {}
     out: FlightMeta = {}
     for k_out, k_in in _META_KEYS.items():

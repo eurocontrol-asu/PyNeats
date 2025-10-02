@@ -18,18 +18,18 @@ from pyneats.steps.climate import (
     NonCO2Params,
     FlightWithNonCO2Impact,
     ClimateStepError,
-    NonCO2Model
+    NonCO2Model,
 )
 
 from pyneats.steps.interpolation import (
     TrajectoryInterpolator,
-    InterpolationStepError,
+    TrajectoryInterpolationStepError,
 )
 
 from pyneats.steps.trajectory import (
-    FlightParsingError,
+    TrajectoryParserStepError,
     Flight4D,
-    TrajectoryParser
+    TrajectoryParser,
 )
 
 from pyneats.steps.performance import (
@@ -39,9 +39,9 @@ from pyneats.steps.performance import (
 )
 
 from pyneats.steps.emissions import (
-    EmissionsStepError,
+    EmissionStepError,
     FlightWithEmissions,
-    EmissionModel
+    EmissionModel,
 )
 
 from pyneats.steps.weather import (
@@ -57,7 +57,7 @@ from pyneats.core.neats_defaults import (
     DEFAULT_PERFORMANCE,
     DEFAULT_CONTRAILS_MODEL,
     DEFAULT_NON_CO2_MODEL,
-    DEFAULT_CLIMATE_IMPACT
+    DEFAULT_CLIMATE_IMPACT,
 )
 
 from pyneats.core.meta import extract_flight_meta
@@ -88,6 +88,7 @@ class RunnerConfig:
     # }
     params: dict[str, dict[str, Any]] = field(default_factory=dict)
 
+
 class FlightRunner:
     """
     Parses, interpolates, and holds flight trajectory with met data.
@@ -103,56 +104,55 @@ class FlightRunner:
         source: pd.DataFrame | None = None,
         cfg: Optional[RunnerConfig] = None,
     ) -> None:
-        
+
         self.cfg = cfg or RunnerConfig()
-        
-        self._source = None # initialize backing field before using the property
+
+        self._source = None  # initialize backing field before using the property
         self.source = source  # use the property setter for validation
         self.weather = weather
 
-        
         self.parser: TrajectoryParser = build(
             TrajectoryParser,
             self.cfg.trajectory_parser,
             **self.cfg.params.get("trajectory_parser", {}),
         )
 
-        self.interpolator: TrajectoryInterpolator =  build(
+        self.interpolator: TrajectoryInterpolator = build(
             TrajectoryInterpolator,
             self.cfg.interpolator,
             **self.cfg.params.get("interpolator", {}),
         )
 
-        self.performance: PerformanceModel =  build(
+        self.performance: PerformanceModel = build(
             PerformanceModel,
             self.cfg.performance,
             **self.cfg.params.get("performance", {}),
         )
-    
+
         self.emission: EmissionModel = build(
             EmissionModel,
             self.cfg.emissions,
             **self.cfg.params.get("emissions", {}),
         )
-        
-        
+
+        contrail_params = self.cfg.params.get("contrails_model", {})
+        contrail_params.update(
+            {
+                "met": self.weather.met(),
+                "rad": self.weather.rad(),
+            },
+        )
         self.contrails_model: ContrailsModel = build(
             ContrailsModel,
             self.cfg.contrails_model,
-            **self.cfg.params.get("contrails_model",
-                                  {"params":ContrailsParams(met=self.weather.met(),
-                                                            rad=self.weather.rad())}
-            )
+            **contrail_params,
         )
 
         self.climate_impact: ClimateImpactModel = build(
             ClimateImpactModel,
             self.cfg.climate_impact,
-            **self.cfg.params.get("climate_impact",
-                                  {"params":{}}
-            )
+            **self.cfg.params.get("climate_impact", {}),
         )
-
 
         # Pipeline state
         self.parsed_flight: Flight4D | None = None
@@ -163,11 +163,11 @@ class FlightRunner:
         self.flight_with_contrails: FlightWithContrailsImpact | None = None
         self.flight_with_nonco2: FlightWithNonCO2Impact | None = None
         self.flight_with_climate_impact: FlightWithClimateImpact | None = None
-        #self.current: Flight | None = None
+        # self.current: Flight | None = None
 
         # Cached met/rad datasets after downselection for this flight
-        self._ds_met : MetDataset | None = None
-        self._ds_rad : MetDataset | None = None
+        self._ds_met: MetDataset | None = None
+        self._ds_rad: MetDataset | None = None
 
     @property
     def source(self) -> pd.DataFrame | None:
@@ -190,7 +190,7 @@ class FlightRunner:
             raise TypeError(f"source must be a pandas DataFrame, got {type(value)}")
 
         self._source = value.copy(deep=False)
-    
+
     # Step 1: Parse flights (NM trajectories, ADS-B flights)
     def _parse_flight(self) -> Self:
         if self.source is None:
@@ -200,19 +200,22 @@ class FlightRunner:
         # Run the parser
         try:
             parsed_flight: Flight4D = self.parser(self.source)
-        except FlightParsingError:
+        except TrajectoryParserStepError:
             raise
         except Exception as e:
             logger.exception("Unexpected error while parsing trajectory")
             raise RuntimeError(f"Trajectory parsing failed: {e}") from e
-        
+
         # Cache the parsed flight
         self.parsed_flight = parsed_flight
-        #self.current = self.parsed_flight
+        # self.current = self.parsed_flight
 
-        logger.info("Flight parsing completed successfully with %d points", len(self.parsed_flight.data))
+        logger.info(
+            "Flight parsing completed successfully with %d points",
+            len(self.parsed_flight.data),
+        )
         return self
-    
+
     # Step 2: Interpolate/reconstruct trajectory
     def _interpolate(self) -> Self:
 
@@ -223,14 +226,14 @@ class FlightRunner:
         # Run the interpolator
         try:
             interpolated_flight: Flight4D = self.interpolator(self.parsed_flight)
-        except InterpolationStepError:
+        except TrajectoryInterpolationStepError:
             raise
         except Exception as e:
             logger.exception("Unexpected error during interpolation")
             raise RuntimeError(f"Interpolation failed: {e}") from e
 
         self.interpolated_flight = interpolated_flight
-        #self.current = self.interpolated_flight
+        # self.current = self.interpolated_flight
         self.parsed_flight = None
 
         logger.info(
@@ -238,15 +241,19 @@ class FlightRunner:
             len(interpolated_flight.data),
         )
         return self
-    
+
     # Step 3: Intersect with weather data
     def _intersect_weather(self) -> Self:
 
         if self.interpolated_flight is None:
-            logger.error("Missing interpolated_flight; did you call _interpolate() first?")
-            raise RuntimeError("_interpolate() must be called before _intersect_weather().")
+            logger.error(
+                "Missing interpolated_flight; did you call _interpolate() first?"
+            )
+            raise RuntimeError(
+                "_interpolate() must be called before _intersect_weather()."
+            )
 
-        # Run the weather intersection step 
+        # Run the weather intersection step
         try:
             enriched: FlightWithWeather = self.weather(self.interpolated_flight)
         except WeatherStepError:
@@ -258,23 +265,29 @@ class FlightRunner:
         self.flight_with_weather = enriched
 
         # Advance pointer & release previous stage reference
-        #self.current = self.flight_with_weather
+        # self.current = self.flight_with_weather
         self.interpolated_flight = None
 
         # Cache the downsampled met/rad datasets for later use (e.g accfs)
         self._ds_met = self.weather.ds_met()
         self._ds_rad = self.weather.ds_rad()
 
-        logger.info("Weather intersection completed successfully with %d points",
-                    len(self.flight_with_weather.data))
+        logger.info(
+            "Weather intersection completed successfully with %d points",
+            len(self.flight_with_weather.data),
+        )
         return self
-    
+
     # Step 4: Run Performance model
     def _performance(self) -> Self:
 
         if self.flight_with_weather is None:
-            logger.error("Missing flight_with_weather; did you call _intersect_weather() first?")
-            raise RuntimeError("_intersect_weather() must be called before _performance().")
+            logger.error(
+                "Missing flight_with_weather; did you call _intersect_weather() first?"
+            )
+            raise RuntimeError(
+                "_intersect_weather() must be called before _performance()."
+            )
 
         try:
             enriched: FlightWithPerformance = self.performance(self.flight_with_weather)
@@ -286,7 +299,7 @@ class FlightRunner:
 
         self.flight_with_performance = enriched
 
-        #self.current = self.flight_with_performance
+        # self.current = self.flight_with_performance
         self.flight_with_weather = None
         logger.info("Performance step completed successfully")
         return self
@@ -295,11 +308,13 @@ class FlightRunner:
     def _emissions(self) -> Self:
 
         if self.flight_with_performance is None:
-            logger.error("Missing flight_with_performance; did you call performance() first?")
+            logger.error(
+                "Missing flight_with_performance; did you call performance() first?"
+            )
             raise RuntimeError("performance() must be called before _emissions().")
         try:
             enriched: FlightWithEmissions = self.emission(self.flight_with_performance)
-        except EmissionsStepError:
+        except EmissionStepError:
             # Already logged inside the emissions step; just propagate.
             raise
         except Exception as e:
@@ -308,23 +323,27 @@ class FlightRunner:
 
         # Get the typed, zero-copy view
         self.flight_with_emissions = enriched
-        #self.current = self.flight_with_emissions
+        # self.current = self.flight_with_emissions
         self.flight_with_performance = None
 
         logger.info("Emissions step completed successfully")
         return self
-    
+
     # Step 6: Compute Contrails EF
     def _contrails(self) -> Self:
 
         start = time.time()
         if self.flight_with_emissions is None:
-            logger.error("Missing flight_with_emissions; did you call _emissions() first?")
+            logger.error(
+                "Missing flight_with_emissions; did you call _emissions() first?"
+            )
             raise RuntimeError("_emissions() must be called before _contrails().")
 
         # Run the contrails step (COCIP). It returns a base Flight.
         try:
-            enriched: FlightWithContrailsImpact = self.contrails_model(self.flight_with_emissions)
+            enriched: FlightWithContrailsImpact = self.contrails_model(
+                self.flight_with_emissions
+            )
         except ContrailsStepError:
             # Already logged inside the model; keep original traceback.
             raise
@@ -336,32 +355,35 @@ class FlightRunner:
         self.flight_with_contrails = enriched
 
         # Advance pointer & release previous stage
-        #self.current = self.flight_with_contrails
+        # self.current = self.flight_with_contrails
         self.flight_with_emissions = None
 
         logger.info("Contrails step completed successfully")
         end = time.time()
         self.flight_with_contrails.attrs["contrails_computation_time"] = end - start
         return self
-    
+
     # Step 7: Compute non-CO₂ (ACCF)
     def _nonco2(self) -> Self:
 
         start = time.time()
         if self.flight_with_contrails is None:
-            logger.error("Missing flight_with_contrails; did you call _contrails() first?")
+            logger.error(
+                "Missing flight_with_contrails; did you call _contrails() first?"
+            )
             raise RuntimeError("_contrails() must be called before.")
 
-
+        accf_params = self.cfg.params.get("non_co2_model", {})
+        accf_params.update(
+            {
+                "met": self._ds_met,
+                "surface": self._ds_rad,
+            }
+        )
         self.non_co2_model = build(
             NonCO2Model,
             self.cfg.non_co2_model,
-            **self.cfg.params.get("non_co2_model",
-                                  {"params":NonCO2Params(
-                                                    met=self._ds_met,
-                                                    surface=self._ds_rad,
-                                                    )}
-            )
+            **accf_params,
         )
 
         f_in: FlightWithEmissions = self.flight_with_contrails
@@ -378,7 +400,7 @@ class FlightRunner:
         self.flight_with_nonco2 = f_out
 
         # Advance pointer; keep contrails if you want both available.
-        #self.current = self.flight_with_nonco2
+        # self.current = self.flight_with_nonco2
         # Optionally free memory:
         # self.flight_with_contrails = None
         # self.flight_with_emissions = None
@@ -386,17 +408,21 @@ class FlightRunner:
         logger.info("Non-CO₂ (ACCF) step completed successfully")
         end = time.time()
         self.flight_with_nonco2.attrs["non_co2_computation_time"] = end - start
-        #self.flight_with_nonco2.contrails_computation_time = self.flight_with_contrails.contrails_computation_time
+        # self.flight_with_nonco2.contrails_computation_time = self.flight_with_contrails.contrails_computation_time
         return self
 
     # Step 8: Compute Climate Impact (GWP)
     def _gwp(self) -> Self:
         if self.flight_with_nonco2 is None:
-            logger.error("Missing flight_with_contrails; did you call _contrails() first?")
+            logger.error(
+                "Missing flight_with_contrails; did you call _contrails() first?"
+            )
             raise RuntimeError("_contrails() must be called before _gwp().")
 
         try:
-            enriched: FlightWithClimateImpact = self.climate_impact(self.flight_with_nonco2)  # returns FlightWithClimateImpact
+            enriched: FlightWithClimateImpact = self.climate_impact(
+                self.flight_with_nonco2
+            )  # returns FlightWithClimateImpact
         except ClimateImpactStepError:
             raise
         except Exception as e:
@@ -405,7 +431,7 @@ class FlightRunner:
 
         # keep the typed, zero-copy view
         self.flight_with_climate_impact = enriched
-        #self.current = self.flight_with_climate_impact
+        # self.current = self.flight_with_climate_impact
 
         logger.info("Climate impact (GWP) step completed successfully")
         return self
@@ -414,7 +440,7 @@ class FlightRunner:
         if self.flight_with_climate_impact is None:
             raise RuntimeError("No current flight available to extract metadata.")
         return dict(extract_flight_meta(self.flight_with_climate_impact))
-    
+
     def eval(self) -> Self:
         """
         Run the full NEATS processing pipeline on the current flight.
@@ -436,13 +462,12 @@ class FlightRunner:
             and all intermediate results available in their respective attributes.
         """
         return (
-            self._parse_flight()     # pylint: disable=protected-access
-            ._interpolate()          # pylint: disable=protected-access
-            ._intersect_weather()    # pylint: disable=protected-access
-            ._performance()          # pylint: disable=protected-access
-            ._emissions()            # pylint: disable=protected-access
-            ._contrails()            # pylint: disable=protected-access
-            ._nonco2()               # pylint: disable=protected-access
-            ._gwp()                  # pylint: disable=protected-access
+            self._parse_flight()  # pylint: disable=protected-access
+            ._interpolate()  # pylint: disable=protected-access
+            ._intersect_weather()  # pylint: disable=protected-access
+            ._performance()  # pylint: disable=protected-access
+            ._emissions()  # pylint: disable=protected-access
+            ._contrails()  # pylint: disable=protected-access
+            ._nonco2()  # pylint: disable=protected-access
+            ._gwp()  # pylint: disable=protected-access
         )
-        

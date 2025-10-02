@@ -27,7 +27,9 @@ def _is_consolidated(path: str) -> bool:
 
 
 # Normalize chunk mapping to a sorted tuple for cache keying
-def _norm_chunks(ch: Optional[Mapping[str, int]]) -> Optional[Tuple[Tuple[str, int], ...]]:
+def _norm_chunks(
+    ch: Optional[Mapping[str, int]]
+) -> Optional[Tuple[Tuple[str, int], ...]]:
     if not ch:
         return None
     return tuple(sorted((k, int(v)) for k, v in ch.items()))
@@ -36,7 +38,7 @@ def _norm_chunks(ch: Optional[Mapping[str, int]]) -> Optional[Tuple[Tuple[str, i
 # In-memory cache for opened MetDataset objects (per process)
 _DATASET_CACHE: Dict[
     Tuple[str, Optional[str], Optional[str], Optional[Tuple[Tuple[str, int], ...]]],
-    MetDataset
+    MetDataset,
 ] = {}
 
 
@@ -96,7 +98,7 @@ def get_weather_from_zarr(
     Load meteorological, radiative, and wind data from Zarr stores and return a WeatherProvider.
     Optionally slice by time and rechunk.
     """
-    met  = _open_metdataset_from_zarr(zp.met_store, t0=t0, t1=t1, chunks=chunks)
-    rad  = _open_metdataset_from_zarr(zp.rad_store, t0=t0, t1=t1, chunks=chunks)
+    met = _open_metdataset_from_zarr(zp.met_store, t0=t0, t1=t1, chunks=chunks)
+    rad = _open_metdataset_from_zarr(zp.rad_store, t0=t0, t1=t1, chunks=chunks)
     wind = _open_wind_metdataset(zp.wind_store, met, t0=t0, t1=t1, chunks=chunks)
     return WeatherProvider(met=met, rad=rad, wind=wind)

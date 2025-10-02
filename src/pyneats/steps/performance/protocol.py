@@ -1,15 +1,21 @@
 from __future__ import annotations
 from typing import Protocol, runtime_checkable
-from pyneats.core.steps import Step
+from pyneats.core.steps import Step, StepError
 from pyneats.steps.weather.weather_provider import FlightWithWeather
 from pyneats.steps.performance.views import FlightWithPerformance
 
-__all__ = ["PerformanceModel"]
+__all__ = [
+    "PerformanceModel",
+    "PerformanceStepError",
+]
+
 
 @runtime_checkable
 class PerformanceModel(Step[FlightWithWeather, FlightWithPerformance], Protocol):
     """
-    Performance steps consume a weather-enriched flight and produce
-    a performance-enriched flight (zero-copy view).
+    Performance steps consume a weather-enriched flight and produce a performance-enriched flight (zero-copy view).
     """
-    # def __call__(self, flight: FlightWithWeather) -> FlightWithPerformance: ...
+
+
+class PerformanceStepError(StepError):
+    """Raised when the performance step fails to evaluate or validate outputs."""

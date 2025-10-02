@@ -1,25 +1,30 @@
 from __future__ import annotations
 
-import logging
+from dataclasses import dataclass
 from pyneats.core.steps import BaseStep
-from pyneats.steps.performance import FlightWithPerformance
-from pyneats.steps.emissions.views import (
-    FlightWithEmissions,
-    DEFAULT_REQUIRED_EMISSION_COLS,
-)
-from pyneats.steps.emissions.protocol import EmissionsStepError
 from pyneats.core.steps_registry import register
-from pyneats.steps.emissions.protocol import EmissionModel
+from pyneats.steps.performance import FlightWithPerformance
+from pyneats.steps.emissions.params import EmissionParams
+from pyneats.steps.emissions.views import FlightWithEmissions
+from pyneats.steps.emissions.protocol import EmissionStepError, EmissionModel
 
 __all__ = ["DLREmissionModel"]
 
-logger = logging.getLogger(__name__)
+
+@dataclass(frozen=True)
+class DLREmissionParams(EmissionParams):
+    pass
+
 
 @register(EmissionModel, "dlr")
-class DLREmissionModel(BaseStep[FlightWithPerformance, FlightWithEmissions]):
-    def __init__(self, required_cols: tuple[str, ...] = DEFAULT_REQUIRED_EMISSION_COLS) -> None:
-        super().__init__()
-        self.required_cols = required_cols
+class DLREmissionModel(
+    BaseStep[
+        FlightWithPerformance,
+        FlightWithEmissions,
+        DLREmissionParams,
+    ]
+):
+    default_params = DLREmissionParams
 
     def run(self, flight: FlightWithPerformance) -> FlightWithEmissions:
-        raise EmissionsStepError(type(self).__name__, "not implemented")
+        raise NotImplementedError("DLREmissionModel is not yet implemented")

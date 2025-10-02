@@ -2,22 +2,43 @@ from __future__ import annotations
 
 import logging
 import pandas as pd
-
-from pyneats.core.steps import BaseStage
-from pyneats.steps.trajectory.views import Flight4D
-from pyneats.steps.trajectory.nm_parser import FlightParsingError
+from dataclasses import dataclass
+from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
-from pyneats.steps.trajectory.protocol import TrajectoryParser
+from pyneats.steps.trajectory.views import Flight4D
+from pyneats.steps.trajectory.params import TrajectoryParserParams
+from pyneats.steps.trajectory.protocol import (
+    TrajectoryParser,
+    TrajectoryParserStepError,
+)
 
-__all__ = ["ADSBParser"]
+__all__ = [
+    "ADSBParser",
+    "ADSBParserParams",
+]
 
 logger = logging.getLogger(__name__)
 
+
+@dataclass(frozen=True)
+class ADSBParserParams(TrajectoryParserParams):
+    """Parameters for parsing ADS-B trajectory data."""
+
+    # Placeholder for future parameters
+    pass
+
+
 @register(TrajectoryParser, "adsb")
-class ADSBParser(BaseStage[pd.DataFrame, Flight4D]):
+class ADSBParser(
+    BaseStep[
+        pd.DataFrame,
+        Flight4D,
+        ADSBParserParams,
+    ]
+):
     """Placeholder for an ADS-B specific parser yielding `Flight4D`."""
-    def __init__(self) -> None:
-        super().__init__()
+
+    default_params = ADSBParserParams
 
     def run(self, source: pd.DataFrame) -> Flight4D:
-        raise FlightParsingError(type(self).__name__, "not implemented")
+        raise NotImplementedError("ADSBParser is not yet implemented")

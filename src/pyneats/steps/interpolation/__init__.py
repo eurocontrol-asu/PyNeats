@@ -1,15 +1,24 @@
-from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
+from pyneats.steps.interpolation.protocol import (
+    TrajectoryInterpolator,
+    TrajectoryInterpolationStepError,
+)
 from pyneats.steps.interpolation.params import TrajectoryInterpolationParams
 from pyneats.steps.interpolation.pycontrails_interpolation import (
-    InterpolationStepError,
+    PyContrailsInterpolationParams,
     PyContrailsInterpolator,
 )
-from pyneats.steps.interpolation.bada_interpolation import BADATrajectoryPredictor
+from pyneats.steps.interpolation.bada_interpolation import (
+    BADATrajectoryPredictor,
+    BADAInterpolationParams,
+)
 
 __all__ = [
     "TrajectoryInterpolator",
     "TrajectoryInterpolationParams",
-    "InterpolationStepError",
+    "TrajectoryInterpolationStepError",
+    "TrajectoryInterpolationParams",
+    "PyContrailsInterpolationParams",
     "PyContrailsInterpolator",
     "BADATrajectoryPredictor",
+    "BADAInterpolationParams",
 ]

@@ -1,26 +1,32 @@
 from pyneats.steps.emissions.views import (
     FlightWithEmissions,
-    DEFAULT_REQUIRED_EMISSION_COLS,
+    REQUIRED_EMISSION_COLS,
 )
-from pyneats.steps.emissions.protocol import EmissionModel
+from pyneats.steps.emissions.params import EmissionParams
+from pyneats.steps.emissions.protocol import EmissionModel, EmissionStepError
 from pyneats.steps.emissions.pycontrails_emissions import (
-    EmissionsStepError,
     PyContrailsEmissionParams,
     PyContrailsEmissionModel,
 )
-from pyneats.steps.emissions.eurocontrol_emissions import EurocontrolEmissionModel
-from pyneats.steps.emissions.dlr_emissions import DLREmissionModel
+from pyneats.steps.emissions.eurocontrol_emissions import (
+    EurocontrolEmissionModel,
+    EurocontrolEmissionParams,
+)
+from pyneats.steps.emissions.dlr_emissions import (
+    DLREmissionModel,
+    DLREmissionParams,
+)
 
 __all__ = [
-    # views
     "FlightWithEmissions",
-    "DEFAULT_REQUIRED_EMISSION_COLS",
-    # protocol
+    "REQUIRED_EMISSION_COLS",
+    "EmissionParams",
     "EmissionModel",
-    # implementations
-    "EmissionsStepError",
+    "EmissionStepError",
     "PyContrailsEmissionParams",
     "PyContrailsEmissionModel",
     "EurocontrolEmissionModel",
+    "EurocontrolEmissionParams",
     "DLREmissionModel",
+    "DLREmissionParams",
 ]

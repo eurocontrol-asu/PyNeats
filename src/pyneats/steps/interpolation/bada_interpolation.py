@@ -1,27 +1,40 @@
 from __future__ import annotations
 
-import logging
+from dataclasses import dataclass
 from pyneats.core.steps import BaseStep
 from pyneats.steps.trajectory import Flight4D
-from pyneats.steps.interpolation.params import TrajectoryInterpolationParams
-from pyneats.steps.interpolation.protocol import InterpolationStepError
 from pyneats.core.steps_registry import register
-from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
+from pyneats.steps.interpolation.params import TrajectoryInterpolationParams
+from pyneats.steps.interpolation.protocol import (
+    TrajectoryInterpolationStepError,
+    TrajectoryInterpolator,
+)
 
-__all__ = ["BADATrajectoryPredictor"]
+__all__ = [
+    "BADATrajectoryPredictor",
+    "BADAInterpolationParams",
+]
 
-logger = logging.getLogger(__name__)
+
+@dataclass(frozen=True)
+class BADAInterpolationParams(TrajectoryInterpolationParams):
+    """Parameters for trajectory interpolation/resampling."""
+
 
 @register(TrajectoryInterpolator, "bada-predictor")
-class BADATrajectoryPredictor(BaseStep[Flight4D, Flight4D]):
+class BADATrajectoryPredictor(
+    BaseStep[
+        Flight4D,
+        Flight4D,
+        BADAInterpolationParams,
+    ]
+):
     """
     Placeholder for a physics-based trajectory reconstruction (e.g., BADA).
     Must return a Flight4D (validated, zero-copy).
     """
 
-    def __init__(self, params: TrajectoryInterpolationParams | None = None) -> None:
-        super().__init__()
-        self.params = params or TrajectoryInterpolationParams()
+    default_params = BADAInterpolationParams
 
     def run(self, flight: Flight4D) -> Flight4D:
-        raise InterpolationStepError(f"{type(self).__name__}: not implemented")
+        raise NotImplementedError("BADATrajectoryPredictor is not yet implemented")

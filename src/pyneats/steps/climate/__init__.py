@@ -1,10 +1,9 @@
-
 from pyneats.steps.climate.contrails import (
     FlightWithContrailsImpact,
     ContrailsParams,
     ContrailsStepError,
     CoCiPModel,
-    ContrailsModel
+    ContrailsModel,
 )
 
 from pyneats.steps.climate.accf import (
@@ -13,7 +12,7 @@ from pyneats.steps.climate.accf import (
     NonCO2Params,
     ACCFModel,
     ClimateStepError,
-    make_accf_surface_view
+    make_accf_surface_view,
 )
 
 from pyneats.steps.climate.gwp import (
@@ -23,7 +22,9 @@ from pyneats.steps.climate.gwp import (
     SimpleGWPModel,
     ClimateImpactStepError,
 )
-__all__ = ["FlightWithContrailsImpact",
+
+__all__ = [
+    "FlightWithContrailsImpact",
     "ContrailsModel",
     "ContrailsParams",
     "CoCiPModel",

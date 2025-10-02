@@ -9,11 +9,13 @@ __all__ = [
     "register",
     "build",
     "known",
-    "RegistryError"]
+    "RegistryError",
+]
 
 
 class RegistryError(ValueError):
     pass
+
 
 # Constructor type for a given T (class or factory function)
 T = TypeVar("T")
@@ -21,6 +23,7 @@ Ctor = Callable[..., T]
 
 
 # ---- Single, type-keyed registry --------------------------------------------
+
 
 class _BigRegistry:
     """
@@ -56,6 +59,7 @@ class _BigRegistry:
 
     def build(self, t: type[T], name: str, **params: Any) -> T:
         key = name.lower().strip()
+
         with self._lock:
             try:
                 ctor_any = self._items[t][key]
@@ -64,6 +68,7 @@ class _BigRegistry:
                 raise RegistryError(
                     f"Unknown {t.__name__} name='{name}'. Known: {known}"
                 ) from e
+
         ctor = cast(Ctor[T], ctor_any)
         return ctor(**params)
 
@@ -80,6 +85,7 @@ _REGISTRY = _BigRegistry()
 
 # ---- Public API (thin wrappers around the singleton) -------------------------
 
+
 def register(t: type[T], name: str) -> Callable[[Ctor[T]], Ctor[T]]:
     """
     Decorator to register a constructor/class under an *interface type* and a name.
@@ -90,12 +96,14 @@ def register(t: type[T], name: str) -> Callable[[Ctor[T]], Ctor[T]]:
     """
     return _REGISTRY.register(t, name)
 
+
 def build(t: type[T], name: str, **params: Any) -> T:
     """
     Build an instance registered under interface type `t` with the given `name`.
     Strongly typed: returns `T` inferred from `t`.
     """
     return _REGISTRY.build(t, name, **params)
+
 
 def known(t: type[T]) -> Mapping[str, Ctor[T]]:
     """Return a read-only mapping of registered names -> constructors for interface `t`."""

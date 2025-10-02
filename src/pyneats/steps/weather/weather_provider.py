@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Final, Literal, Mapping, Protocol, runtime_checkable, Any 
+from typing import Final, Literal, Mapping, Protocol, runtime_checkable, Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -11,9 +11,9 @@ from pycontrails import Flight
 from pycontrails.core.met import MetDataset
 from pycontrails.models.humidity_scaling import ConstantHumidityScaling
 
-from pyneats.core.steps import BaseStep, Step, StepError
+from pyneats.core.steps import BaseStep, Step, StepError, BaseParams
 from pyneats.core.views import ValidationError
-from pyneats.steps.trajectory import Flight4D  
+from pyneats.steps.trajectory import Flight4D
 
 __all__ = [
     "DEFAULT_REQUIRED_WEATHER_COLS",
@@ -41,11 +41,13 @@ DEFAULT_OPTIONAL_WEATHER_COLS: Final[tuple[str, ...]] = ("air_pressure",)
 
 class FlightWithWeather(Flight4D):
     """Typed, zero-copy view asserting required weather columns exist."""
+
     REQUIRED = DEFAULT_REQUIRED_WEATHER_COLS
     OPTIONAL = DEFAULT_OPTIONAL_WEATHER_COLS
 
 
 # ---------------------------- Errors ---------------------------------
+
 
 class WeatherStepError(StepError):
     """Normalized domain error for the weather step."""
@@ -53,8 +55,10 @@ class WeatherStepError(StepError):
 
 # ------------------------- Contracts (Option A) ----------------------
 
+
 class HumidityScalingModel(Protocol):
     """Strict contract: humidity scaling *must* return a Flight."""
+
     def eval(self, source: Flight) -> Flight: ...
 
 
@@ -64,10 +68,13 @@ class PcHumidityScalingAdapter(HumidityScalingModel):
     Adapter to wrap pycontrails' ConstantHumidityScaling so that `.eval()` returns a Flight.
     If pycontrails returns None (in-place) we pass back the input Flight.
     """
-    inner: ConstantHumidityScaling
+
+    rhi_adj: float = 0.99
+    # inner: ConstantHumidityScaling
 
     def eval(self, source: Flight) -> Flight:
-        result = self.inner.eval(source=source)
+        model = ConstantHumidityScaling(rhi_adj=self.rhi_adj)
+        result = model.eval(source=source)
 
         if result is None:
             # in-place mutation contract → return the original Flight
@@ -96,22 +103,25 @@ InterpolationMethod = Literal["linear", "nearest"]
 
 
 @dataclass(frozen=True)
-class WeatherProviderParams:
+class WeatherProviderParams(BaseParams):
     # Downselect buffers (lon, lat in deg; time as np.timedelta64; level in model coords)
     lon_buf: tuple[float, float] = (0.0, 0.0)
     lat_buf: tuple[float, float] = (0.0, 0.0)
-    time_buf: tuple[np.timedelta64, np.timedelta64] = (np.timedelta64(0, "h"), np.timedelta64(0, "h"))
+    time_buf: tuple[np.timedelta64, np.timedelta64] = (
+        np.timedelta64(0, "h"),
+        np.timedelta64(0, "h"),
+    )
     level_buf: tuple[float, float] = (0.0, 0.0)
 
     method: InterpolationMethod = "linear"
     use_indices: bool = True
 
+    rhi_adj: float = 0.99  # default value for humidity scaling
+
     # Strict contract: either None, or a model that returns a Flight
-    humidity_scaling: HumidityScalingModel | None = field(
-        default_factory=lambda: PcHumidityScalingAdapter(
-            ConstantHumidityScaling(rhi_adj=0.99)
-        )
-    )
+    # humidity_scaling: HumidityScalingModel | None = field(
+    #    default_factory=lambda: PcHumidityScalingAdapter(rhi_adj=0.99)
+    # )
 
     # Mapping: met variable → output column name on Flight
     var_map: Mapping[str, str] = field(
@@ -127,6 +137,7 @@ class WeatherProviderParams:
 
 # --------------------------- Protocol --------------------------------
 
+
 @runtime_checkable
 class WeatherProviderProtocol(Step[Flight4D, FlightWithWeather], Protocol):
     def met(self) -> MetDataset: ...
@@ -138,7 +149,14 @@ class WeatherProviderProtocol(Step[Flight4D, FlightWithWeather], Protocol):
 
 # ------------------------- Implementation ---------------------------
 
-class WeatherProvider(BaseStep[Flight4D, FlightWithWeather]):
+
+class WeatherProvider(
+    BaseStep[
+        Flight4D,
+        FlightWithWeather,
+        WeatherProviderParams,
+    ]
+):
     """
     Flight4D → FlightWithWeather
 
@@ -148,6 +166,7 @@ class WeatherProvider(BaseStep[Flight4D, FlightWithWeather]):
     - Validate output via FlightWithWeather.from_flight (zero-copy)
     """
 
+    default_params = WeatherProviderParams
 
     def __init__(
         self,
@@ -156,15 +175,15 @@ class WeatherProvider(BaseStep[Flight4D, FlightWithWeather]):
         wind: MetDataset,
         *,
         params: WeatherProviderParams | None = None,
+        **params_kwargs: Any,
     ) -> None:
-        super().__init__()
+        super().__init__(params, **params_kwargs)
+
         self._met = met
         self._rad = rad
         self.wind = wind
-        self.params = params or WeatherProviderParams()
-
-        self._ds_met: MetDataset | None =  None
-        self._ds_rad: MetDataset | None =  None
+        self._ds_met: MetDataset | None = None
+        self._ds_rad: MetDataset | None = None
 
     # --- accessors ----------------------------------------------------
 
@@ -187,7 +206,7 @@ class WeatherProvider(BaseStep[Flight4D, FlightWithWeather]):
         Downselects the meteorological dataset to the relevant subset for a given flight.
 
         This method calls the `downselect_met` method from PyContrails of the provided `Flight4D` object,
-        passing in the meteorological dataset and buffer parameters 
+        passing in the meteorological dataset and buffer parameters
 
         Args:
             flight (Flight4D): The flight object containing trajectory and downselection logic.
@@ -206,7 +225,9 @@ class WeatherProvider(BaseStep[Flight4D, FlightWithWeather]):
                 level_buffer=self.params.level_buf,
             )
         except Exception as e:
-            raise WeatherStepError(type(self).__name__, f"downselect failed: {e}") from e
+            raise WeatherStepError(
+                type(self).__name__, f"downselect failed: {e}"
+            ) from e
 
     # --- main step ----------------------------------------------------
 
@@ -215,7 +236,9 @@ class WeatherProvider(BaseStep[Flight4D, FlightWithWeather]):
         try:
             flight = Flight4D.from_flight(flight)
         except ValidationError as e:
-            raise WeatherStepError(type(self).__name__, f"input is not Flight4D: {e}") from e
+            raise WeatherStepError(
+                type(self).__name__, f"input is not Flight4D: {e}"
+            ) from e
 
         # Downselect datasets
         self._ds_met = self.downselect(flight, self._met)
@@ -228,7 +251,9 @@ class WeatherProvider(BaseStep[Flight4D, FlightWithWeather]):
             for met_var, out_col in self.params.var_map.items():
                 if met_var not in self._ds_met:
                     if out_col in DEFAULT_REQUIRED_WEATHER_COLS:
-                        raise KeyError(f"required met var '{met_var}' missing in downselected MET")
+                        raise KeyError(
+                            f"required met var '{met_var}' missing in downselected MET"
+                        )
                     continue
 
                 vals = flight.intersect_met(
@@ -238,7 +263,11 @@ class WeatherProvider(BaseStep[Flight4D, FlightWithWeather]):
                 )
 
                 # Optional: ensure consistent dtype
-                vals = np.nan_to_num(vals, nan=0.0) if met_var in ("eastward_wind", "northward_wind") else vals
+                vals = (
+                    np.nan_to_num(vals, nan=0.0)
+                    if met_var in ("eastward_wind", "northward_wind")
+                    else vals
+                )
                 # If you want strict float64 everywhere:
                 # vals = np.asarray(vals, dtype=np.float64)
 
@@ -250,7 +279,9 @@ class WeatherProvider(BaseStep[Flight4D, FlightWithWeather]):
             # Assign columns directly (safer than concat with a new DF)
             for k, v in new_cols.items():
                 if v.shape[0] != len(df):
-                    raise ValueError(f"Length mismatch for column {k}: {v.shape[0]} vs {len(df)}")
+                    raise ValueError(
+                        f"Length mismatch for column {k}: {v.shape[0]} vs {len(df)}"
+                    )
                 df[k] = v
 
             base = Flight(data=df, attrs=getattr(flight, "attrs", None))
@@ -259,14 +290,27 @@ class WeatherProvider(BaseStep[Flight4D, FlightWithWeather]):
             raise WeatherStepError(type(self).__name__, f"intersect failed: {e}") from e
 
         # Optional humidity scaling with strict Flight-returning contract
-        if self.params.humidity_scaling is not None:
+        # if self.params.humidity_scaling is not None:
+        #    try:
+        #        base = self.params.humidity_scaling.eval(base)
+        #    except Exception as e:
+        #        raise WeatherStepError(
+        #            type(self).__name__, f"humidity scaling failed: {e}"
+        #        ) from e
+
+        if self.params.rhi_adj is not None:
+            humidity_scaling = PcHumidityScalingAdapter(self.params.rhi_adj)
             try:
-                base = self.params.humidity_scaling.eval(base)
+                base = humidity_scaling.eval(base)
             except Exception as e:
-                raise WeatherStepError(type(self).__name__, f"humidity scaling failed: {e}") from e
+                raise WeatherStepError(
+                    type(self).__name__, f"humidity scaling failed: {e}"
+                ) from e
 
         # Final validation (single source of truth)
         try:
             return FlightWithWeather.from_flight(base)
         except ValidationError as e:
-            raise WeatherStepError(type(self).__name__, f"validation failed: {e}") from e
+            raise WeatherStepError(
+                type(self).__name__, f"validation failed: {e}"
+            ) from e
