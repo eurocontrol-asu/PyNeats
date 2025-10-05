@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from dacite import from_dict
 from time import perf_counter
-from typing import Generic, Protocol, TypeVar, runtime_checkable, Type, Any
+from typing import Generic, Protocol, TypeVar, runtime_checkable, Type, Any, Mapping
 import logging
 import pandas as pd
 
@@ -28,7 +28,8 @@ class BaseParams:
 
 
 # --- Variance-aware type variables for pipeline steps ---
-InFlight = TypeVar("InFlight", Flight, pd.DataFrame, contravariant=True)
+#InFlight = TypeVar("InFlight", Flight, pd.DataFrame, contravariant=True)
+InFlight = TypeVar("InFlight", bound=Flight | pd.DataFrame, contravariant=True)
 OutFlight = TypeVar("OutFlight", bound=Flight, covariant=True)
 Params = TypeVar("Params", bound=BaseParams)
 
@@ -50,7 +51,7 @@ def update_param_dict(
 ) -> None:
     for param, value in new_params.items():
         try:
-            old_value = param_dict[param]
+            _ = param_dict[param]
         except KeyError:
             msg = (
                 f"Unknown parameter '{param}' passed into model. Possible "
@@ -73,8 +74,8 @@ class BaseStep(Generic[InFlight, OutFlight, Params]):
 
     def _load_params(
         self,
-        params: Params | dict | None = None,
-        **params_kwargs,
+        params: Params | Mapping[str, Any] | None = None,
+        **params_kwargs: Any,
     ):
         if params is None:
             params_dict = asdict(self.default_params())
@@ -93,7 +94,7 @@ class BaseStep(Generic[InFlight, OutFlight, Params]):
 
     def __init__(
         self,
-        params: Params | dict | None = None,
+        params: Params | Mapping[str, Any] | None = None,
         **params_kwargs: Any,
     ):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")

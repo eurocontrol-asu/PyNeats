@@ -9,7 +9,6 @@ from pyneats.steps.trajectory.views import Flight4D
 from pyneats.steps.trajectory.params import TrajectoryParserParams
 from pyneats.steps.trajectory.protocol import (
     TrajectoryParser,
-    TrajectoryParserStepError,
 )
 
 __all__ = [
@@ -40,5 +39,5 @@ class ADSBParser(
 
     default_params = ADSBParserParams
 
-    def run(self, source: pd.DataFrame) -> Flight4D:
+    def run(self, flight: pd.DataFrame) -> Flight4D:
         raise NotImplementedError("ADSBParser is not yet implemented")

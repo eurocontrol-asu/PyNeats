@@ -1,9 +1,9 @@
 # climate.py
 from __future__ import annotations
 
-import logging
+
 from dataclasses import dataclass, field
-from typing import Any, Final, Mapping, Protocol, runtime_checkable
+from typing import Any, Mapping
 
 import xarray as xr
 

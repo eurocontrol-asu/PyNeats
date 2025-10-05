@@ -1,8 +1,7 @@
 from typing import Final
-from typing import Any, Final, Mapping
+from typing import Any, Final, Mapping, Literal
 import numpy as np
 from pycontrails.models.humidity_scaling import (
-    ConstantHumidityScaling,
     ExponentialBoostHumidityScaling,
 )
 
@@ -53,8 +52,8 @@ DEFAULT_MAX_REL_MASS_DIFF: Final[float] = 0.01
 DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW: Final[int] = 7
 DEFAULT_Q_FUEL: Final[float] = 43_130_000.0
 
-DEFAULT_DELTA_TAU_COMPUTE_METHOD: Final[str] = "point"
-DEFAULT_DELTA_TAU_FILL_METHOD: Final[str] = "bffill"
+DEFAULT_DELTA_TAU_COMPUTE_METHOD: Final[Literal["point", "zero"]] = "point"
+DEFAULT_DELTA_TAU_FILL_METHOD: Final[Literal["bffill", "none", "zero"]] = "bffill"
 
 # Emissions defaults
 DEFAULT_EMISSIONS_KWARGS: Final[Mapping[str, Any]] = {}

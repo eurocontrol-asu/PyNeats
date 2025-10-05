@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 from functools import cached_property
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from importlib.resources import files
 import numpy as np
 import pandas as pd
@@ -147,7 +147,7 @@ class BADAPerformanceModel(
                 )
             else:
                 # Get take-off weight if available
-                initial_mass: float = flight.attrs.get("takeoff_weight")
+                initial_mass: float | None = flight.attrs.get("takeoff_weight")
 
                 # Initial mass is provided
                 if initial_mass is not None:
@@ -160,7 +160,7 @@ class BADAPerformanceModel(
                     )
                 else:
                     # Use provided payload factor or default
-                    payload_factor: float = flight.attrs.get("payload_factor")
+                    payload_factor: float | None = flight.attrs.get("payload_factor")
 
                     if payload_factor is not None:
                         self.logger.debug(
@@ -195,7 +195,7 @@ class BADAPerformanceModel(
                     fuel_factor: float = 1.0 + self.params.fuel_reserve_fraction
 
                     # Conservative initial mass guess
-                    initial_mass: float = operating_empty_weight + payload_factor * (
+                    initial_mass = operating_empty_weight + payload_factor * (
                         maximum_takeoff_weight - operating_empty_weight
                     )
 

@@ -10,7 +10,6 @@ import pandas as pd
 from pycontrails import Flight
 from pycontrails.core.met import MetDataset
 from pycontrails.models.humidity_scaling import HumidityScaling
-from pycontrails.models.humidity_scaling import ConstantHumidityScaling
 
 from pyneats.core.neats_defaults import DEFAULT_HUMIDITY_SCALING
 from pyneats.core.steps import BaseStep, Step, StepError, BaseParams
@@ -40,6 +39,7 @@ DEFAULT_REQUIRED_WEATHER_COLS: Final[tuple[str, ...]] = (
 )
 DEFAULT_OPTIONAL_WEATHER_COLS: Final[tuple[str, ...]] = ("air_pressure",)
 
+WIND_VARS: Final[tuple[str, ...]] = ("eastward_wind", "northward_wind")
 
 class FlightWithWeather(Flight4D):
     """Typed, zero-copy view asserting required weather columns exist."""
@@ -173,7 +173,7 @@ class WeatherProvider(
         self,
         met: MetDataset,
         rad: MetDataset,
-        wind: MetDataset,
+        wind: MetDataset | None = None,
         *,
         params: WeatherProviderParams | None = None,
         **params_kwargs: Any,
@@ -182,9 +182,10 @@ class WeatherProvider(
 
         self._met = met
         self._rad = rad
-        self.wind = wind
+        self._wind = wind
         self._ds_met: MetDataset | None = None
         self._ds_rad: MetDataset | None = None
+        self._ds_wind: MetDataset | None = None
 
     # --- accessors ----------------------------------------------------
 
@@ -193,12 +194,18 @@ class WeatherProvider(
 
     def rad(self) -> MetDataset:
         return self._rad
+    
+    def wind(self) -> MetDataset | None:
+        return self._wind
 
     def ds_met(self) -> MetDataset | None:
         return self._ds_met
 
     def ds_rad(self) -> MetDataset | None:
         return self._ds_rad
+    
+    def ds_wind(self) -> MetDataset | None:
+        return self._ds_wind
 
     # --- helpers ------------------------------------------------------
 
@@ -244,37 +251,52 @@ class WeatherProvider(
         # Downselect datasets
         self._ds_met = self.downselect(flight, self._met)
         self._ds_rad = self.downselect(flight, self._rad)
+        if self._wind is not None:
+            self._ds_wind = self.downselect(flight, self._wind)
 
         # Intersect MET variables and build a new Flight (no in-place mutation)
         try:
+            
             new_cols: dict[str, NDArray[np.floating[Any]]] = {}
 
             for met_var, out_col in self.params.var_map.items():
-                if met_var not in self._ds_met:
+                src_ds = None
+
+                if met_var in WIND_VARS:
+                    # prefer wind dataset
+                    if self._ds_wind is not None and met_var in self._ds_wind:
+                        src_ds = self._ds_wind
+                    # fallback to MET
+                    elif met_var in self._ds_met:
+                        src_ds = self._ds_met
+                else:
+                    # non-wind → MET only
+                    if  met_var in self._ds_met:
+                        src_ds = self._ds_met
+
+                if src_ds is None:
+                    # missing in both places (or MET missing for non-wind)
                     if out_col in DEFAULT_REQUIRED_WEATHER_COLS:
-                        raise KeyError(
-                            f"required met var '{met_var}' missing in downselected MET"
-                        )
+                        if met_var in WIND_VARS:
+                            raise KeyError(
+                                f"required wind var '{met_var}' missing (looked in WIND then MET)"
+                            )
+                        raise KeyError(f"required met var '{met_var}' missing in MET")
+                    # optional → skip
                     continue
 
+                src = src_ds[met_var]
                 vals = flight.intersect_met(
-                    self._ds_met[met_var],
+                    src,
                     method=self.params.method,
                     use_indices=self.params.use_indices,
                 )
 
-                # Optional: ensure consistent dtype
-                vals = (
-                    np.nan_to_num(vals, nan=0.0)
-                    if met_var in ("eastward_wind", "northward_wind")
-                    else vals
-                )
-                # If you want strict float64 everywhere:
-                # vals = np.asarray(vals, dtype=np.float64)
+                if met_var in WIND_VARS:
+                    vals = np.nan_to_num(vals, nan=0.0)
 
                 new_cols[out_col] = vals
 
-            # IMPORTANT: use the DataFrame view, not .data
             df = flight.dataframe.reset_index(drop=True)
 
             # Assign columns directly (safer than concat with a new DF)

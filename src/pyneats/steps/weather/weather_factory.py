@@ -421,14 +421,31 @@ class DWDFactory(WeatherFactoryProtocol):
             wind_ds_xr = ds_wind[[v.standard_name for v in self._wind_map.values()]]
             wind_chunks = zc.wind_chunks or {
                 "time": 1,
-                "level": 1,
+                "level": 10,
                 "latitude": 256,
                 "longitude": 256,
             }
             wind_ds_xr = wind_ds_xr.chunk(wind_chunks)
 
+
+            # Combine two wind sources along level dimension 
+
+            wind_ds_xr_low = ds_wind[[v.standard_name for v in self._wind_map.values()]]
+            wind_ds_xr_high  = met_ds_xr[[v.standard_name for v in self._wind_map.values()]]
+            wind_ds_combined = xr.concat(
+                [wind_ds_xr_low, wind_ds_xr_high],
+                dim="level",
+                data_vars="all",
+                coords="minimal",
+                compat="equals",
+            )
+            wind_ds_combined = wind_ds_combined.sortby("level")
+            
+            wind_ds_xr = wind_ds_combined.chunk(wind_chunks)
+
+
             os.makedirs(os.path.dirname(zc.wind_store), exist_ok=True)
-            ds_wind.to_zarr(zc.wind_store, mode="w", consolidated=True)
+            wind_ds_xr.to_zarr(zc.wind_store, mode=mode, consolidated=True)
 
         logger.info(
             "DWD zarr cache built",

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import pandas as pd
 from dataclasses import dataclass, field
 from typing import Any, Final, Mapping
+import pandas as pd
+
 from pycontrails import Flight
 from pycontrails.physics.units import ft_to_m
 from pyneats.core.steps import BaseStep
@@ -66,12 +67,12 @@ class NMTrajectoryParser(
 
     REQUIRED_AFTER_RENAME: Final[tuple[str, ...]] = REQUIRED_4D_COLS
 
-    def run(self, source: pd.DataFrame) -> Flight4D:
+    def run(self, flight: pd.DataFrame) -> Flight4D:
         try:
-            self.logger.debug("NM parse start: rows=%d, cols=%d", *source.shape)
+            self.logger.debug("NM parse start: rows=%d, cols=%d", *flight.shape)
 
             # 1) Rename to canonical schema
-            df = source.rename(columns=self.params.mapping_4d)
+            df = flight.rename(columns=self.params.mapping_4d)
             missing = [c for c in self.REQUIRED_AFTER_RENAME if c not in df.columns]
 
             if missing:
@@ -81,7 +82,13 @@ class NMTrajectoryParser(
 
             # 2) FL → meters
             try:
-                df["altitude"] = ft_to_m(df["altitude"] * 100)
+                alt_ft = (
+                    pd.to_numeric(df["altitude"], errors="coerce").mul(100.0)  # FL → ft
+                    .to_numpy(dtype=float, copy=False)                         # -> ndarray[float]
+                )
+                #df["altitude"] = ft_to_m(df["altitude"] * 100)
+                df["altitude"] = ft_to_m(alt_ft)  
+
             except Exception as e:
                 raise TrajectoryParserStepError(
                     f"altitude conversion failed: {e}"

@@ -19,17 +19,17 @@ __all__ = [
 
 class AircraftProtocol(Protocol):
     @property
-    def nb_eng(self) -> int: ...
+    def nb_eng(self) -> int | None: ...
     @property
-    def span(self) -> float: ...
+    def span(self) -> float | None: ...
     @property
-    def MTOW(self) -> float: ...
+    def MTOW(self) -> float | None: ...
     @property
     def bada_code(self) -> str: ...
     @property
-    def MPL(self) -> float: ...
+    def MPL(self) -> float | None : ...
     @property
-    def OEW(self) -> float: ...
+    def OEW(self) -> float | None: ...
 
 
 class BaseBADAAdapter(AircraftProtocol, Protocol):
@@ -50,23 +50,23 @@ class BADA4Adapter(BaseBADAAdapter):
         self._bada_code = bada4_code
 
     @property
-    def nb_eng(self) -> int:
+    def nb_eng(self) -> int | None:
         return self._obj.n_eng
 
     @property
-    def span(self) -> float:
+    def span(self) -> float | None:
         return self._obj.span
 
     @property
-    def MTOW(self) -> float:
+    def MTOW(self) -> float | None:
         return self._obj.MTOW
 
     @property
-    def MPL(self) -> float:
+    def MPL(self) -> float | None:
         return self._obj.MPL
 
     @property
-    def OEW(self) -> float:
+    def OEW(self) -> float | None:
         return self._obj.OEW
 
     @property
@@ -160,23 +160,23 @@ class BADA3Adapter(BaseBADAAdapter):
         self._bada_code = bada3_code
 
     @property
-    def nb_eng(self) -> int:
+    def nb_eng(self) -> int | None:
         return self._obj.engines
 
     @property
-    def span(self) -> float:
+    def span(self) -> float | None:
         return self._obj.span
 
     @property
-    def MTOW(self) -> float:
+    def MTOW(self) -> float | None:
         return self._obj.MTOW
 
     @property
-    def MPL(self) -> float:
+    def MPL(self) -> float | None:
         return None  # BADA3 has no MPL attribute ...
 
     @property
-    def OEW(self) -> float:
+    def OEW(self) -> float | None:
         return self._obj.OEW
 
     @property
