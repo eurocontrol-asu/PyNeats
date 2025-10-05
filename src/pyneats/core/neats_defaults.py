@@ -1,6 +1,11 @@
 from typing import Final
 from typing import Any, Final, Mapping
 import numpy as np
+from pycontrails.models.humidity_scaling import (
+    ConstantHumidityScaling,
+    ExponentialBoostHumidityScaling,
+)
+
 
 __all__ = [
     "DEFAULT_INTERPOLATOR",
@@ -40,10 +45,15 @@ DEFAULT_CLIMATE_IMPACT: Final[str] = "gwp"
 DEFAULT_INTERPOLATION_TIME: Final[str] = "1min"
 
 # Performance defaults
+DEFAULT_PAYLOAD_FACTOR: Final[float] = 0.867
+DEFAULT_FUEL_RESERVE_FRACTION: Final[float] = 0.03
+DEFAULT_MAX_MASS_ESTIMATION_ITER: Final[int] = 2
+DEFAULT_MAX_REL_MASS_DIFF: Final[float] = 0.01
+
 DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW: Final[int] = 7
 DEFAULT_Q_FUEL: Final[float] = 43_130_000.0
 
-DEFAULT_DELTA_TAU_COMPUTE_METHOD: Final[str] = "zero"
+DEFAULT_DELTA_TAU_COMPUTE_METHOD: Final[str] = "point"
 DEFAULT_DELTA_TAU_FILL_METHOD: Final[str] = "bffill"
 
 # Emissions defaults
@@ -51,29 +61,26 @@ DEFAULT_EMISSIONS_KWARGS: Final[Mapping[str, Any]] = {}
 
 # Climate defaults
 # Cocip defaults
-
-from pycontrails.models.humidity_scaling import (
-    ConstantHumidityScaling,
-    ExponentialBoostHumidityScaling,
+# DEFAULT_HUMIDITY_SCALING = ConstantHumidityScaling(rhi_adj=0.99)
+DEFAULT_HUMIDITY_SCALING = ExponentialBoostHumidityScaling(
+    rhi_adj=0.9779,
+    rhi_boost_exponent=1.635,
+    clip_upper=1.65,
 )
 
 DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
     "contrail_contrail_overlapping": False,
     "dt_integration": np.timedelta64(1, "m"),
     "max_age": np.timedelta64(12, "h"),
-    "humidity_scaling": ExponentialBoostHumidityScaling(
-        rhi_adj=0.9779,
-        rhi_boost_exponent=1.635,
-        clip_upper=1.65,
-    ),
+    "humidity_scaling": DEFAULT_HUMIDITY_SCALING,
     "interpolation_use_indices": True,  # Note: not specified in document! Default in ModelParams is False
 }
 
-DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
-    "dt_integration": np.timedelta64(1, "m"),
-    "humidity_scaling": ConstantHumidityScaling(rhi_adj=0.99),
-    "interpolation_use_indices": True,
-}
+# DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
+#    "dt_integration": np.timedelta64(1, "m"),
+#    "humidity_scaling": ConstantHumidityScaling(rhi_adj=0.99),
+#    "interpolation_use_indices": True,
+# }
 
 # ACCF defaults
 
@@ -91,10 +98,10 @@ DEFAULT_ACCF_KWARGS: Final[Mapping[str, Any]] = {
     "unit_K_per_kg_fuel": True,  # Note: not specified in document! Default in ACCF is False
 }
 
-DEFAULT_ACCF_KWARGS: Final[Mapping[str, Any]] = {
-    "unit_K_per_kg_fuel": True,
-    "forecast_step": 12,  # what you used in your snippet
-}
+# DEFAULT_ACCF_KWARGS: Final[Mapping[str, Any]] = {
+#    "unit_K_per_kg_fuel": True,
+#    "forecast_step": 12,  # what you used in your snippet
+# }
 
 # GWP defaults
 DEFAULT_HORIZONS: Final[tuple[int, ...]] = (20, 50, 100)

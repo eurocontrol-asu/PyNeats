@@ -9,8 +9,10 @@ from numpy.typing import NDArray
 import pandas as pd
 from pycontrails import Flight
 from pycontrails.core.met import MetDataset
+from pycontrails.models.humidity_scaling import HumidityScaling
 from pycontrails.models.humidity_scaling import ConstantHumidityScaling
 
+from pyneats.core.neats_defaults import DEFAULT_HUMIDITY_SCALING
 from pyneats.core.steps import BaseStep, Step, StepError, BaseParams
 from pyneats.core.views import ValidationError
 from pyneats.steps.trajectory import Flight4D
@@ -56,25 +58,24 @@ class WeatherStepError(StepError):
 # ------------------------- Contracts (Option A) ----------------------
 
 
+@runtime_checkable
 class HumidityScalingModel(Protocol):
     """Strict contract: humidity scaling *must* return a Flight."""
 
     def eval(self, source: Flight) -> Flight: ...
 
 
-@dataclass(frozen=True)
 class PcHumidityScalingAdapter(HumidityScalingModel):
     """
     Adapter to wrap pycontrails' ConstantHumidityScaling so that `.eval()` returns a Flight.
     If pycontrails returns None (in-place) we pass back the input Flight.
     """
 
-    rhi_adj: float = 0.99
-    # inner: ConstantHumidityScaling
+    def __init__(self, humidity_scaling: HumidityScaling) -> None:
+        self.humidity_scaling = humidity_scaling
 
     def eval(self, source: Flight) -> Flight:
-        model = ConstantHumidityScaling(rhi_adj=self.rhi_adj)
-        result = model.eval(source=source)
+        result = self.humidity_scaling.eval(source=source)
 
         if result is None:
             # in-place mutation contract → return the original Flight
@@ -116,12 +117,12 @@ class WeatherProviderParams(BaseParams):
     method: InterpolationMethod = "linear"
     use_indices: bool = True
 
-    rhi_adj: float = 0.99  # default value for humidity scaling
-
     # Strict contract: either None, or a model that returns a Flight
-    # humidity_scaling: HumidityScalingModel | None = field(
-    #    default_factory=lambda: PcHumidityScalingAdapter(rhi_adj=0.99)
-    # )
+    humidity_scaling: HumidityScalingModel | None = field(
+        default_factory=lambda: PcHumidityScalingAdapter(
+            humidity_scaling=DEFAULT_HUMIDITY_SCALING
+        )
+    )
 
     # Mapping: met variable → output column name on Flight
     var_map: Mapping[str, str] = field(
@@ -290,18 +291,9 @@ class WeatherProvider(
             raise WeatherStepError(type(self).__name__, f"intersect failed: {e}") from e
 
         # Optional humidity scaling with strict Flight-returning contract
-        # if self.params.humidity_scaling is not None:
-        #    try:
-        #        base = self.params.humidity_scaling.eval(base)
-        #    except Exception as e:
-        #        raise WeatherStepError(
-        #            type(self).__name__, f"humidity scaling failed: {e}"
-        #        ) from e
-
-        if self.params.rhi_adj is not None:
-            humidity_scaling = PcHumidityScalingAdapter(self.params.rhi_adj)
+        if self.params.humidity_scaling is not None:
             try:
-                base = humidity_scaling.eval(base)
+                base = self.params.humidity_scaling.eval(base)
             except Exception as e:
                 raise WeatherStepError(
                     type(self).__name__, f"humidity scaling failed: {e}"

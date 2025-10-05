@@ -19,6 +19,10 @@ from pyneats.core.neats_defaults import (
     DEFAULT_Q_FUEL,
     DEFAULT_DELTA_TAU_COMPUTE_METHOD,
     DEFAULT_DELTA_TAU_FILL_METHOD,
+    DEFAULT_PAYLOAD_FACTOR,
+    DEFAULT_FUEL_RESERVE_FRACTION,
+    DEFAULT_MAX_MASS_ESTIMATION_ITER,
+    DEFAULT_MAX_REL_MASS_DIFF,
 )
 from pyneats.core.steps_registry import register
 from pyneats.core.steps import BaseStep
@@ -58,6 +62,12 @@ class BADAPerformanceModelParams(PerformanceModelParams):
     bada4_config_path: str = str(files("pyBADA").joinpath("4.2.1")) + "/"
     bada3_config_path: str = str(files("pyBADA").joinpath("3.16")) + "/"
 
+    # For initial mass estimation
+    payload_factor: float = DEFAULT_PAYLOAD_FACTOR
+    fuel_reserve_fraction: float = DEFAULT_FUEL_RESERVE_FRACTION
+    max_rel_mass_diff: float = DEFAULT_MAX_REL_MASS_DIFF
+    max_mass_estimation_iter: int = DEFAULT_MAX_MASS_ESTIMATION_ITER
+
     @cached_property
     def _bada_df(self) -> pd.DataFrame:
         return pd.read_csv(self.bada_mapping_file)
@@ -96,7 +106,11 @@ class BADAPerformanceModel(
     def run(self, flight: FlightWithWeather) -> FlightWithPerformance:
 
         try:
+            # We need to preprocess anyway the flight to get the true airspeed
+            # even if fuel flow and enngine_efficiency are provided
             df = self._preprocess(flight)  # shallow copy + derived columns
+
+            # We need this to get the number of engines and span, which are required by downstream
             icao = flight.attrs.get("aircraft_type")
 
             if not icao:
@@ -104,31 +118,194 @@ class BADAPerformanceModel(
 
             adapter, bada_version = self._get_bada_adapter(icao)
 
-            perf = self._thrust_fuel_flight(adapter, df)
+            # If BOTH fuel_flow and engine_efficiency are provided by AOs
+            if "fuel_flow" in df.columns and "engine_efficiency" in df.columns:
+                self.logger.debug(
+                    "Flight already has 'fuel_flow' and 'engine_efficiency', skipping BADA model",
+                    extra={"rows": len(df)},
+                )
 
-            # attach results (no deep copy)
-            df["fuel_flow"] = perf["fuel_flow"]
-            df["fuel_burn"] = df["fuel_flow"] * df["segment_duration"]
+                df["fuel_burn"] = df["fuel_flow"] * df["segment_duration"]
+
+                # optional backward-compatibility alias
+                if "fuel" not in df.columns and "fuel_burn" in df.columns:
+                    df["fuel"] = df["fuel_burn"]
+
+                out = Flight(data=df, attrs={**flight.attrs})
+                out.attrs["n_engine"] = adapter.nb_eng
+                out.attrs["wingspan"] = adapter.span
+                return FlightWithPerformance.from_flight(out)
+
+            # When fuel_flow and/or emgine_efficiency are missing, we need to run BADA
+            if "aircraft_mass" in df.columns:
+                self.logger.debug("'aircraft_mass' column provided, using it")
+                # Aircraft mass is known all along the trajectory. Just one BADA pass
+                perf = self._thrust_fuel_flight(
+                    adapter,
+                    df,
+                    initial_mass=None,
+                )
+            else:
+                # Get take-off weight if available
+                initial_mass: float = flight.attrs.get("takeoff_weight")
+
+                # Initial mass is provided
+                if initial_mass is not None:
+                    self.logger.debug("'takeoff_weight' attribute provided, using it")
+                    # Initial mass is known. Just one BADA pass
+                    perf = self._thrust_fuel_flight(
+                        adapter,
+                        df,
+                        initial_mass=initial_mass,
+                    )
+                else:
+                    # Use provided payload factor or default
+                    payload_factor: float = flight.attrs.get("payload_factor")
+
+                    if payload_factor is not None:
+                        self.logger.debug(
+                            "'payload_factor' attribute provided, using it"
+                        )
+                    else:
+                        payload_factor = self.params.payload_factor
+
+                    # Constant values from BADA
+                    operating_empty_weight = adapter.OEW
+                    maximum_takeoff_weight = adapter.MTOW
+
+                    if operating_empty_weight is None or maximum_takeoff_weight is None:
+                        raise PerformanceStepError(
+                            f"BADA adapter for ICAO '{icao}' does not provide OEW or MTOW"
+                        )
+
+                    if adapter.MPL is None:
+                        self.logger.warning(
+                            f"BADA adapter for ICAO '{icao}' does not provide MPL, assuming MPL = MTOW - OEW. Conservative case"
+                        )
+                        maximum_payload = (
+                            maximum_takeoff_weight - operating_empty_weight
+                        )
+                    else:
+                        maximum_payload = adapter.MPL
+
+                    # Other constants
+                    zero_fuel_weight: float = (
+                        operating_empty_weight + payload_factor * maximum_payload
+                    )
+                    fuel_factor: float = 1.0 + self.params.fuel_reserve_fraction
+
+                    # Conservative initial mass guess
+                    initial_mass: float = operating_empty_weight + payload_factor * (
+                        maximum_takeoff_weight - operating_empty_weight
+                    )
+
+                    # Store previous mass
+                    prev_mass = initial_mass
+
+                    # First iteration using constant mass assumption
+                    perf = self._thrust_fuel_flight(
+                        adapter,
+                        df.assign(aircraft_mass=initial_mass),
+                        initial_mass=None,  # use column values (constant here)
+                    )
+
+                    # Compute initial fuel onboard estimate
+                    fuel_consumed = float(
+                        (perf["fuel_flow"] * df["segment_duration"]).sum()
+                    )
+                    fuel_onboard = fuel_consumed * fuel_factor
+
+                    # Initial mass estimate = zero fuel weight + estimated fuel onboard
+                    initial_mass = min(
+                        maximum_takeoff_weight, zero_fuel_weight + fuel_onboard
+                    )
+
+                    self.logger.debug(
+                        f"Initial mass estimate: {initial_mass} kg. MTOW: {maximum_takeoff_weight} kg"
+                    )
+
+                    rel_mass_diff = float("inf")  # Force loop entry
+                    iter_count = 1
+
+                    while (
+                        rel_mass_diff > self.params.max_rel_mass_diff
+                        and iter_count < self.params.max_mass_estimation_iter
+                    ):
+                        # Store previous mass
+                        prev_mass = initial_mass
+
+                        # Compute performance using current mass estimate
+                        perf = self._thrust_fuel_flight(
+                            adapter,
+                            df,
+                            initial_mass=initial_mass,
+                        )
+
+                        fuel_consumed = float(
+                            (perf["fuel_flow"] * df["segment_duration"]).sum()
+                        )
+                        fuel_onboard = fuel_consumed * fuel_factor
+
+                        # Update mass estimate
+                        initial_mass = min(
+                            maximum_takeoff_weight, zero_fuel_weight + fuel_onboard
+                        )
+
+                        # Compute relative difference
+                        rel_mass_diff = abs(prev_mass - initial_mass) / prev_mass
+
+                        self.logger.debug(
+                            f"Mass estimation iteration {iter_count}: {initial_mass} kg (diff {rel_mass_diff * 100}%)",
+                        )
+
+                        iter_count += 1
+
+            # attach results from perf (no deep copy)
+
             df["thrust"] = perf["thrust"]
             df["aircraft_mass"] = perf["mass"]
             df["phase"] = perf["phase"]
             df["thrust_segment"] = perf["segment"]
 
-            # efficiency (unchanged call)
-            tas: NDArray[np.floating] = df["true_airspeed"].to_numpy(
-                dtype=float, copy=False
-            )
-            thrust: NDArray[np.floating] = df["thrust"].to_numpy(
-                dtype=float, copy=False
-            )
-            ff: NDArray[np.floating] = df["fuel_flow"].to_numpy(dtype=float, copy=False)
+            # Set computed engine_efficiency if not provided by AO
+            if "engine_efficiency" not in df.columns:
 
-            df["engine_efficiency"] = overall_propulsion_efficiency(
-                tas, thrust, ff, self.params.q_fuel, False, threshold=0.5
-            )
+                # efficiency (unchanged call)
+                tas: NDArray[np.floating] = df["true_airspeed"].to_numpy(
+                    dtype=float, copy=False
+                )
+                thrust: NDArray[np.floating] = df["thrust"].to_numpy(
+                    dtype=float, copy=False
+                )
+
+                # Use the BADA-computed fuel flow even if AO provided it
+                ff: NDArray[np.floating] = np.asarray(perf["fuel_flow"], dtype=float)
+
+                df["engine_efficiency"] = overall_propulsion_efficiency(
+                    tas,
+                    thrust,
+                    ff,
+                    self.params.q_fuel,
+                    False,
+                    threshold=0.5,
+                )
+            else:
+                self.logger.debug(
+                    "'engine_efficiency' column already provided, keeping it"
+                )
+
+            # Set BADA-computed fuel_flow only if not provided by AO
+            if "fuel_flow" not in df.columns:
+                df["fuel_flow"] = perf["fuel_flow"]
+            else:
+                self.logger.debug("'fuel_flow' column already provided, keeping it")
+
+            df["fuel_burn"] = (
+                df["fuel_flow"] * df["segment_duration"]
+            )  # Always consistent with fuel_flow, whichever the source
 
             # optional backward-compatibility alias
-            if "fuel" not in df and "fuel_burn" in df:
+            if "fuel" not in df.columns and "fuel_burn" in df.columns:
                 df["fuel"] = df["fuel_burn"]
 
             out = Flight(data=df, attrs={**flight.attrs})
@@ -223,9 +400,18 @@ class BADAPerformanceModel(
         self,
         adapter: BaseBADAAdapter,
         df: pd.DataFrame,
+        initial_mass: float | None = None,
     ) -> dict[str, list[Any]]:
-        payload_factor: float = 0.867
-        mass_curr: float = payload_factor * float(adapter.MTOW)
+        # Check inputs
+        if initial_mass is None and "aircraft_mass" not in df.columns:
+            raise PerformanceStepError(
+                "Initial mass not provided and 'aircraft_mass' column missing"
+            )
+        elif initial_mass is not None and "aircraft_mass" in df.columns:
+            self.logger.warning(
+                "Both initial mass and 'aircraft_mass' column provided; ignoring initial mass"
+            )
+            initial_mass = None
 
         n = len(df)
         mass_arr = [0.0] * n
@@ -246,11 +432,24 @@ class BADAPerformanceModel(
             "delta_tau",
             "segment_duration",
         ]
+
+        # also aircraft_mass if available
+        if "aircraft_mass" in df.columns:
+            cols.append("aircraft_mass")
+
         df[cols] = df[cols].apply(pd.to_numeric, errors="coerce").astype("float64")
 
+        # Initial mass
+        mass_curr = initial_mass
+
         for idx, pt in enumerate(df.itertuples(index=False, name="FlightPt")):
+            # Current mass: from column if available, else from tracking variable
+            pt_mass = (
+                mass_curr if mass_curr is not None else _as_float(pt.aircraft_mass)
+            )
+
             ff, thrust, phase, thrust_seg = adapter.thrust_fuel_segment(
-                mass_curr,
+                pt_mass,
                 _as_float(pt.altitude),
                 _as_float(pt.true_airspeed),
                 _as_float(pt.rocd),
@@ -258,13 +457,15 @@ class BADAPerformanceModel(
                 _as_float(pt.delta_tau),
             )
 
-            mass_arr[idx] = mass_curr
+            mass_arr[idx] = pt_mass
             ff_arr[idx] = ff
             thrust_arr[idx] = thrust
             phase_arr[idx] = phase
             segment_arr[idx] = thrust_seg
 
-            mass_curr -= _as_float(ff) * _as_float(pt.segment_duration)
+            # Update current mass if tracking
+            if mass_curr is not None:
+                mass_curr -= _as_float(ff) * _as_float(pt.segment_duration)
 
         return {
             "mass": mass_arr,

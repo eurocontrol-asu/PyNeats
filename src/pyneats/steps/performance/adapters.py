@@ -26,6 +26,10 @@ class AircraftProtocol(Protocol):
     def MTOW(self) -> float: ...
     @property
     def bada_code(self) -> str: ...
+    @property
+    def MPL(self) -> float: ...
+    @property
+    def OEW(self) -> float: ...
 
 
 class BaseBADAAdapter(AircraftProtocol, Protocol):
@@ -56,6 +60,14 @@ class BADA4Adapter(BaseBADAAdapter):
     @property
     def MTOW(self) -> float:
         return self._obj.MTOW
+
+    @property
+    def MPL(self) -> float:
+        return self._obj.MPL
+
+    @property
+    def OEW(self) -> float:
+        return self._obj.OEW
 
     @property
     def bada_code(self) -> str:
@@ -158,6 +170,14 @@ class BADA3Adapter(BaseBADAAdapter):
     @property
     def MTOW(self) -> float:
         return self._obj.MTOW
+
+    @property
+    def MPL(self) -> float:
+        return None  # BADA3 has no MPL attribute ...
+
+    @property
+    def OEW(self) -> float:
+        return self._obj.OEW
 
     @property
     def bada_code(self) -> str:

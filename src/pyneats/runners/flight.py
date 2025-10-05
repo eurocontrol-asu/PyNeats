@@ -77,15 +77,6 @@ class RunnerConfig:
     non_co2_model: str = DEFAULT_NON_CO2_MODEL
     climate_impact: str = DEFAULT_CLIMATE_IMPACT
 
-    # Component-specific parameter blocks, e.g.:
-    # params = {
-    #   "interpolator": {"spacing_nm": 1.0},
-    #   "performance": {"bada_version": "BADA4"},
-    #   "emission": {"nvpm_model": "T4"},
-    #   "cocip": {"radiation_scaling": 0.9},
-    #   "accf": {"horizons": [20, 50, 100]},
-    #   "climate_impact": {"metric": "GWP", "horizon": 100},
-    # }
     params: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
@@ -355,7 +346,6 @@ class FlightRunner:
         self.flight_with_contrails = enriched
 
         # Advance pointer & release previous stage
-        # self.current = self.flight_with_contrails
         self.flight_with_emissions = None
 
         logger.info("Contrails step completed successfully")
@@ -399,11 +389,6 @@ class FlightRunner:
         # Zero-copy validated view
         self.flight_with_nonco2 = f_out
 
-        # Advance pointer; keep contrails if you want both available.
-        # self.current = self.flight_with_nonco2
-        # Optionally free memory:
-        # self.flight_with_contrails = None
-        # self.flight_with_emissions = None
 
         logger.info("Non-CO₂ (ACCF) step completed successfully")
         end = time.time()

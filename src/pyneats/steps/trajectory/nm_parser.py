@@ -41,6 +41,8 @@ class NMTrajectoryParserParams(TrajectoryParserParams):
             "departure_airport": "ADEP",
             "arrival_airport": "ADES",
             "aobt": "time",
+            "takeoff_weight": "TAKEOFF_WEIGHT",
+            "payload_factor": "PAYLOAD_FACTOR",
         }
     )
     date_format: str = "%Y-%m-%d %H:%M:%S"
