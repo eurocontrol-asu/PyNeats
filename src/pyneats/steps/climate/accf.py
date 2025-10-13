@@ -1,4 +1,17 @@
 # climate.py
+
+"""
+accf.py
+
+This script builds a wrapper around `pycontrails.models.accf.ACCF` (ClimAccf) to allow for the 
+computation of ACCF climate functions on a flight, adding the results as new columns to the flight data.
+
+Key components:
+- `NonCO2Params`: Parameters for the ACCF model, including meteorological and surface datasets.
+- `make_accf_surface_view`: Function to adapt a surface MetDataset to be compatible with ClimAccf.
+- `ACCFModel`: A class that implements the ACCF model as a step in a processing pipeline.   
+"""
+
 from __future__ import annotations
 
 

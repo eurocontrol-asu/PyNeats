@@ -1,4 +1,16 @@
 # contrails.py
+
+"""
+contrails.py
+
+This script builds a wrapper around CoCip to allow for the computation of contrail climate functions 
+on a flight, adding the results as new columns to the flight data.
+
+Key components:
+- `ContrailsParams`: Parameters for the CoCiP model, including meteorological and radiative datasets.
+- `CoCiPModel`: A class that implements the CoCiP model.
+
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

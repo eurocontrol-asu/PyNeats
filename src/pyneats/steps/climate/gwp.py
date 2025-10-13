@@ -1,4 +1,15 @@
 # gwp.py
+
+"""
+gwp.py
+
+This script is a wrapper around the GWP model to allow for the computation of GWP climate functions
+on a flight based on emissions data, adding the results as new columns to the flight data.
+
+The model uses contrail effective forcing (EF) data computed in previous steps, along with CO₂ emissions data,
+to compute GWP and CO₂-equivalent values over specified time horizons.
+
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

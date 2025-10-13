@@ -1,3 +1,16 @@
+"""
+weather_provider.py
+
+This script defines WeatherProvider that integrates meteorological data into flight trajectories.
+It allows downselecting meteorological datasets to the flight envelope, interpolating required 
+weather variables, and optionally applying humidity scaling.
+
+Key Components:
+- `WeatherProviderParams`: Configuration for WeatherProvider such as long, lat, time buffers, etc.
+- `WeatherProvider`: The main class that processes flight data and integrates weather information.
+"""
+
+
 from __future__ import annotations
 
 import logging
