@@ -1,5 +1,5 @@
 from typing import Final
-from typing import Any, Final, Mapping, Literal
+from typing import Any, Mapping, Literal
 import numpy as np
 from pycontrails.models.humidity_scaling import (
     ExponentialBoostHumidityScaling,
@@ -15,6 +15,8 @@ __all__ = [
     "DEFAULT_NON_CO2_MODEL",
     "DEFAULT_CLIMATE_IMPACT",
     "DEFAULT_INTERPOLATION_TIME",
+    "DEFAULT_BADA4_VERSION",
+    "DEFAULT_BADA4_VERSION",
     "DEFAULT_Q_FUEL",
     "DEFAULT_DELTA_TAU_COMPUTE_METHOD",
     "DEFAULT_DELTA_TAU_FILL_METHOD",
@@ -27,6 +29,7 @@ __all__ = [
     "DEFAULT_SURFACE_EARTH",
     "DEFAULT_SECONDS_PER_YEAR",
     "DEFAULT_AGWP_AR6_WM2YR_PER_KG",
+    "DEFAULT_ROCD_PHASE_THRESHOLD"
 ]
 
 DEFAULT_INTERPOLATOR: Final[str] = "pycontrails"
@@ -44,6 +47,9 @@ DEFAULT_CLIMATE_IMPACT: Final[str] = "gwp"
 DEFAULT_INTERPOLATION_TIME: Final[str] = "1min"
 
 # Performance defaults
+DEFAULT_BADA4_VERSION: str = "4.2.1"
+DEFAULT_BADA3_VERSION: str = "3.16"
+
 DEFAULT_PAYLOAD_FACTOR: Final[float] = 0.867
 DEFAULT_FUEL_RESERVE_FRACTION: Final[float] = 0.03
 DEFAULT_MAX_MASS_ESTIMATION_ITER: Final[int] = 2
@@ -114,3 +120,5 @@ DEFAULT_AGWP_AR6_WM2YR_PER_KG: Mapping[int, float] = {
     50: 0.0529e-12,  # often ~0.05e-12
     100: 0.0895e-12,
 }
+
+DEFAULT_ROCD_PHASE_THRESHOLD: Final[float] = 50  # feet per minute

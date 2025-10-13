@@ -6,7 +6,6 @@ from pyneats.steps.trajectory import Flight4D
 from pyneats.core.steps_registry import register
 from pyneats.steps.interpolation.params import TrajectoryInterpolationParams
 from pyneats.steps.interpolation.protocol import (
-    TrajectoryInterpolationStepError,
     TrajectoryInterpolator,
 )
 
