@@ -6,25 +6,27 @@ gwp.py
 This script is a wrapper around the GWP model to allow for the computation of GWP climate functions
 on a flight based on emissions data, adding the results as new columns to the flight data.
 
-The model uses contrail effective forcing (EF) data computed in previous steps, along with CO₂ emissions data,
+The model uses contrail effective forcing (EF) aor ATR data computed in previous steps, along with CO₂ emissions data,
 to compute GWP and CO₂-equivalent values over specified time horizons.
 
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Final, Mapping
+from typing import Mapping
 import numpy as np
 import pandas as pd
 
-from pyneats.core.neats_default_parameters import (
+from pyneats.models.constants import (
     DEFAULT_HORIZONS,
     DEFAULT_EFFICACY,
     DEFAULT_SURFACE_EARTH,
     DEFAULT_SECONDS_PER_YEAR,
     DEFAULT_AGWP_AR6_WM2YR_PER_KG,
+    HORIZON_CONVERSION_FACTORS,
+    ADJUST_COEFF
 )
-from pyneats.core.meta import extract_flight_meta  # single source of truth for metadata
+from pyneats.core.meta import extract_flight_meta  
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.climate_functions.accf import FlightWithNonCO2Impact
@@ -37,24 +39,6 @@ __all__ = [
     "GWPParams",
     "SimpleGWPModel",
 ]
-
-# RDC: Should they go into params?
-
-# Metric conversion factors from pulse emission to future emission scenario (Dietmüller et al., 2022)
-ADJUST_COEFF: Final[dict[str, float]] = {
-    "CH4": 1.0e-5,
-    "O3": 1.0e-5,
-    "H2O": 1.0e-5,
-    "NOx": 1.0e-5,
-}
-
-# Horizon conversion factors (your P20_F20 / P20_F50 / P20_F100)
-HORIZON_CONVERSION_FACTORS: Final[dict[int, dict[str, float]]] = {
-    20: {"CH4": 10.8, "O3": 14.5, "H2O": 14.5},
-    50: {"CH4": 42.5, "O3": 34.1, "H2O": 34.1},
-    100: {"CH4": 98.2, "O3": 58.3, "H2O": 58.3},
-}
-
 
 # ---- params ----
 @dataclass(frozen=True)

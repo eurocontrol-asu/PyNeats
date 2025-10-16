@@ -20,7 +20,7 @@ class NEATSFuel(SAFBlend):
         hydrogen_content: Optional[float] = None,  # wt.% H (e.g., 13.8 for Jet-A)
         h_c_ratio: Optional[float] = None,         # atomic H/C ratio r
         q_fuel: Optional[float] = None,            # J/kg (LHV)
-        pct_blend_gate: float = 1e-12,             # tiny, but truthy for PyContrails gate
+        pct_blend_gate: float = 1e-12,             # tiny, but needed for PyContrails gate
         sulphur_free: bool = False,                # set True to zero SOx 
         name: str = "NEATS Fuel (custom)",
     ) -> None:
@@ -31,7 +31,7 @@ class NEATSFuel(SAFBlend):
 
         base = JetA()
 
-        # --- Resolve hydrogen content (wt.%) with precedence: hydrogen_content > h_c_ratio > default
+        # --- Resolve hydrogen content (wt.%)
         if hydrogen_content is not None:
             h_wt_pct = float(hydrogen_content)
         elif h_c_ratio is not None:
@@ -57,7 +57,7 @@ class NEATSFuel(SAFBlend):
 
         ei_oc = base.ei_oc
 
-        # --- Initialize frozen base dataclass in one shot (no post-mutation)
+        # --- Initialize frozen base dataclass in one shot 
         # pylint: disable=non-parent-init-called
         Fuel.__init__(
             self,
@@ -72,5 +72,4 @@ class NEATSFuel(SAFBlend):
         )
 
         # --- Trip PyContrails' gate: isinstance(..., SAFBlend) and truthy pct_blend
-        # (bypass frozen guard)
         object.__setattr__(self, "pct_blend", pct_blend_gate if pct_blend_gate > 0.0 else 1e-12)

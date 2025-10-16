@@ -15,7 +15,7 @@ from pyneats.steps.trajectory.protocol import (
     TrajectoryParserStepError,
     TrajectoryParser,
 )
-from pyneats.core.neats_fuel import NEATSFuel
+from pyneats.models.neats_fuel import NEATSFuel
 
 __all__ = [
     "NMTrajectoryParserParams",
@@ -45,6 +45,7 @@ class NMTrajectoryParserParams(TrajectoryParserParams):
             "aobt": "time",
             "takeoff_weight": "TAKEOFF_WEIGHT",
             "payload_factor": "PAYLOAD_FACTOR",
+            "model_type": "MODEL_TYPE",
         }
     )
     date_format: str = "%Y-%m-%d %H:%M:%S"

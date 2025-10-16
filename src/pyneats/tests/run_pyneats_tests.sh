@@ -5,4 +5,4 @@ pytest -q -s \
   --zarr-path "/datasave/NEATS_CLEAN/NyYXp7uG" \
   --model-type CTFM \
   --flight-id WZZ6457 --adep LEBL --ades EPKT --reg 9HWBO \
-  --expect "expected_values.json"
+  --expect "/data/common/dataiku2/managed_folders/NEATS/Q3xncFlG/Flights_20250709_sample.json"
