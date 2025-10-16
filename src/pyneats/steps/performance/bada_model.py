@@ -46,6 +46,13 @@ __all__ = [
 ]
 
 
+def is_nan_string(s: str) -> bool:
+    try:
+        return np.isnan(float(s))
+    except ValueError:
+        return False  # If the string cannot be converted to float, it's not NaN.
+
+
 @dataclass(frozen=True)
 class BADAPerformanceModelParams(PerformanceModelParams):
     true_air_speed_smoothing_window: int = DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW
@@ -115,7 +122,7 @@ class BADAPerformanceModel(
 
     def _post_init(self):
         # Define BADA paths based on the BADA version, and validate
-        super()._post_init() # pyright: ignore[reportPrivateUsage]
+        super()._post_init()  # pyright: ignore[reportPrivateUsage]
 
         self.bada4_path = Path(self.params.bada4_root_path).joinpath(
             self.params.bada4_version
@@ -135,9 +142,11 @@ class BADAPerformanceModel(
                 f"BADA3 path '{self.bada3_path}' does not exist or is not a directory"
             )
 
+        # Loop for all xml and OPF in paths
+        # to build the mapping
+
     # public API
     def run(self, flight: FlightWithWeather) -> FlightWithPerformance:
-        
         try:
             # We need to preprocess anyway the flight to get the true airspeed
             # even if fuel flow and enngine_efficiency are provided
@@ -219,7 +228,7 @@ class BADAPerformanceModel(
                     if adapter.MPL is None:
                         self.logger.warning(
                             f"""BADA adapter for ICAO '{icao}' does not provide MPL,  # pylint: disable=logging-fstring-interpolation
-                            assuming MPL = MTOW - OEW. Conservative case""" # pylint: disable=logging-fstring-interpolation
+                            assuming MPL = MTOW - OEW. Conservative case"""  # pylint: disable=logging-fstring-interpolation
                         )
                         maximum_payload = (
                             maximum_takeoff_weight - operating_empty_weight
@@ -260,7 +269,7 @@ class BADAPerformanceModel(
                     )  # Clip to MTOW
 
                     self.logger.debug(
-                        f"Initial mass estimate: {initial_mass} kg. MTOW: {maximum_takeoff_weight} kg" 
+                        f"Initial mass estimate: {initial_mass} kg. MTOW: {maximum_takeoff_weight} kg"
                     )
                     # pylint: enable=logging-fstring-interpolation
 
@@ -377,7 +386,6 @@ class BADAPerformanceModel(
             self.logger.exception("Performance evaluation failed")
             raise PerformanceStepError(f"Performance evaluation failed: {e}") from e
 
-
         return out
 
     # internals (unchanged math flow)
@@ -385,7 +393,7 @@ class BADAPerformanceModel(
         # We only need the BADA codes here
         _, bada3_code, bada4_code, _ = self.params.bada_type(icao)
 
-        if np.isnan(bada4_code):
+        if is_nan_string(bada4_code):
             return BADA3Adapter(
                 str(self.bada3_path),
                 bada3_code,

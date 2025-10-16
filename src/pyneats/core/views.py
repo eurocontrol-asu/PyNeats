@@ -20,8 +20,13 @@ TView = TypeVar("TView", bound="FlightView")
 class FlightView(Flight):
     """Zero-copy, typed *view* over a Flight with declarative column requirements."""
 
+    # Column requirements
     REQUIRED: ClassVar[Tuple[str, ...]] = ()
     OPTIONAL: ClassVar[Tuple[str, ...]] = ()
+
+    # Attribute (Flight.attrs) requirements
+    ATTRS_REQUIRED: ClassVar[Tuple[str, ...]] = ()
+    ATTRS_OPTIONAL: ClassVar[Tuple[str, ...]] = ()
 
     # --- helpers ------------------------------------------------------
 
@@ -36,11 +41,13 @@ class FlightView(Flight):
                 if c not in seen:
                     seen.add(c)
                     out.append(c)
+
         if extra:
             for c in extra:
                 if c not in seen:
                     seen.add(c)
                     out.append(c)
+
         return tuple(out)
 
     @classmethod
@@ -55,6 +62,30 @@ class FlightView(Flight):
                     out.append(c)
         return tuple(out)
 
+    @classmethod
+    def _all_attrs_required(cls) -> Tuple[str, ...]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for base in reversed(cls.__mro__):
+            req = getattr(base, "ATTRS_REQUIRED", ())
+            for a in req:
+                if a not in seen:
+                    seen.add(a)
+                    out.append(a)
+        return tuple(out)
+
+    @classmethod
+    def _all_attrs_optional(cls) -> Tuple[str, ...]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for base in reversed(cls.__mro__):
+            opt = getattr(base, "ATTRS_OPTIONAL", ())
+            for a in opt:
+                if a not in seen:
+                    seen.add(a)
+                    out.append(a)
+        return tuple(out)
+
     # --- construction / validation -----------------------------------
 
     @classmethod
@@ -64,11 +95,22 @@ class FlightView(Flight):
         *,
         require: Iterable[str] | None = None,
     ) -> TView:
-        required = cls._all_required(require)
-        missing = [c for c in required if c not in flight]
+        required_cols = cls._all_required(require)
+        required_attrs = cls._all_attrs_required()
 
-        if missing:
-            raise ValidationError(cls.__name__, f"missing columns: {missing}")
+        missing_cols = [c for c in required_cols if c not in flight]
+        missing_attrs = [a for a in required_attrs if a not in flight.attrs]
+
+        if missing_cols or missing_attrs:
+            messages = []
+
+            if missing_cols:
+                messages.append(f"missing columns: {', '.join(missing_cols)}")
+
+            if missing_attrs:
+                messages.append(f"missing attrs: {', '.join(missing_attrs)}")
+
+            raise ValidationError(cls.__name__, "; ".join(messages))
 
         # Zero-copy: we only *narrow the type* for the caller
         return cast(TView, flight)
@@ -83,7 +125,17 @@ class FlightView(Flight):
         if missing:
             raise ValidationError(type(self).__name__, f"missing columns: {missing}")
 
+    def has_attrs(self, *attrs: str) -> bool:
+        return all(a in self.attrs for a in attrs)
+
+    def ensure_attrs(self, *attrs: str) -> None:
+        missing = [a for a in attrs if a not in self.attrs]
+        if missing:
+            raise ValidationError(type(self).__name__, f"missing attrs: {missing}")
+
     @classmethod
     def matches(cls, flight: Flight) -> bool:
         """Runtime check (non-typing) that the flight satisfies this view."""
-        return all(c in flight for c in cls._all_required())
+        cols_ok = all(c in flight for c in cls._all_required())
+        attrs_ok = all(a in flight.attrs for a in cls._all_attrs_required())
+        return cols_ok and attrs_ok

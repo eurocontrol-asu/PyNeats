@@ -84,10 +84,11 @@ class NMTrajectoryParser(
             # 2) FL → meters
             try:
                 alt_ft = (
-                    pd.to_numeric(df["altitude"], errors="coerce").mul(100.0)  # FL → ft
-                    .to_numpy(dtype=float, copy=False)                         # -> ndarray[float]
+                    pd.to_numeric(df["altitude"], errors="coerce")
+                    .mul(100.0)  # FL → ft
+                    .to_numpy(dtype=float, copy=False)  # -> ndarray[float]
                 )
-                df["altitude"] = ft_to_m(alt_ft)  
+                df["altitude"] = ft_to_m(alt_ft)
 
             except Exception as e:
                 raise TrajectoryParserStepError(
@@ -122,7 +123,7 @@ class NMTrajectoryParser(
                     "no valid trajectory points after cleaning"
                 )
 
-            # 5) Build attrs 
+            # 5) Build attrs
             attrs: dict[str, Any] = {"altitude_units": "m"}
             first = df.iloc[0]
 
@@ -160,13 +161,17 @@ class NMTrajectoryParser(
                 try:
                     attrs["hydrogen_content"] = float(first["HYDROGEN_CONTENT"])
                 except (ValueError, TypeError):
-                    self.logger.warning("invalid HYDROGEN_CONTENT value: %r", first["HYDROGEN_CONTENT"])
+                    self.logger.warning(
+                        "invalid HYDROGEN_CONTENT value: %r", first["HYDROGEN_CONTENT"]
+                    )
 
             if "H_C_RATIO" in df.columns:
                 try:
                     attrs["h_c_ratio"] = float(first["H_C_RATIO"])
                 except (ValueError, TypeError):
-                    self.logger.warning("invalid HYDROGEN to CARBON RATIO value: %r", first["H_C_RATIO"])
+                    self.logger.warning(
+                        "invalid HYDROGEN to CARBON RATIO value: %r", first["H_C_RATIO"]
+                    )
 
             if "Q_FUEL" in df.columns:
                 try:
@@ -189,11 +194,13 @@ class NMTrajectoryParser(
                 except Exception as e:
                     self.logger.warning(
                         "Failed to build custom fuel from inputs (q_fuel=%r, hydrogen_content=%r, h_c_ratio=%r): %s",
-                        qf, H, r, e
+                        qf,
+                        H,
+                        r,
+                        e,
                     )
                     fuel_obj = None
 
-            
             # 7) Construct base Flight with required columns only
             # Required columns only for Flight data
             data_req = df[list(self.REQUIRED_AFTER_RENAME)]
