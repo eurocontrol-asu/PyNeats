@@ -1,4 +1,4 @@
-from PyNeats.src.pyneats.steps.climate_metrics.gwp import (
+from pyneats.steps.climate_metrics.gwp import (
     FlightWithClimateImpact,
     GWPParams,
     ClimateImpactModel,
@@ -11,5 +11,5 @@ __all__ = [
     "GWPParams",
     "ClimateImpactModel",
     "SimpleGWPModel",
-    "ClimateImpactStepError"
+    "ClimateImpactStepError",
 ]
