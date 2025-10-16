@@ -27,13 +27,11 @@ from pyneats.core.neats_default_parameters import (
 from pyneats.core.meta import extract_flight_meta  # single source of truth for metadata
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
-from pyneats.steps.climate.accf import FlightWithNonCO2Impact
-from pyneats.steps.climate.protocol import ClimateImpactModel, ClimateImpactStepError
-from pyneats.steps.climate.views import (
-    FlightWithClimateImpact,
-    FlightWithContrailsImpact,
-)
-from pyneats.steps.climate.params import ClimateParams
+from pyneats.steps.climate_functions.accf import FlightWithNonCO2Impact
+from pyneats.steps.climate_metrics.protocol import ClimateImpactModel, ClimateImpactStepError
+from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
+from pyneats.steps.climate_functions.views import FlightWithContrailsImpact
+from pyneats.steps.climate_functions.params import ClimateParams
 
 __all__ = [
     "GWPParams",

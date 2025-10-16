@@ -33,9 +33,9 @@ from pyneats.core.neats_default_parameters import DEFAULT_ACCF_KWARGS
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.emissions.views import FlightWithEmissions
-from pyneats.steps.climate.views import FlightWithNonCO2Impact
-from pyneats.steps.climate.protocol import NonCO2Model, ClimateStepError
-from pyneats.steps.climate.params import ClimateParams
+from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
+from pyneats.steps.climate_functions.protocol import NonCO2Model, ClimateStepError
+from pyneats.steps.climate_functions.params import ClimateParams
 
 
 __all__ = [

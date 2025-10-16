@@ -7,17 +7,22 @@ import time
 
 from pycontrails.core.met import MetDataset
 
-from pyneats.steps.climate import (
+from pyneats.steps.climate_functions import (
+    ContrailsModel,
+    FlightWithContrailsImpact,
+    FlightWithNonCO2Impact,
+    NonCO2Model,
+    ContrailsStepError,
+    ClimateStepError
+)
+
+from pyneats.steps.climate_metrics import (
+    FlightWithClimateImpact,
     ClimateImpactModel,
     ClimateImpactStepError,
-    ContrailsModel,
-    ContrailsStepError,
-    FlightWithContrailsImpact,
-    FlightWithClimateImpact,
-    FlightWithNonCO2Impact,
-    ClimateStepError,
-    NonCO2Model,
+
 )
+
 
 from pyneats.steps.interpolation import (
     TrajectoryInterpolator,
@@ -152,7 +157,6 @@ class FlightRunner:
         self.flight_with_contrails: FlightWithContrailsImpact | None = None
         self.flight_with_nonco2: FlightWithNonCO2Impact | None = None
         self.flight_with_climate_impact: FlightWithClimateImpact | None = None
-        # self.current: Flight | None = None
 
         # Cached met/rad datasets after downselection for this flight
         self._ds_met: MetDataset | None = None
@@ -253,8 +257,6 @@ class FlightRunner:
 
         self.flight_with_weather = enriched
 
-        # Advance pointer & release previous stage reference
-        # self.current = self.flight_with_weather
         self.interpolated_flight = None
 
         # Cache the downsampled met/rad datasets for later use (e.g accfs)
@@ -414,7 +416,6 @@ class FlightRunner:
 
         # keep the typed, zero-copy view
         self.flight_with_climate_impact = enriched
-        # self.current = self.flight_with_climate_impact
 
         logger.info("Climate impact (GWP) step completed successfully")
         return self
