@@ -21,7 +21,7 @@ class NEATSFuel(SAFBlend):
         h_c_ratio: Optional[float] = None,         # atomic H/C ratio r
         q_fuel: Optional[float] = None,            # J/kg (LHV)
         pct_blend_gate: float = 1e-12,             # tiny, but truthy for PyContrails gate
-        sulphur_free: bool = False,                # set True to zero SOx if you want SAF-like S=0
+        sulphur_free: bool = False,                # set True to zero SOx 
         name: str = "NEATS Fuel (custom)",
     ) -> None:
         # pylint: disable=super-init-not-called

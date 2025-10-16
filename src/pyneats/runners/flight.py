@@ -48,7 +48,7 @@ from pyneats.steps.weather import (
     FlightWithWeather,
 )
 
-from pyneats.core.neats_defaults import (
+from pyneats.core.neats_default_parameters import (
     DEFAULT_INTERPOLATOR,
     DEFAULT_TRAJECTORY_PARSER,
     DEFAULT_EMISSIONS,

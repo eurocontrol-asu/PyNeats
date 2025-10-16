@@ -24,7 +24,7 @@ from pycontrails import Flight
 from pycontrails.core.met import MetDataset
 from pycontrails.models.humidity_scaling import HumidityScaling
 
-from pyneats.core.neats_defaults import DEFAULT_HUMIDITY_SCALING
+from pyneats.core.neats_default_parameters import DEFAULT_HUMIDITY_SCALING
 from pyneats.core.steps import BaseStep, Step, StepError, BaseParams
 from pyneats.core.views import ValidationError
 from pyneats.steps.trajectory import Flight4D
@@ -88,11 +88,9 @@ class PcHumidityScalingAdapter(HumidityScalingModel):
         self.humidity_scaling = humidity_scaling
 
     def eval(self, source: Flight) -> Flight:
+        
         result = self.humidity_scaling.eval(source=source)
 
-        if result is None:
-            # in-place mutation contract → return the original Flight
-            return source
 
         if isinstance(result, Flight):
             return result

@@ -15,7 +15,7 @@ from pyneats.steps.trajectory.protocol import (
     TrajectoryParserStepError,
     TrajectoryParser,
 )
-from pyneats.steps.trajectory.neats_fuel import NEATSFuel
+from pyneats.core.neats_fuel import NEATSFuel
 
 __all__ = [
     "NMTrajectoryParserParams",

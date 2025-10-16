@@ -20,7 +20,7 @@ from pycontrails import Flight
 from pycontrails.core.met import MetDataset
 from pycontrails.models.cocip import Cocip
 
-from pyneats.core.neats_defaults import DEFAULT_COCIP_KWARGS
+from pyneats.core.neats_default_parameters import DEFAULT_COCIP_KWARGS
 from pyneats.steps.climate.protocol import ContrailsModel, ContrailsStepError
 from pyneats.steps.climate.views import FlightWithContrailsImpact
 from pyneats.steps.climate.params import ClimateParams

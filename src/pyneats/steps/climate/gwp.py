@@ -17,7 +17,7 @@ from typing import Final, Mapping
 import numpy as np
 import pandas as pd
 
-from pyneats.core.neats_defaults import (
+from pyneats.core.neats_default_parameters import (
     DEFAULT_HORIZONS,
     DEFAULT_EFFICACY,
     DEFAULT_SURFACE_EARTH,

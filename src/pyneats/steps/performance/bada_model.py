@@ -14,7 +14,7 @@ from pycontrails.physics.jet import (
     overall_propulsion_efficiency,
 )
 from pathlib import Path
-from pyneats.core.neats_defaults import (
+from pyneats.core.neats_default_parameters import (
     DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW,
     DEFAULT_Q_FUEL,
     DEFAULT_DELTA_TAU_COMPUTE_METHOD,

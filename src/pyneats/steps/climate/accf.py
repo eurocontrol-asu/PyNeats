@@ -29,7 +29,7 @@ from pycontrails.datalib.ecmwf import (
 )
 from pycontrails.core.met_var import TOAOutgoingLongwaveFlux
 
-from pyneats.core.neats_defaults import DEFAULT_ACCF_KWARGS
+from pyneats.core.neats_default_parameters import DEFAULT_ACCF_KWARGS
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.emissions.views import FlightWithEmissions

@@ -5,7 +5,7 @@ from typing import Any, Mapping
 from pycontrails import Flight
 from pycontrails.models.emissions import Emissions
 
-from pyneats.core.neats_defaults import DEFAULT_EMISSIONS_KWARGS
+from pyneats.core.neats_default_parameters import DEFAULT_EMISSIONS_KWARGS
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.performance import FlightWithPerformance
