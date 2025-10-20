@@ -1,60 +1,92 @@
-# gwp.py
-
-"""
-gwp.py
-
-This script is a wrapper around the GWP model to allow for the computation of GWP climate functions
-on a flight based on emissions data, adding the results as new columns to the flight data.
-
-The model uses contrail effective forcing (EF) aor ATR data computed in previous steps, along with CO₂ emissions data,
-to compute GWP and CO₂-equivalent values over specified time horizons.
-
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Mapping
-import numpy as np
+from typing import Final, Mapping, Dict, List, Any
 import pandas as pd
 
-from pyneats.models.constants import (
-    DEFAULT_HORIZONS,
-    DEFAULT_EFFICACY,
-    DEFAULT_SURFACE_EARTH,
-    DEFAULT_SECONDS_PER_YEAR,
-    DEFAULT_AGWP_AR6_WM2YR_PER_KG,
-    HORIZON_CONVERSION_FACTORS,
-    ADJUST_COEFF
-)
-from pyneats.core.meta import extract_flight_meta  
-from pyneats.core.steps import BaseStep
+from pyneats.core.meta import extract_flight_meta
+from pyneats.core.steps import BaseStep, BaseParams
 from pyneats.core.steps_registry import register
-from pyneats.steps.climate_functions.accf import FlightWithNonCO2Impact
-from pyneats.steps.climate_metrics.protocol import ClimateImpactModel, ClimateImpactStepError
-from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
 from pyneats.steps.climate_functions.views import FlightWithContrailsImpact
-from pyneats.steps.climate_functions.params import ClimateParams
+from pyneats.steps.climate_functions.accf import FlightWithNonCO2Impact
+from pyneats.steps.climate_metrics.protocol import (
+    ClimateImpactModel,
+    ClimateImpactStepError,
+)
+from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
+from pyneats.models.constants import (
+    METRICS_HORIZONS,
+    SURFACE_EARTH,
+    SECONDS_PER_YEAR,
+    EFFICACY_CONTRAILS,
+    JOOS_AGWP_COEFF_WM2YR_PER_KG,
+    CONVERSION_FACTORS_AGWP_TO_RF,
+    CONVERSION_FACTORS_ATR_TO_RF,
+    CONVERSION_ATR_PULSE,
+)
+
+from pyneats.core.neats_default_parameters import DEFAULT_ACCF_KWARGS
+
 
 __all__ = [
     "GWPParams",
-    "SimpleGWPModel",
+    "GWPMetrics",
 ]
 
-# ---- params ----
+
+
+# Supported species for aCCFs pathway
+SPECIES: Final[tuple[str, ...]] = ("CH4", "O3", "H2O", "NOx")
+
+# Column name pattern expected for ATR at H0 = 20 years
+# e.g. "atr_CH4_20", "atr_O3_20", ...
+ATR_COL_TEMPLATE: Final[str] = "aCCF_{spec}"  # J·m⁻² (per your CLIMaCCF output at H0=20)
+
+
+# ---------------------------
+# Parameters
+# ---------------------------
+
 @dataclass(frozen=True)
-class GWPParams(ClimateParams):
-    horizons: tuple[int, ...] = DEFAULT_HORIZONS
-    efficacy: float = DEFAULT_EFFICACY
-    surface_earth: float = DEFAULT_SURFACE_EARTH
-    seconds_per_year: int = DEFAULT_SECONDS_PER_YEAR
-    agwp_wm2yr_per_kg: Mapping[int, float] = field(
-        default_factory=lambda: DEFAULT_AGWP_AR6_WM2YR_PER_KG
+class GWPParams(BaseParams):
+    horizons: tuple[int, ...] = METRICS_HORIZONS
+    # Contrail efficacy ε_Con
+    efficacy_contrails: float = EFFICACY_CONTRAILS
+    surface_earth: float = SURFACE_EARTH
+    seconds_per_year: int = SECONDS_PER_YEAR
+
+    # Joos (2013) C(H)
+    agwp_coeff_wm2yr_per_kg: Mapping[int, float] = field(
+        default_factory=lambda: JOOS_AGWP_COEFF_WM2YR_PER_KG
     )
 
+    # Non-contrail species parameters (provide your Dahlmann 2025 / CLIMaCCF tables here)
+    # K_{AGWP←RF}^{Spec}(H)
+    k_agwp_from_rf: Mapping[int, Mapping[str, float]] = field(
+        default_factory=lambda: CONVERSION_FACTORS_AGWP_TO_RF
+    )
+    # K_{ATR←RF}^{Spec}(H)
+    k_atr_from_rf: Mapping[int, Mapping[str, float]] = field(
+        default_factory=lambda: CONVERSION_FACTORS_ATR_TO_RF
+    )
+    # C_{ATR←Pulse}^{Spec}(H)
+    c_atr_pulse: Mapping[int, Mapping[str, float]] = field(
+        default_factory=lambda: CONVERSION_ATR_PULSE
+    )
+    # Efficacies ε_Spec
+    efficacy_species: Mapping[str, float] = field(
+        default_factory=lambda: {sp: 1.0 for sp in SPECIES}
+    )
+    # Reference horizon H0 for ATR (fixed at 20 per spec)
+    atr_ref_horizon: int = DEFAULT_ACCF_KWARGS.get("time_horizon", 20)
 
-# ---- concrete model ----
+
+# ---------------------------
+# Model
+# ---------------------------
+
 @register(ClimateImpactModel, "gwp")
-class SimpleGWPModel(
+class GWPMetrics(
     BaseStep[
         FlightWithNonCO2Impact,
         FlightWithClimateImpact,
@@ -62,214 +94,189 @@ class SimpleGWPModel(
     ]
 ):
     """
-    Compute GWP-like summaries:
-      - Sums contrail EF (J) from 'ef' column
-      - Converts EF to CO₂eq using efficacy and AGWP
-      - Adds CO₂ baseline using attrs['total_co2'] (kg)
-    Attaches results to `flight.attrs["climate_impact"]` and returns a typed view.
+    Compute AGWP (J·m⁻²) and CO₂-equivalent (kg) for:
+      - CO₂ baseline
+      - Contrails (using EF from CoCiP, efficacy, and Earth's surface area)
+      - Other species via aCCFs + conversion factors (Dahlmann 2025, CLIMaCCF)
+
+    Formulas implemented exactly as specified by the user.
     """
 
     default_params = GWPParams
 
+    # ---------- Helpers ----------
+
+    def _agwp_co2_J_per_m2(self, m_co2: float) -> dict[int, float]:
+        # AGWP_CO2(H) = C(H) * m_CO2 * s_yr    (units: J·m⁻²)
+        s_yr = self.params.seconds_per_year
+        return {h: self.params.agwp_coeff_wm2yr_per_kg[h] * m_co2 * s_yr for h in self.params.horizons}
+
+    def _agwp_contrails_J_per_m2(self, total_ef_J: float) -> dict[int, float]:
+        # AGWP_Con(H) = EF * ε_Con / S_Earth    (units: J·m⁻²)
+        eps = self.params.efficacy_contrails
+        S = self.params.surface_earth
+        return {h: (total_ef_J * eps) / S for h in self.params.horizons}
+
+    def _co2eq_from_agwp_J_per_m2(self, agwp_J_per_m2: dict[int, float]) -> dict[int, float]:
+        # CO2eq(H) = AGWP(H) / ( C(H) * s_yr )  (units: kg)
+        s_yr = self.params.seconds_per_year
+        return {
+            h: agwp_J_per_m2[h] / (self.params.agwp_coeff_wm2yr_per_kg[h] * s_yr)
+            for h in self.params.horizons
+        }
+
+    def _agwp_spec_J_per_m2(
+        self,
+        species: str,
+        atr_H0_J_per_m2: float,
+    ) -> dict[int, float]:
+        """
+        AGWP_Spec(H) =
+            ( K_AGWP←RF^{Spec}(H) / K_ATR←RF^{Spec}(H) )
+            * ε_Spec
+            * ( C_ATR←Pulse^{Spec}(H) / C_ATR←Pulse^{Spec}(H0) )
+            * ATR^{Spec}(H0)
+
+        All inputs must be consistent in units; ATR^Spec(H0) expected in J·m⁻².
+        """
+        eps_spec = float(self.params.efficacy_species.get(species, 1.0))
+        H0 = self.params.atr_ref_horizon
+
+        # Guard against zero division in C_ATR(H0)
+        c_atr_H0 = float(self.params.c_atr_pulse.get(H0, {}).get(species, 1.0))
+        if c_atr_H0 == 0.0:
+            raise ClimateImpactStepError(f"C_ATR←Pulse[{species}][H0={H0}] is zero; cannot scale.")
+
+        out: dict[int, float] = {}
+        for h in self.params.horizons:
+            k_agwp = float(self.params.k_agwp_from_rf.get(h, {}).get(species, 1.0))
+            k_atr = float(self.params.k_atr_from_rf.get(h, {}).get(species, 1.0))
+            c_atr_H = float(self.params.c_atr_pulse.get(h, {}).get(species, 1.0))
+
+            if k_atr == 0.0:
+                raise ClimateImpactStepError(f"K_ATR←RF[{species}][H={h}] is zero; cannot scale.")
+
+            scale = (k_agwp / k_atr) * eps_spec * (c_atr_H / c_atr_H0)
+            out[h] = scale * atr_H0_J_per_m2
+
+        return out
+
+    # ---------- Main ----------
+
     def run(self, flight: FlightWithNonCO2Impact) -> FlightWithClimateImpact:
-        # Validate presence of EF (zero-copy)
+        # Ensure contrail EF is present
         try:
             _ = FlightWithContrailsImpact.from_flight(flight)
         except KeyError as e:
-            self.logger.error(
-                "Climate impact input missing required contrail columns: %s", e
-            )
-            raise ClimateImpactStepError(
-                f"Missing required contrail columns: {e}"
-            ) from e
+            self.logger.error("Input missing required contrail columns: %s", e)
+            raise ClimateImpactStepError(f"Missing required contrail columns: {e}") from e
 
-        # Aggregate EF
+        df: pd.DataFrame = flight.to_dataframe()
+
+        # Aggregate contrail EF (J)
         try:
-            df: pd.DataFrame = flight.to_dataframe()
-            total_ef = float(pd.to_numeric(df["ef"], errors="coerce").sum())  # J
-            total_fuel_flow = float(
-                pd.to_numeric(df["fuel_flow"], errors="coerce").sum()
-            )
-            total_fuel_burn = float(
-                pd.to_numeric(df["fuel_burn"], errors="coerce").sum()
-            )
-            non_co2_computation_time = float(flight.attrs["non_co2_computation_time"])
-            contrails_computation_time = float(
-                flight.attrs["contrails_computation_time"]
-            )
-
+            total_ef_J = float(pd.to_numeric(df["ef"], errors="coerce").sum())
         except Exception as e:
-            self.logger.exception("Failed to aggregate contrail EF")
+            self.logger.exception("Failed to sum contrail EF")
             raise ClimateImpactStepError(f"Failed to aggregate contrail EF: {e}") from e
 
-        # Read CO₂ baseline
+        # CO₂ baseline mass (kg)
         try:
-            total_co2 = float(flight.attrs["total_co2"])  # kg
+            total_co2_kg = float(flight.attrs["total_co2"])
         except Exception:
-            self.logger.error(
-                "Flight attrs missing 'total_co2' required for GWP baseline"
-            )
+            self.logger.error("Flight attrs missing 'total_co2'")
             raise ClimateImpactStepError("Missing required attr 'total_co2'")
 
-        # Precompute AGWP in J·m⁻²·kg⁻¹
-        agwp_j_per_m2_per_kg = {
-            h: self.params.agwp_wm2yr_per_kg[h] * self.params.seconds_per_year
-            for h in self.params.horizons
+        # Timings and ancillary metadata 
+        meta = {
+            **extract_flight_meta(flight),
+            "contrails_ef_J": total_ef_J,
+            "co2_baseline_kg": total_co2_kg,
         }
-
-        # STEP 1: GWP forcing for contrails (scaled by efficacy)
-        gwp_contrails = {
-            h: total_ef * self.params.efficacy for h in self.params.horizons
-        }
-
-        # STEP 2: Convert contrail forcing into CO₂-equivalent (kg CO₂eq)
-        co2eq_contrails = {
-            h: gwp_contrails[h] / agwp_j_per_m2_per_kg[h] / self.params.surface_earth
-            for h in self.params.horizons
-        }
-
-        # STEP 3: CO₂ GWP forcing (kg × AGWP × area)
-        gwp_co2 = {
-            h: total_co2 * agwp_j_per_m2_per_kg[h] * self.params.surface_earth
-            for h in self.params.horizons
-        }
-
-        # Build payload with shared metadata (no duplication)
-        climate_impact = {
-            "meta": {
-                **extract_flight_meta(flight),
-                "contrails_ef": total_ef,
-                "total_fuel_flow": total_fuel_flow,
-                "total_fuel_burn": total_fuel_burn,
-                "co2_baseline": total_co2,
-                "contrails_computation_time": contrails_computation_time,
-                "non_co2_computation_time": non_co2_computation_time,
-            },
-            "results": [
-                {
-                    "species": "CO2",
-                    "value": [
-                        {"horizon": h, "GWP": gwp_co2[h], "CO2eq": total_co2}
-                        for h in self.params.horizons
-                    ],
-                },
-                {
-                    "species": "Contrails",
-                    "value": [
-                        {
-                            "horizon": h,
-                            "GWP": gwp_contrails[h],
-                            "CO2eq": co2eq_contrails[h],
-                        }
-                        for h in self.params.horizons
-                    ],
-                },
-            ],
-        }
-
-        # --------------------------------------------
-        # ADD: Non-CO2 species from ACCF (CH4, O3, H2O)
-        # --------------------------------------------
-        # Helper to find a column among common spellings (case-insensitive)
-
-        def _first_present_col(df: pd.DataFrame, names: list[str]) -> pd.Series | None:
-            name_map = {c.lower(): c for c in df.columns}
-            for n in names:
-                c = name_map.get(n.lower())
-                if c is not None:
-                    return pd.to_numeric(df[c], errors="coerce")
-            return None
+        for k in ("non_co2_computation_time", "contrails_computation_time"):
+            if k in flight.attrs:
+                meta[k] = float(flight.attrs[k])
 
         horizons = self.params.horizons
-        agwp_j_per_m2_per_kg = {
-            h: self.params.agwp_wm2yr_per_kg[h] * self.params.seconds_per_year
-            for h in horizons
-        }
 
-        # Inputs we need
-        fuel = _first_present_col(df, ["fuel_burn"])
-        if fuel is None:
-            self.logger.warning(
-                "Skipping ACCF species (CH4,O3,H2O): missing 'fuel_burn' column."
-            )
-            fuel = None
+        # ---- CO₂: AGWP (J·m⁻²) and CO₂eq = m_CO2 (kg) ----
+        agwp_co2 = self._agwp_co2_J_per_m2(total_co2_kg)  # J·m⁻²
+        co2eq_co2 = {h: total_co2_kg for h in horizons}    # kg
 
-        # Candidate ACCF column spellings per species
-        accf_cols = {
-            "CH4": ["aCCF_CH4", "accf_ch4", "ACCF_CH4", "accf_CH4"],
-            "O3": ["aCCF_O3", "accf_o3", "ACCF_O3", "accf_O3"],
-            "H2O": ["aCCF_H2O", "accf_h2o", "ACCF_H2O", "accf_H2O"],
-            "NOx": ["aCCF_NOx", "accf_nox", "ACCF_NOx", "accf_NOx"],
-        }
+        # ---- Contrails: AGWP (J·m⁻²) and CO₂eq via Joos ----
+        agwp_con = self._agwp_contrails_J_per_m2(total_ef_J)            # J·m⁻²
+        co2eq_con = self._co2eq_from_agwp_J_per_m2(agwp_con)            # kg
 
-        added_species: list[str] = []
-        skipped_species: dict[str, str] = {}
-
-        if fuel is not None:
-            for sp in ("CH4", "O3", "H2O", "NOx"):
-                accf = _first_present_col(df, accf_cols[sp])
-                if accf is None:
-                    skipped_species[sp] = "missing ACCF column"
-                    continue
-
-                try:
-                    # warming_sp ~ aCCF_sp * fuel_burn (vector); coerce NaNs to 0 for sum
-                    warming_sp = (accf * fuel).fillna(0.0)
-                    # total_ef_sp then scaled by your adjust_coeff
-                    total_ef_sp = float(np.sum(warming_sp)) / ADJUST_COEFF[sp]
-
-                    if sp == "NOx":
-                        # NOx is a special case: cooling effect, so we skip adding it to results
-                        climate_impact["meta"]["NOx_effect"] = float(
-                            np.sum(accf.fillna(0.0))
-                        )
-
-                    # Per-horizon GWP (J m^-2), using your factors
-                    gwp_sp = {
-                        h: total_ef_sp * HORIZON_CONVERSION_FACTORS[h][sp]
-                        for h in horizons
-                    }
-
-                    # Convert to CO2eq (kg) using the same AGWP/area recipe
-                    co2eq_sp = {
-                        h: gwp_sp[h]
-                        / agwp_j_per_m2_per_kg[h]
-                        / self.params.surface_earth
-                        for h in horizons
-                    }
-
-                    climate_impact["results"].append(
-                        {
-                            "species": sp,
-                            "value": [
-                                {"horizon": h, "GWP": gwp_sp[h], "CO2eq": co2eq_sp[h]}
-                                for h in horizons
-                            ],
-                        }
-                    )
-                    added_species.append(sp)
-
-                except KeyError as e:
-                    skipped_species[sp] = f"missing factor for horizon/species: {e}"
-                except Exception as e:
-                    self.logger.exception("Failed ACCF-based GWP for %s", sp)
-                    skipped_species[sp] = f"exception: {e}"
-        else:
-            skipped_species = {sp: "missing fuel_burn" for sp in ("CH4", "O3", "H2O")}
-
-        # Record metadata about this augmentation
-        climate_impact["meta"].update(
+        results: List[Mapping[str,Any]] = [
             {
-                "accf_adjust_coeff": dict(ADJUST_COEFF),
-                "accf_horizon_conversion_factors": {
-                    h: dict(HORIZON_CONVERSION_FACTORS[h]) for h in horizons
-                },
+                "species": "CO2",
+                "value": [
+                    {"horizon": h, "AGWP_J_per_m2": agwp_co2[h], "CO2eq_kg": co2eq_co2[h]}
+                    for h in horizons
+                ],
+            },
+            {
+                "species": "Contrails",
+                "value": [
+                    {"horizon": h, "AGWP_J_per_m2": agwp_con[h], "CO2eq_kg": co2eq_con[h]}
+                    for h in horizons
+                ],
+            },
+        ]
+
+        # ---- Other species via ATR(H0=20) scaling ----
+        skipped_species: Dict[str, str] = {}
+        added_species: List[str] = []
+        H0 = self.params.atr_ref_horizon
+
+        for sp in SPECIES:
+            atr_col = ATR_COL_TEMPLATE.format(spec=sp)
+            if atr_col not in df.columns:
+                skipped_species[sp] = f"missing '{atr_col}' column"
+                continue
+
+            try:
+                # Sum ATR^{Spec}(H0) over trajectory (units should already be J·m⁻²)
+                atr_H0_series = pd.to_numeric(df[atr_col], errors="coerce").fillna(0.0)
+                atr_H0_total_J_per_m2 = float(atr_H0_series.sum())
+
+                # Compute AGWP_Spec(H)
+                agwp_spec = self._agwp_spec_J_per_m2(sp, atr_H0_total_J_per_m2)
+
+                # Convert to CO₂eq via Joos: CO2eq(H) = AGWP(H) / (C(H) * s_yr)
+                co2eq_spec = self._co2eq_from_agwp_J_per_m2(agwp_spec)
+
+                results.append(
+                    {
+                        "species": sp,
+                        "value": [
+                            {
+                                "horizon": h,
+                                "AGWP_J_per_m2": agwp_spec[h],
+                                "CO2eq_kg": co2eq_spec[h],
+                            }
+                            for h in horizons
+                        ],
+                    }
+                )
+                added_species.append(sp)
+
+            except ClimateImpactStepError as e:
+                skipped_species[sp] = str(e)
+            except Exception as e:
+                self.logger.exception("Failed non-CO2 AGWP/CO2eq for %s", sp)
+                skipped_species[sp] = f"exception: {e}"
+
+        # Assemble payload
+        climate_impact = {
+            "meta": {
+                **meta,
                 "nonco2_species_added": added_species,
                 "nonco2_species_skipped": skipped_species,
-            }
-        )
+            },
+            "results": results,
+        }
 
-        # Attach and return view (unchanged from before)
         flight.attrs["climate_impact"] = climate_impact
-        self.logger.info("Climate impact (GWP) step completed successfully")
+        self.logger.info("Climate impact (GWP) computed with Joos(2013) and full conversion pipeline.")
         return FlightWithClimateImpact.from_flight(flight)

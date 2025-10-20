@@ -11,11 +11,6 @@ import pytest
 from _pytest.python import Metafunc
 from pycontrails import Flight
 
-try:
-    import yaml  # optional
-except Exception:
-    yaml = None
-
 
 # ----------------------------------------------------------------------
 # CLI options
@@ -44,7 +39,9 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
     g.addoption("--adep", action="store", default=None, help="Filter by ADEP.")
     g.addoption("--ades", action="store", default=None, help="Filter by ADES.")
-    g.addoption("--reg", action="store", default=None, help="Filter by REGISTRATION.")
+    g.addoption(
+        "--registration", action="store", default=None, help="Filter by REGISTRATION."
+    )
     g.addoption(
         "--all-flights",
         action="store_true",
@@ -87,14 +84,14 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     g.addoption(
         "--rtol",
         type=float,
-        default=0.03,
-        help="Relative tolerance for numeric regression (default 3%).",
+        default=1.0e-3,  # 1.0e-5 is the default in np all close
+        help="Relative tolerance for numeric regression (default 1.0e-3).",
     )
     g.addoption(
         "--atol",
         type=float,
-        default=0.0,
-        help="Absolute tolerance for numeric regression (default 0).",
+        default=1.0e-5,
+        help="Absolute tolerance for numeric regression (default 1.0e-5).",
     )
 
 
@@ -139,7 +136,7 @@ def _select_flights(
     wanted_ids: list[str] | None,
     adep: Optional[str],
     ades: Optional[str],
-    reg: Optional[str],
+    registration: Optional[str],
     all_flights: bool,
     max_flights: Optional[int],
 ) -> list[Mapping[str, Any]]:
@@ -150,8 +147,8 @@ def _select_flights(
         sel &= df["ADEP"] == str(adep).strip()
     if ades:
         sel &= df["ADES"] == str(ades).strip()
-    if reg:
-        sel &= df["REGISTRATION"] == str(reg).strip()
+    if registration:
+        sel &= df["REGISTRATION"] == str(registration).strip()
 
     df_sel = df.loc[sel].copy()
     if df_sel.empty:
@@ -168,7 +165,7 @@ def _select_flights(
                 "flight_id": str(fid),
                 "adep": str(a),
                 "ades": str(d),
-                "reg": str(r),
+                "registration": str(r),
                 "df": gdf.copy(),
             }
         )
@@ -186,26 +183,28 @@ def _select_flights(
 
 def _load_expectations(path: Optional[str]) -> List[Flight]:  # dict[str, Any]:
     if not path:
-        return {}
+        return []  # {}
 
     p = Path(path)
 
     if not p.exists():
         raise FileNotFoundError(p)
 
-    # if p.suffix.lower() in (".yml", ".yaml"):
-    #    if yaml is None:
-    #        raise RuntimeError(
-    #            "PyYAML not installed but a .yaml file was provided to --expect"
-    #        )
-    #    return yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    if p.suffix != ".json":
+        raise RuntimeError("Only JSON format is supported for expectations.")
 
-    with open(path) as fh:
+    with open(p, "r", encoding="utf-8") as fh:
         data = json.load(fh)
 
-    return [Flight.from_dict(f) for f in data]
+    flights = []
 
-    # return json.loads(p.read_text(encoding="utf-8"))
+    for d in data:
+        f = Flight.from_dict(d)
+        f["altitude"] = f.altitude
+        f.attrs["flight_id"] = f["flight_id"][0]
+        flights.append(f)
+
+    return flights
 
 
 # ----------------------------------------------------------------------
@@ -226,7 +225,7 @@ def test_inputs(pytestconfig: pytest.Config) -> Mapping[str, Any]:
         pytestconfig.getoption("--flight-id") or [],
         pytestconfig.getoption("--adep"),
         pytestconfig.getoption("--ades"),
-        pytestconfig.getoption("--reg"),
+        pytestconfig.getoption("--registration"),
         pytestconfig.getoption("--all-flights"),
         pytestconfig.getoption("--max-flights"),
     )
@@ -302,12 +301,14 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
         metafunc.config.getoption("--flight-id") or [],
         metafunc.config.getoption("--adep"),
         metafunc.config.getoption("--ades"),
-        metafunc.config.getoption("--reg"),
+        metafunc.config.getoption("--registration"),
         bool(metafunc.config.getoption("--all-flights")),
         metafunc.config.getoption("--max-flights"),
     )
     if not cases:
         raise pytest.UsageError(f"No {model_type} flights matched filters.")
 
-    ids = [f"{c['flight_id']}-{c['adep']}-{c['ades']}-{c['reg']}" for c in cases]
+    ids = [
+        f"{c['flight_id']}-{c['adep']}-{c['ades']}-{c['registration']}" for c in cases
+    ]
     metafunc.parametrize("flight_case", cases, ids=ids)

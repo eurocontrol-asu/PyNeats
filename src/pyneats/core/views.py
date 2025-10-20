@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from typing import ClassVar, Iterable, TypeVar, Tuple, cast
+from typing import ClassVar, Iterable, TypeVar, Tuple, cast, Any
 from pycontrails import Flight
+from pycontrails.utils import json as json_utils
 from pyneats.core.steps import StepError
+import numpy as np
+import warnings
+
 
 __all__ = [
     "ValidationError",
@@ -139,3 +143,37 @@ class FlightView(Flight):
         cols_ok = all(c in flight for c in cls._all_required())
         attrs_ok = all(a in flight.attrs for a in cls._all_attrs_required())
         return cols_ok and attrs_ok
+
+    # Overload method
+    def to_dict(self) -> dict[str, Any]:
+        np_encoder = json_utils.NumpyEncoder()
+
+        def encode(key: str, obj: Any) -> Any:
+            # Try to handle some pandas objects
+            if hasattr(obj, "to_numpy"):
+                obj = obj.to_numpy()
+
+            # Convert numpy objects to python objects
+            if isinstance(obj, np.ndarray | np.generic):
+                # round time to unix seconds
+                if key == "time":
+                    return np_encoder.default(obj.astype("datetime64[s]").astype(int))
+
+                # round specific keys in precision
+                return np_encoder.default(obj)
+
+            # Pass through everything else
+            return obj
+
+        data = {k: encode(k, v) for k, v in self.data.items()}
+        attrs = {k: encode(k, v) for k, v in self.attrs.items()}
+
+        # Issue warning if any keys are duplicated
+        common_keys = data.keys() & attrs.keys()
+        if common_keys:
+            warnings.warn(
+                f"Found duplicate keys in data and attrs: {common_keys}. "
+                "Data keys will overwrite attrs keys in returned dictionary."
+            )
+
+        return {**attrs, **data}

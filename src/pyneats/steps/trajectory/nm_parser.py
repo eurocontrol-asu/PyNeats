@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Final, Mapping
+from typing import Any, Mapping
 import pandas as pd
 
 from pycontrails import Flight
@@ -33,13 +33,16 @@ class NMTrajectoryParserParams(TrajectoryParserParams):
             "LON": "longitude",
             "TIME_OVER": "time",
             "FLIGHT_LEVEL": "altitude",  # FL (hundreds of feet)
+            "FUEL_FLOW": "fuel_flow",
+            "ENGINE_EFFICIENCY": "engine_efficiency",
+            "AIRCRAFT_MASS": "aircraft_mass",
         }
     )
     attrs_mapping: Mapping[str, str] = field(
         default_factory=lambda: {
             "flight_id": "AIRCRAFT_ID",
             "aircraft_type": "AIRCRAFT_TYPE_ICAO_ID",
-            "callsign": "REGISTRATION",
+            "registration": "REGISTRATION",
             "departure_airport": "ADEP",
             "arrival_airport": "ADES",
             "aobt": "time",
@@ -67,15 +70,13 @@ class NMTrajectoryParser(
 
     default_params = NMTrajectoryParserParams
 
-    REQUIRED_AFTER_RENAME: Final[tuple[str, ...]] = REQUIRED_4D_COLS
-
     def run(self, flight: pd.DataFrame) -> Flight4D:
         try:
             self.logger.debug("NM parse start: rows=%d, cols=%d", *flight.shape)
 
             # 1) Rename to canonical schema
             df = flight.rename(columns=self.params.mapping_4d)
-            missing = [c for c in self.REQUIRED_AFTER_RENAME if c not in df.columns]
+            missing = [c for c in Flight4D.REQUIRED if c not in df.columns]
 
             if missing:
                 raise TrajectoryParserStepError(
@@ -111,7 +112,8 @@ class NMTrajectoryParser(
                 raise TrajectoryParserStepError(f"timestamp parsing failed: {e}") from e
 
             # 4) Clean, sort, dedup
-            mask = df[list(self.REQUIRED_AFTER_RENAME)].notna().all(axis=1)
+            # NOTE: Can AO upload NaNs? Then we should only sort by time here ...
+            mask = df[list(REQUIRED_4D_COLS)].notna().all(axis=1)
             df = (
                 df.loc[mask]
                 .sort_values("time")
@@ -204,7 +206,9 @@ class NMTrajectoryParser(
 
             # 7) Construct base Flight with required columns only
             # Required columns only for Flight data
-            data_req = df[list(self.REQUIRED_AFTER_RENAME)]
+            # Keep required and optional columns
+            optional_columns = [c for c in df.columns if c in Flight4D.OPTIONAL]
+            data_req = df[list(Flight4D.REQUIRED) + list(optional_columns)]
 
             if fuel_obj is not None:
                 base = Flight(data=data_req, attrs=attrs, fuel=fuel_obj)

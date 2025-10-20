@@ -11,7 +11,7 @@ from pyneats.steps.interpolation.protocol import (
     TrajectoryInterpolator,
     TrajectoryInterpolationStepError,
 )
-
+import numpy as np
 
 __all__ = [
     "PyContrailsInterpolationParams",
@@ -43,14 +43,33 @@ class PyContrailsInterpolator(
 
     def run(self, flight: Flight4D) -> Flight4D:
         try:
-            tmp: Flight = flight.resample_and_fill(self.params.interpolation_time)
+            # Keep original dataframe for interpolation of optional columns
+            original = flight.dataframe
+
+            # Perform pycontrails interpolation
+            interpolated_flight: Flight = flight.resample_and_fill(
+                self.params.interpolation_time
+            )
+
+            # Interpolate optional columns
+            t_orig_num = original["time"].values.astype(np.int64)
+            t_new_num = interpolated_flight["time"].astype(np.int64)
+
+            for col in Flight4D.OPTIONAL:
+                if col in original.columns:
+                    y_orig = original[col].astype(float)
+                    interpolated_values = np.interp(t_new_num, t_orig_num, y_orig)
+                    interpolated_flight[col] = interpolated_values
+
         except Exception as e:
             raise TrajectoryInterpolationStepError(
                 f"resample_and_fill failed: {e}"
             ) from e
 
         try:
-            return Flight4D.from_flight(tmp)  # schema/type validation (zero-copy)
+            return Flight4D.from_flight(
+                interpolated_flight
+            )  # schema/type validation (zero-copy)
         except ValidationError as ve:
             raise TrajectoryInterpolationStepError(
                 f"invalid resampled schema: {ve}"

@@ -14,6 +14,11 @@ REQUIRED_4D_COLS: Final[Tuple[str, ...]] = (
     "altitude",
     "time",
 )
+OPTIONAL_COLS: Final[Tuple[str, ...]] = (
+    "fuel_flow",
+    "aircraft_mass",
+    "engine_efficiency",
+)
 ATTRS_OPTIONAL: Final[Tuple[str, ...]] = (
     "takeoff_weight",
     "payload_factor",
@@ -27,7 +32,7 @@ ATTS_REQUIRED: Final[Tuple[str, ...]] = (
     "aircraft_type",
     "departure_airport",
     "arrival_airport",
-    "callsign",
+    "registration",
     "model_type",
 )
 
@@ -36,5 +41,6 @@ class Flight4D(FlightView):
     """Zero-copy, typed view ensuring ('latitude','longitude','altitude','time') exist."""
 
     REQUIRED: ClassVar[Tuple[str, ...]] = REQUIRED_4D_COLS
+    OPTIONAL: ClassVar[Tuple[str, ...]] = OPTIONAL_COLS
     ATTRS_OPTIONAL: ClassVar[Tuple[str, ...]] = ATTRS_OPTIONAL
     ATTRS_REQUIRED: ClassVar[Tuple[str, ...]] = ATTS_REQUIRED

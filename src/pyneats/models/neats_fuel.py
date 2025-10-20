@@ -14,6 +14,8 @@ class NEATSFuel(SAFBlend):
     configurable hydrogen content and/or q_fuel. Independent of pct_blend physics.
     """
     
+    aromatics_content : Optional[float] = 0.25  # default value
+
     def __init__(
         self,
         *,
@@ -22,6 +24,7 @@ class NEATSFuel(SAFBlend):
         q_fuel: Optional[float] = None,            # J/kg (LHV)
         pct_blend_gate: float = 1e-12,             # tiny, but needed for PyContrails gate
         sulphur_free: bool = False,                # set True to zero SOx 
+        aromatics_content: Optional[float] = None,  
         name: str = "NEATS Fuel (custom)",
     ) -> None:
         # pylint: disable=super-init-not-called
@@ -43,6 +46,9 @@ class NEATSFuel(SAFBlend):
 
         # --- Resolve q_fuel
         qf = float(q_fuel) if q_fuel is not None else base.q_fuel
+
+        if aromatics_content is not None:
+            self.aromatics_content = aromatics_content
 
         # --- Derive dependent indices consistently
         ei_co2 = base.ei_co2
