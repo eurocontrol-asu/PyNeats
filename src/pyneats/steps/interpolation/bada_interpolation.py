@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pyneats.core.steps import BaseStep
-from pyneats.steps.trajectory import Flight4D
+from pyneats.steps.parsing.views import Flight4D
 from pyneats.core.steps_registry import register
 from pyneats.steps.interpolation.params import TrajectoryInterpolationParams
 from pyneats.steps.interpolation.protocol import (

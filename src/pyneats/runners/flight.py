@@ -13,14 +13,13 @@ from pyneats.steps.climate_functions import (
     FlightWithNonCO2Impact,
     NonCO2Model,
     ContrailsStepError,
-    ClimateStepError
+    ClimateStepError,
 )
 
 from pyneats.steps.climate_metrics import (
     FlightWithClimateImpact,
     ClimateImpactModel,
     ClimateImpactStepError,
-
 )
 
 
@@ -29,7 +28,7 @@ from pyneats.steps.interpolation import (
     TrajectoryInterpolationStepError,
 )
 
-from pyneats.steps.trajectory import (
+from pyneats.steps.parsing import (
     TrajectoryParserStepError,
     Flight4D,
     TrajectoryParser,
@@ -98,7 +97,6 @@ class FlightRunner:
         source: pd.DataFrame | None = None,
         cfg: Optional[RunnerConfig] = None,
     ) -> None:
-
         self.cfg = cfg or RunnerConfig()
 
         self._source = None  # initialize backing field before using the property
@@ -211,7 +209,6 @@ class FlightRunner:
 
     # Step 2: Interpolate/reconstruct trajectory
     def _interpolate(self) -> Self:
-
         if self.parsed_flight is None:
             logger.error("Missing parsed_flight; did you call _parse_flight() first?")
             raise RuntimeError("_parse_flight() must be called before _interpolate().")
@@ -237,7 +234,6 @@ class FlightRunner:
 
     # Step 3: Intersect with weather data
     def _intersect_weather(self) -> Self:
-
         if self.interpolated_flight is None:
             logger.error(
                 "Missing interpolated_flight; did you call _interpolate() first?"
@@ -271,7 +267,6 @@ class FlightRunner:
 
     # Step 4: Run Performance model
     def _performance(self) -> Self:
-
         if self.flight_with_weather is None:
             logger.error(
                 "Missing flight_with_weather; did you call _intersect_weather() first?"
@@ -297,7 +292,6 @@ class FlightRunner:
 
     # Step 5: Run Emission model
     def _emissions(self) -> Self:
-
         if self.flight_with_performance is None:
             logger.error(
                 "Missing flight_with_performance; did you call performance() first?"
@@ -322,7 +316,6 @@ class FlightRunner:
 
     # Step 6: Compute Contrails EF
     def _contrails(self) -> Self:
-
         start = time.time()
         if self.flight_with_emissions is None:
             logger.error(
@@ -355,7 +348,6 @@ class FlightRunner:
 
     # Step 7: Compute non-CO₂ (ACCF)
     def _nonco2(self) -> Self:
-
         start = time.time()
         if self.flight_with_contrails is None:
             logger.error(
@@ -388,7 +380,6 @@ class FlightRunner:
 
         # Zero-copy validated view
         self.flight_with_nonco2 = f_out
-
 
         logger.info("Non-CO₂ (ACCF) step completed successfully")
         end = time.time()

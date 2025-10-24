@@ -5,7 +5,7 @@ from pycontrails import Flight
 from pyneats.core.steps import BaseStep
 from pyneats.core.views import ValidationError
 from pyneats.core.steps_registry import register
-from pyneats.steps.trajectory import Flight4D
+from pyneats.steps.parsing.views import Flight4D
 from pyneats.steps.interpolation.params import TrajectoryInterpolationParams
 from pyneats.steps.interpolation.protocol import (
     TrajectoryInterpolator,

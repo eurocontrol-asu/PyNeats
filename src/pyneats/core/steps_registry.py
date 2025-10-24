@@ -91,7 +91,7 @@ def register(t: type[T], name: str) -> Callable[[Ctor[T]], Ctor[T]]:
     Decorator to register a constructor/class under an *interface type* and a name.
 
     Usage:
-        @register_t(Interpolator, "pycontrails")
+        @register(Interpolator, "pycontrails")
         class PCInterpolator: ...
     """
     return _REGISTRY.register(t, name)

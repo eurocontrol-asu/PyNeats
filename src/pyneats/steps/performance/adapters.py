@@ -1,14 +1,23 @@
 from __future__ import annotations
 from typing import Protocol, Tuple, cast
 
-import pyBADA.constants as const
-from pycontrails.physics.units import m_per_s_to_knots, ft_to_m
-
-import pyBADA.atmosphere as atm
-from pyBADA.bada3 import Bada3Aircraft
-from pyBADA.bada4 import Bada4Aircraft
 from packaging import version
 from pathlib import Path
+
+from pycontrails.physics.units import m_per_s_to_knots, ft_to_m
+
+try:
+    import pyBADA.atmosphere as atm
+    import pyBADA.constants as const
+    from pyBADA.bada3 import Bada3Aircraft
+    from pyBADA.bada4 import Bada4Aircraft
+except ImportError as e:
+    raise RuntimeError(
+        "PyBADA is not installed. Install it manually:\n"
+        "    pip install pybada --ignore-requires-python --no-deps\n"
+        "after installing pyneats."
+    ) from e
+
 
 from pyneats.steps.performance.protocol import PerformanceStepError
 
@@ -245,7 +254,6 @@ class BADA3Adapter(BaseBADAAdapter):
             filePath=config_path,
         )
         self._bada_code = bada3_code
-
 
     @property
     def nb_eng(self) -> int | None:

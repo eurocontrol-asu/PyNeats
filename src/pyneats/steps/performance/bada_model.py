@@ -7,13 +7,15 @@ from importlib.resources import files
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
+from pathlib import Path
+
 from pycontrails import Flight
 from pycontrails.physics.units import m_to_T_isa
 from pycontrails.physics.jet import (
     acceleration as pc_acceleration,
     overall_propulsion_efficiency,
 )
-from pathlib import Path
+
 from pyneats.core.neats_default_parameters import (
     DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW,
     DEFAULT_Q_FUEL,
@@ -66,7 +68,7 @@ class BADAPerformanceModelParams(PerformanceModelParams):
     )
 
     bada_mapping_file: str = str(
-        files("pyneats.ressources").joinpath("mapping_bada.csv")
+        files("pyneats.resources").joinpath("mapping_bada.csv")
     )
 
     bada4_version: str = DEFAULT_BADA4_VERSION

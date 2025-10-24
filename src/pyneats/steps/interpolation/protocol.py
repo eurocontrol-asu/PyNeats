@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 from pyneats.core.steps import Step, StepError
-from pyneats.steps.trajectory import Flight4D
+from pyneats.steps.parsing.views import Flight4D
 
 __all__ = [
     "TrajectoryInterpolator",

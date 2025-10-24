@@ -24,12 +24,7 @@ __all__ = [
     "DEFAULT_EMISSIONS_KWARGS",
     "DEFAULT_COCIP_KWARGS",
     "DEFAULT_ACCF_KWARGS",
-    "DEFAULT_HORIZONS",
-    "DEFAULT_EFFICACY",
-    "DEFAULT_SURFACE_EARTH",
-    "DEFAULT_SECONDS_PER_YEAR",
-    "DEFAULT_AGWP_AR6_WM2YR_PER_KG",
-    "DEFAULT_ROCD_PHASE_THRESHOLD"
+    "DEFAULT_ROCD_PHASE_THRESHOLD",
 ]
 
 DEFAULT_INTERPOLATOR: Final[str] = "pycontrails"
@@ -64,9 +59,7 @@ DEFAULT_DELTA_TAU_FILL_METHOD: Final[Literal["bffill", "none", "zero"]] = "bffil
 # Emissions defaults
 DEFAULT_EMISSIONS_KWARGS: Final[Mapping[str, Any]] = {}
 
-# Climate defaults
-# Cocip defaults
-# DEFAULT_HUMIDITY_SCALING = ConstantHumidityScaling(rhi_adj=0.99)
+# Cocip default arguments
 DEFAULT_HUMIDITY_SCALING = ExponentialBoostHumidityScaling(
     rhi_adj=0.9779,
     rhi_boost_exponent=1.635,
@@ -80,12 +73,6 @@ DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
     "humidity_scaling": DEFAULT_HUMIDITY_SCALING,
     "interpolation_use_indices": True,  # Note: not specified in document! Default in ModelParams is False
 }
-
-# DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
-#    "dt_integration": np.timedelta64(1, "m"),
-#    "humidity_scaling": ConstantHumidityScaling(rhi_adj=0.99),
-#    "interpolation_use_indices": True,
-# }
 
 # ACCF defaults
 
@@ -103,22 +90,5 @@ DEFAULT_ACCF_KWARGS: Final[Mapping[str, Any]] = {
     "unit_K_per_kg_fuel": True,  # Note: not specified in document! Default in ACCF is False
 }
 
-# DEFAULT_ACCF_KWARGS: Final[Mapping[str, Any]] = {
-#    "unit_K_per_kg_fuel": True,
-#    "forecast_step": 12,  # what you used in your snippet
-# }
-
-# GWP defaults
-DEFAULT_HORIZONS: Final[tuple[int, ...]] = (20, 50, 100)
-DEFAULT_EFFICACY: Final[float] = 0.42
-DEFAULT_SURFACE_EARTH: Final[float] = 5.101e14  # m²
-DEFAULT_SECONDS_PER_YEAR: Final[int] = 31_556_952  # s
-
-# AR6 Table 7.SM.7 (W·m⁻²·yr·kg⁻¹) -> convert to J·m⁻²·kg⁻¹ by multiplying by seconds/year
-DEFAULT_AGWP_AR6_WM2YR_PER_KG: Mapping[int, float] = {
-    20: 0.0243e-12,
-    50: 0.0529e-12,  # often ~0.05e-12
-    100: 0.0895e-12,
-}
 
 DEFAULT_ROCD_PHASE_THRESHOLD: Final[float] = 50  # feet per minute

@@ -2,14 +2,13 @@
 weather_provider.py
 
 This script defines WeatherProvider that integrates meteorological data into flight trajectories.
-It allows downselecting meteorological datasets to the flight envelope, interpolating required 
+It allows downselecting meteorological datasets to the flight envelope, interpolating required
 weather variables, and optionally applying humidity scaling.
 
 Key Components:
 - `WeatherProviderParams`: Configuration for WeatherProvider such as long, lat, time buffers, etc.
 - `WeatherProvider`: The main class that processes flight data and integrates weather information.
 """
-
 
 from __future__ import annotations
 
@@ -27,7 +26,7 @@ from pycontrails.models.humidity_scaling import HumidityScaling
 from pyneats.core.neats_default_parameters import DEFAULT_HUMIDITY_SCALING
 from pyneats.core.steps import BaseStep, Step, StepError, BaseParams
 from pyneats.core.views import ValidationError
-from pyneats.steps.trajectory import Flight4D
+from pyneats.steps.parsing.views import Flight4D
 
 __all__ = [
     "DEFAULT_REQUIRED_WEATHER_COLS",
@@ -53,6 +52,7 @@ DEFAULT_REQUIRED_WEATHER_COLS: Final[tuple[str, ...]] = (
 DEFAULT_OPTIONAL_WEATHER_COLS: Final[tuple[str, ...]] = ("air_pressure",)
 
 WIND_VARS: Final[tuple[str, ...]] = ("eastward_wind", "northward_wind")
+
 
 class FlightWithWeather(Flight4D):
     """Typed, zero-copy view asserting required weather columns exist."""
@@ -88,9 +88,7 @@ class PcHumidityScalingAdapter(HumidityScalingModel):
         self.humidity_scaling = humidity_scaling
 
     def eval(self, source: Flight) -> Flight:
-        
         result = self.humidity_scaling.eval(source=source)
-
 
         if isinstance(result, Flight):
             return result
@@ -205,7 +203,7 @@ class WeatherProvider(
 
     def rad(self) -> MetDataset:
         return self._rad
-    
+
     def wind(self) -> MetDataset | None:
         return self._wind
 
@@ -214,7 +212,7 @@ class WeatherProvider(
 
     def ds_rad(self) -> MetDataset | None:
         return self._ds_rad
-    
+
     def ds_wind(self) -> MetDataset | None:
         return self._ds_wind
 
@@ -267,7 +265,6 @@ class WeatherProvider(
 
         # Intersect MET variables and build a new Flight (no in-place mutation)
         try:
-            
             new_cols: dict[str, NDArray[np.floating[Any]]] = {}
 
             for met_var, out_col in self.params.var_map.items():
@@ -282,7 +279,7 @@ class WeatherProvider(
                         src_ds = self._ds_met
                 else:
                     # non-wind → MET only
-                    if  met_var in self._ds_met:
+                    if met_var in self._ds_met:
                         src_ds = self._ds_met
 
                 if src_ds is None:

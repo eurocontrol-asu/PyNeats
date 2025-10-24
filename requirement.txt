@@ -1,5 +1,0 @@
-
-
-pip install pycontrails[complete]==0.54.10
-
-pip install -e /Path/to/your/BADA
