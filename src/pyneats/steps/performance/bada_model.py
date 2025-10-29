@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal
-from functools import cached_property
 from dataclasses import dataclass
 from importlib.resources import files
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-from pathlib import Path
+
 
 from pycontrails import Flight
 from pycontrails.physics.units import m_to_T_isa
@@ -42,6 +42,8 @@ from pyneats.steps.performance.adapters import (
     BADA4Adapter,
 )
 
+from pyneats.steps.performance.bada_mapper import BadaMappingPaths, BadaMapper
+
 __all__ = [
     "BADAPerformanceModel",
     "BADAPerformanceModelParams",
@@ -52,7 +54,7 @@ def is_nan_string(s: str) -> bool:
     try:
         return np.isnan(float(s))
     except ValueError:
-        return False  # If the string cannot be converted to float, it's not NaN.
+        return False  
 
 
 @dataclass(frozen=True)
@@ -67,15 +69,27 @@ class BADAPerformanceModelParams(PerformanceModelParams):
         DEFAULT_DELTA_TAU_FILL_METHOD
     )
 
-    bada_mapping_file: str = str(
-        files("pyneats.resources").joinpath("mapping_bada.csv")
+    # BADA mapping paths (to packaged resources)
+    icao_series_engine_path = Path(str(files("pyneats.resources").joinpath("ECTL_mapping_by_ACFT_SERIES_and_ENGINE_ID.csv")))
+    icao_series_path = Path(str(files("pyneats.resources").joinpath("ECTL_mapping_by_ACFT_SERIES.csv")))
+    icao_engine_path = Path(str(files("pyneats.resources").joinpath("ECTL_mapping_by_ENGINE_ID_and_ICAO.csv")))
+    default_engine_by_icao_path = Path(str(files("pyneats.resources").joinpath("MRR_conservative_mapping.csv")))
+    icao_only_path = Path(str(files("pyneats.resources").joinpath("ECTL_mapping_by_ICAO.csv")))
+
+    paths = BadaMappingPaths(
+        icao_series_engine=icao_series_engine_path,
+        icao_series=icao_series_path,
+        icao_engine=icao_engine_path,
+        default_engine_by_icao=default_engine_by_icao_path,
+        icao_only=icao_only_path,
     )
+
+    mapper = BadaMapper(paths)
 
     bada4_version: str = DEFAULT_BADA4_VERSION
     bada3_version: str = DEFAULT_BADA3_VERSION
 
-    # bada4_config_path: str = str(files("pyBADA").joinpath("4.2.1")) + "/"
-    # bada4_config_path: str = str(files("pyBADA").joinpath("4.2.1")) + "/"
+    
     bada4_root_path: str = (
         str(files("pyBADA")) + "/"
     )  # NOTE: this is the base path where the various BADA4 version folders are located. Should it have a default value?
@@ -88,19 +102,13 @@ class BADAPerformanceModelParams(PerformanceModelParams):
     max_mass_estimation_iter: int = DEFAULT_MAX_MASS_ESTIMATION_ITER
     rocd_phase_threshold: float = DEFAULT_ROCD_PHASE_THRESHOLD
 
-    @cached_property
-    def _bada_df(self) -> pd.DataFrame:
-        return pd.read_csv(self.bada_mapping_file)
 
-    def bada_type(self, icao: str) -> tuple[int, str, str, str]:
-        # expects a mapping df with columns: ICAO, NB_ENG, BADA3, BADA4, ENGINE_ID
-        df: pd.DataFrame = self._bada_df
-        cols = ["NB_ENG", "BADA3", "BADA4", "ENGINE_ID"]
-        row = df.loc[df["ICAO"] == icao, cols]
-        if row.empty:
-            raise KeyError(f"No entry for ICAO '{icao}'")
-        s = row.iloc[0]
-        return int(s["NB_ENG"]), str(s["BADA3"]), str(s["BADA4"]), str(s["ENGINE_ID"])
+    def bada_type(self,
+                  icao: str, 
+                  series: str | None, 
+                  engine_id: str | None) -> tuple[int, str, str, str]:
+        
+        return self.mapper.bada_type(icao, series, engine_id)
 
 
 @register(PerformanceModel, "bada")
@@ -112,7 +120,7 @@ class BADAPerformanceModel(
     ]
 ):
     """
-    Thin wrapper over your BADA adapter.
+    Thin wrapper over the BADA adapter.
 
     - input:  FlightWithWeather (validated upstream)
     - output: FlightWithPerformance (validated here, zero-copy)
@@ -149,20 +157,25 @@ class BADAPerformanceModel(
 
     # public API
     def run(self, flight: FlightWithWeather) -> FlightWithPerformance:
+
         try:
-            # We need to preprocess anyway the flight to get the true airspeed
+            # We need to preprocess the flight anyway to get the true airspeed
             # even if fuel flow and enngine_efficiency are provided
             # the true airspeed is needed in downstream steps, and so is part of the view
             df = self._preprocess(flight)  # shallow copy + derived columns
 
             # We need this to get the number of engines and span, which are required by downstream
-            icao = flight.attrs.get("aircraft_type")
-            q_fuel: float | None = flight.attrs.get("q_fuel")
+
+            
+            icao: str | None  = flight.attrs.get("aircraft_type") if hasattr(flight, "attrs") else None
+            engine_id: str | None = flight.attrs.get("engine_id") if hasattr(flight, "attrs") else None
+            series: str | None = flight.attrs.get("series") if hasattr(flight, "attrs") else None
+            q_fuel: float | None = flight.attrs.get("q_fuel") if hasattr(flight, "attrs") else None
 
             if not icao:
                 raise KeyError("Flight attrs missing 'aircraft_type'")
 
-            adapter, bada_version = self._get_bada_adapter(icao)
+            adapter, bada_version, _, engine_id = self._get_bada_adapter(icao, series, engine_id)
 
             # If both fuel_flow and engine_efficiency are provided by AOs, stop here
             if "fuel_flow" in df.columns and "engine_efficiency" in df.columns:
@@ -178,11 +191,12 @@ class BADAPerformanceModel(
                     df["fuel"] = df["fuel_burn"]
 
                 out = Flight(data=df, attrs={**flight.attrs})
+                out.attrs["engine_id"] = engine_id
                 out.attrs["n_engine"] = adapter.nb_eng
                 out.attrs["wingspan"] = adapter.span
                 return FlightWithPerformance.from_flight(out)
 
-            # When fuel_flow and/or emgine_efficiency are missing, we need to run BADA
+            # When fuel_flow and/or engine_efficiency are missing, we need to run BADA
             if "aircraft_mass" in df.columns:
                 self.logger.debug("'aircraft_mass' column provided, using it")
 
@@ -229,8 +243,8 @@ class BADAPerformanceModel(
 
                     if adapter.MPL is None:
                         self.logger.warning(
-                            f"""BADA adapter for ICAO '{icao}' does not provide MPL,  # pylint: disable=logging-fstring-interpolation
-                            assuming MPL = MTOW - OEW. Conservative case"""  # pylint: disable=logging-fstring-interpolation
+                            f"""BADA adapter for ICAO '{icao}' does not provide MPL, 
+                            assuming MPL = MTOW - OEW. Conservative case"""
                         )
                         maximum_payload = (
                             maximum_takeoff_weight - operating_empty_weight
@@ -391,24 +405,29 @@ class BADAPerformanceModel(
         return out
 
     # internals (unchanged math flow)
-    def _get_bada_adapter(self, icao: str) -> tuple[BaseBADAAdapter, str]:
-        # We only need the BADA codes here
-        _, bada3_code, bada4_code, _ = self.params.bada_type(icao)
+    def _get_bada_adapter(self,
+                          icao: str, 
+                          series: str | None, 
+                          engine_id: str | None) -> tuple[BaseBADAAdapter, str, int, str]:
+        
+
+        nb_eng, bada3_code, bada4_code, engine_id = self.params.bada_type(icao, series=series, engine_id=engine_id)
 
         if is_nan_string(bada4_code):
             return BADA3Adapter(
                 str(self.bada3_path),
                 bada3_code,
                 rocd_phase_threshold=self.params.rocd_phase_threshold,
-            ), "BADA3"
+            ), "BADA3", nb_eng, engine_id
 
         return BADA4Adapter(
             str(self.bada4_path),
             bada4_code,
             rocd_phase_threshold=self.params.rocd_phase_threshold,
-        ), "BADA4"
+        ), "BADA4", nb_eng, engine_id
 
     def _preprocess(self, flight: Flight) -> pd.DataFrame:
+        
         # shallow copy to avoid mutating user input; we’ll add cols here
         df = flight.dataframe.copy(deep=False)
 
@@ -432,7 +451,7 @@ class BADAPerformanceModel(
         df["segment_duration"] = flight.segment_duration()
         df["rocd"] = flight.segment_rocd()  # NOTE: requires air temperature?
 
-        # Ensure numeric dtype (no-op if already float)
+        # Ensure numeric dtype 
         df["true_airspeed"] = pd.to_numeric(df["true_airspeed"], errors="coerce")
         df["segment_duration"] = pd.to_numeric(df["segment_duration"], errors="coerce")
 

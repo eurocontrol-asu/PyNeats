@@ -8,7 +8,7 @@ description = "NEATS: aviation non-CO₂ climate metrics pipeline (PyNeats)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
-authors = [{ name = "Philippe VERY", email = "philippe.very@eruocontrol.int" }]
+authors = [{ name = "Philippe VERY", email = "philippe.very@eruocontrol.int" }, { name = "Ramon DALMAU", email = "ramon.dalmau-codina@eruocontrol.int" }, { name = "Ana-Maria PELIN", email = "ana-maria.pelin.ext@eurocontrol.int" }]
 keywords = ["aviation", "climate", "contrails", "metrics", "pipeline"]
 classifiers = [
   "Programming Language :: Python :: 3",
@@ -17,10 +17,8 @@ classifiers = [
   "Typing :: Typed",
 ]
 
-# Runtime deps (example — adjust to your real ones)
 dependencies = [
   "xarray>=2023.10.1",
-  "typer>=0.9",            # if you add a CLI
   "pycontrails[complete]==0.54.10",
 ]
 
@@ -30,40 +28,30 @@ dev = [
   "pytest-cov",
   "ruff>=0.5",
   "mypy>=1.10",
-  "types-requests",
 ]
 
 bada = []  # left empty intentionally; docs explain manual install
-
-[project.scripts]
-# If you add a CLI entry point in src/pyneats/cli/main.py
-pyneats = "pyneats.cli.main:app"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-# If you want to auto-include subpackages under pyneats/*
 
 [tool.setuptools.package-data]
-# Package small data files shipped inside the wheel (optional)
-# Adjust globs as needed:
 pyneats = ["py.typed", "resources/**/*"]
-
-[tool.setuptools.include-package-data]
-# If using MANIFEST.in (you may skip MANIFEST.in if the above covers it)
-true
 
 [tool.setuptools_scm]
 version_file = "src/pyneats/_version.py"
 fallback_version = "0.0.0-dev"   # optional safety net
 
-# --- Tooling (recommended but optional) ---
-
 [tool.pytest.ini_options]
+pythonpath = "src"
 testpaths = ["tests"]
-addopts = "-q"
+# addopts = "-q"
+filterwarnings = [
+    "ignore::Warning",
+]
 
 [tool.ruff]
 line-length = 100
@@ -71,6 +59,13 @@ target-version = "py310"
 
 [tool.mypy]
 python_version = "3.10"
-warn_unused_ignores = true
+color_output = true
+pretty = true
+show_column_numbers = true
 strict = true
+check_untyped_defs = true
 ignore_missing_imports = true
+warn_no_return = true
+warn_redundant_casts = true
+warn_unused_configs = true
+warn_unused_ignores = true

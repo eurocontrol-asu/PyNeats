@@ -5,6 +5,9 @@ from pyneats.core.views import FlightView
 
 __all__ = [
     "REQUIRED_4D_COLS",
+    "OPTIONAL_COLS",
+    "ATTRS_OPTIONAL",
+    "ATTS_REQUIRED",
     "Flight4D",
 ]
 

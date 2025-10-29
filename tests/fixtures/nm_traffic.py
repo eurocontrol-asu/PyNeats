@@ -1,4 +1,3 @@
-import os
 import pandas as pd
 import pytest
 import json
@@ -9,9 +8,7 @@ from pyneats.core.views import FlightView
 
 @pytest.fixture
 def nm_input() -> List[pd.DataFrame]:
-    traffic_path = os.environ.get("TEST_TRAFFIC_DIR", "./tests/data")
-    print(traffic_path)
-    traffic_path = Path(traffic_path)
+    traffic_path = Path(__file__).parent.parent / "data"
 
     if not traffic_path.is_dir():
         raise RuntimeError(
@@ -53,9 +50,7 @@ def nm_input() -> List[pd.DataFrame]:
 
 @pytest.fixture
 def nm_output() -> List[FlightView]:
-    traffic_path = os.environ.get("TEST_TRAFFIC_DIR", "./tests/data")
-    print(traffic_path)
-    traffic_path = Path(traffic_path)
+    traffic_path = Path(__file__).parent.parent / "data"
 
     if not traffic_path.is_dir():
         raise RuntimeError(
