@@ -21,15 +21,21 @@ OPTIONAL_COLS: Final[Tuple[str, ...]] = (
     "fuel_flow",
     "aircraft_mass",
     "engine_efficiency",
+    "true_airspeed",
 )
 ATTRS_OPTIONAL: Final[Tuple[str, ...]] = (
     "takeoff_weight",
     "payload_factor",
-    "engine_type",
     "hydrogen_content",
     "h_c_ratio",
     "q_fuel",
+    "aircraft_series",
+    "engine_id",
+    "aromatic_content",
+    "sulfur_content",
+    "naphtalene",
 )
+
 ATTS_REQUIRED: Final[Tuple[str, ...]] = (
     "flight_id",
     "aircraft_type",
@@ -37,6 +43,7 @@ ATTS_REQUIRED: Final[Tuple[str, ...]] = (
     "arrival_airport",
     "registration",
     "model_type",
+    "aobt"
 )
 
 

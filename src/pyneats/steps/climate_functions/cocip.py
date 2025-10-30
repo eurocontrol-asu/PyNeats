@@ -3,7 +3,7 @@
 """
 contrails.py
 
-This script builds a wrapper around CoCip to allow for the computation of contrail climate functions 
+This script builds a wrapper around PyContrail's CoCip to allow for the computation of contrail climate functions 
 on a flight, adding the results as new columns to the flight data.
 
 Key components:

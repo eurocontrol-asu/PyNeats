@@ -14,7 +14,9 @@ class NEATSFuel(SAFBlend):
     configurable hydrogen content and/or q_fuel. Independent of pct_blend physics.
     """
     
-    aromatics_content : Optional[float] = 0.25  # default value
+    aromatics_content : Optional[float] = 0.25  # default value - Not used in calculations
+    sulphur_content : Optional[float] = 0.003   # default value - Not used in calculations
+    naphthalene : Optional[float] = 0.03        # default value - Not used in calculations
 
     def __init__(
         self,
@@ -23,15 +25,13 @@ class NEATSFuel(SAFBlend):
         h_c_ratio: Optional[float] = None,         # atomic H/C ratio r
         q_fuel: Optional[float] = None,            # J/kg (LHV)
         pct_blend_gate: float = 1e-12,             # tiny, but needed for PyContrails gate
-        sulphur_free: bool = False,                # set True to zero SOx 
-        aromatics_content: Optional[float] = None,  
+        sulphur_content: Optional[float] = None,            
+        aromatics_content: Optional[float] = None,
+        naphthalene: Optional[float] = None,
         name: str = "NEATS Fuel (custom)",
     ) -> None:
         # pylint: disable=super-init-not-called
-        # Intentional: we don't call SAFBlend.__init__ because it derives fields from pct_blend.
-        # We fully initialize the frozen Fuel base directly to keep our custom physics.
-
-
+        # Intent: bypass SAFBlend.__init__ and directly initialise via Fuel
         base = JetA()
 
         # --- Resolve hydrogen content (wt.%)
@@ -47,20 +47,23 @@ class NEATSFuel(SAFBlend):
         # --- Resolve q_fuel
         qf = float(q_fuel) if q_fuel is not None else base.q_fuel
 
-        if aromatics_content is not None:
-            self.aromatics_content = aromatics_content
 
+        # --- Storing Optional Fuel Attributes from AOs, not used at this stage
+        if aromatics_content is not None:
+            object.__setattr__(self, "aromatics_content", aromatics_content)
+
+        if sulphur_content is not None:
+            object.__setattr__(self, "sulphur_content", sulphur_content)
+
+        if naphthalene is not None:  
+            object.__setattr__(self, "naphthalene", naphthalene)
+
+            
         # --- Derive dependent indices consistently
         ei_co2 = base.ei_co2
         ei_h2o = base.ei_h2o * (h_wt_pct / base.hydrogen_content)
-
-        if sulphur_free:
-            ei_so2 = 0.0
-            ei_sulphates = 0.0
-        else:
-            ei_so2 = base.ei_so2
-            ei_sulphates = ei_so2 / 0.98 * 0.02
-
+        ei_so2 = base.ei_so2
+        ei_sulphates = ei_so2 / 0.98 * 0.02
         ei_oc = base.ei_oc
 
         # --- Initialize frozen base dataclass in one shot 
@@ -77,5 +80,6 @@ class NEATSFuel(SAFBlend):
             ei_oc=ei_oc,
         )
 
-        # --- Trip PyContrails' gate: isinstance(..., SAFBlend) and truthy pct_blend
+        # set the blend gate so that downstream code treats as SAFBlend
         object.__setattr__(self, "pct_blend", pct_blend_gate if pct_blend_gate > 0.0 else 1e-12)
+

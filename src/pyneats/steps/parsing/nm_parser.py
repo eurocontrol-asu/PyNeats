@@ -36,12 +36,14 @@ class NMTrajectoryParserParams(TrajectoryParserParams):
             "FUEL_FLOW": "fuel_flow",
             "ENGINE_EFFICIENCY": "engine_efficiency",
             "AIRCRAFT_MASS": "aircraft_mass",
+            "TRUE_AIRSPEED": "true_airspeed",
         }
     )
     attrs_mapping: Mapping[str, str] = field(
         default_factory=lambda: {
             "flight_id": "AIRCRAFT_ID",
             "aircraft_type": "AIRCRAFT_TYPE_ICAO_ID",
+            "aircraft_series": "AIRCRAFT_VERSION",
             "registration": "REGISTRATION",
             "departure_airport": "ADEP",
             "arrival_airport": "ADES",
@@ -49,6 +51,13 @@ class NMTrajectoryParserParams(TrajectoryParserParams):
             "takeoff_weight": "TAKEOFF_WEIGHT",
             "payload_factor": "PAYLOAD_FACTOR",
             "model_type": "MODEL_TYPE",
+            "engine_id": "ENGINE_UID",
+            "hydrogen_content": "HYDROGEN_CONTENT",
+            "h_c_ratio": "HYDROGEN_PER_CARBON_RATIO",
+            "aromatic_content": "AROMATIC_CONTENT",
+            "q_fuel": "CALORIFIC_VALUE",
+            "sulfur_content": "SULFUR",
+            "naphtalene": "NAPHTHALENE",
         }
     )
     date_format: str = "%Y-%m-%d %H:%M:%S"
@@ -126,83 +135,35 @@ class NMTrajectoryParser(
                     "no valid trajectory points after cleaning"
                 )
 
-            # 5) Build attrs
-            attrs: dict[str, Any] = {"altitude_units": "m"}
+            # 5) Build attrs 
+            attrs: dict[str, Any] = {}
             first = df.iloc[0]
 
             for attr_key, src_col in self.params.attrs_mapping.items():
                 if src_col in df.columns:
-                    attrs[attr_key] = first[src_col]
+                    try:
+                        attrs[attr_key] = first[src_col]
+                    except (ValueError, TypeError):
+                        self.logger.warning(
+                            "invalid %r value: %r", attr_key, first[src_col]
 
-            # 6) Optional attributes:
-            if "TAKEOFF_WEIGHT" in df.columns:
-                try:
-                    attrs["takeoff_weight"] = float(first["TAKEOFF_WEIGHT"])
-                except (ValueError, TypeError):
-                    self.logger.warning(
-                        "invalid TAKEOFF_WEIGHT value: %r", first["TAKEOFF_WEIGHT"]
-                    )
+                        )
 
-            if "PAYLOAD_FACTOR" in df.columns:
-                try:
-                    attrs["payload_factor"] = float(first["PAYLOAD_FACTOR"])
-                except (ValueError, TypeError):
-                    self.logger.warning(
-                        "invalid PAYLOAD_FACTOR value: %r", first["PAYLOAD_FACTOR"]
-                    )
+            # 6) Construct Custom Fuel Object
 
-            if "ENGINE_ID" in df.columns:
-                try:
-                    attrs["engine_type"] = str(first["ENGINE_ID"])
-                except (ValueError, TypeError):
-                    self.logger.warning(
-                        "invalid ENGINE_ID value: %r", first["ENGINE_ID"]
-                    )
+            q_fuel: float | None = attrs.get("q_fuel")
+            hydrogen_content: float | None = attrs.get("hydrogen_content")
+            h_c_ratio: float | None = attrs.get("h_c_ratio")
+            sulphur_content: float | None = attrs.get("sulfur_content")
+            aromatics_content: float | None = attrs.get("aromatic_content")
+            naphthalene: float | None = attrs.get("naphtalene")
 
-            # optional custom-fuel inputs
-            if "HYDROGEN_CONTENT" in df.columns:
-                try:
-                    attrs["hydrogen_content"] = float(first["HYDROGEN_CONTENT"])
-                except (ValueError, TypeError):
-                    self.logger.warning(
-                        "invalid HYDROGEN_CONTENT value: %r", first["HYDROGEN_CONTENT"]
-                    )
-
-            if "H_C_RATIO" in df.columns:
-                try:
-                    attrs["h_c_ratio"] = float(first["H_C_RATIO"])
-                except (ValueError, TypeError):
-                    self.logger.warning(
-                        "invalid HYDROGEN to CARBON RATIO value: %r", first["H_C_RATIO"]
-                    )
-
-            if "Q_FUEL" in df.columns:
-                try:
-                    attrs["q_fuel"] = float(first["Q_FUEL"])
-                except (ValueError, TypeError):
-                    self.logger.warning("invalid Q_FUEL value: %r", first["Q_FUEL"])
-
-            # 7) Construct base Flight, with custom Fuel if provided
-
-            qf: float | None = attrs.get("q_fuel")
-            H: float | None = attrs.get("hydrogen_content")
-            r: float | None = attrs.get("h_c_ratio")
-
-            fuel_obj: NEATSFuel | None = None
-            if any(v is not None for v in (qf, H, r)):
-                try:
-                    # Fuel attributes provided by AO, build custom fuel
-                    # NEATSFuel signature: (*, hydrogen_content=None, h_c_ratio=None, q_fuel=None, ...)
-                    fuel_obj = NEATSFuel(hydrogen_content=H, h_c_ratio=r, q_fuel=qf)
-                except Exception as e:
-                    self.logger.warning(
-                        "Failed to build custom fuel from inputs (q_fuel=%r, hydrogen_content=%r, h_c_ratio=%r): %s",
-                        qf,
-                        H,
-                        r,
-                        e,
-                    )
-                    fuel_obj = None
+            fuel_obj: NEATSFuel = NEATSFuel(hydrogen_content=hydrogen_content,
+                                            h_c_ratio=h_c_ratio,
+                                            q_fuel=q_fuel,
+                                            sulphur_content=sulphur_content,
+                                            aromatics_content=aromatics_content,
+                                            naphthalene=naphthalene)
 
             # 7) Construct base Flight with required columns only
             # Required columns only for Flight data
@@ -210,10 +171,7 @@ class NMTrajectoryParser(
             optional_columns = [c for c in df.columns if c in Flight4D.OPTIONAL]
             data_req = df[list(Flight4D.REQUIRED) + list(optional_columns)]
 
-            if fuel_obj is not None:
-                base = Flight(data=data_req, attrs=attrs, fuel=fuel_obj)
-            else:
-                base = Flight(data=data_req, attrs=attrs)
+            base = Flight(data=data_req, attrs=attrs, fuel=fuel_obj)
 
             # 8) Validate & return typed zero-copy view
             return Flight4D.from_flight(base)

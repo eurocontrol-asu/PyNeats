@@ -76,11 +76,13 @@ DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
 
 # ACCF defaults
 
+DEFAULT_ACCF_VERSION: Final[str] = "V1.0A"
+
 DEFAULT_ACCF_KWARGS: Final[Mapping[str, Any]] = {
     "emission_scenario": "pulse",
     "climate_indicator": "ATR",
     "time_horizon": 20,
-    "accf_v": "V1.0A",
+    "accf_v": DEFAULT_ACCF_VERSION,
     "issr_rhi_threshold": 1.0,
     "efficacy": False,
     "forecast_step": 12,

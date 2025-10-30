@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import Final, Mapping, Dict, List, Any
 import pandas as pd
 
-from pyneats.core.meta import extract_flight_meta
 from pyneats.core.steps import BaseStep, BaseParams
 from pyneats.core.steps_registry import register
 from pyneats.steps.climate_functions.views import FlightWithContrailsImpact
@@ -13,6 +12,7 @@ from pyneats.steps.climate_metrics.protocol import (
     ClimateImpactModel,
     ClimateImpactStepError,
 )
+from pyneats.steps.climate_metrics.report import FlightReport
 from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
 from pyneats.models.constants import (
     METRICS_HORIZONS,
@@ -179,7 +179,7 @@ class GWPMetrics(
 
         # Timings and ancillary metadata 
         meta = {
-            **extract_flight_meta(flight),
+            **FlightReport.extract(flight),
             "contrails_ef_J": total_ef_J,
             "co2_baseline_kg": total_co2_kg,
         }
@@ -260,12 +260,8 @@ class GWPMetrics(
 
         # Assemble payload
         climate_impact = {
-            "meta": {
-                **meta,
-                "nonco2_species_added": added_species,
-                "nonco2_species_skipped": skipped_species,
-            },
-            "results": results,
+            "flight_information": {**meta},
+            "climate_metrics": results,
         }
 
         flight.attrs["climate_impact"] = climate_impact

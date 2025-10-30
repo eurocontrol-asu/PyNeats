@@ -33,7 +33,6 @@ def _read_csv_cached(path_str: str,
         if c in df.columns:
             df[c] = df[c].astype(str).str.strip().str.upper()
 
-    # IMPORTANT: don't mutate this df later — it is shared by all instances.
     return df
 
 

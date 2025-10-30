@@ -1,4 +1,4 @@
-from pyneats.steps.climate_functions.contrails import (
+from pyneats.steps.climate_functions.cocip import (
     FlightWithContrailsImpact,
     ContrailsParams,
     ContrailsStepError,

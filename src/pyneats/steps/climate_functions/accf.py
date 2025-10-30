@@ -76,7 +76,7 @@ def make_accf_surface_view(surface: MetDataset) -> MetDataset:
 
     # 1) Update attrs for the OLR var, then rename it to "top net thermal"
     if TOAOutgoingLongwaveFlux.standard_name in ds:
-        ds = ds.copy(deep=False)  # shallow copy of Dataset header; arrays stay shared
+        ds = ds.copy(deep=False)  # shallow copy to avoid mutating original
         ds[TOAOutgoingLongwaveFlux.standard_name].attrs.update(
             {
                 "long_name": TopNetThermalRadiation.long_name,

@@ -383,7 +383,7 @@ class BADAPerformanceModel(
             if "fuel" not in df.columns and "fuel_burn" in df.columns:
                 df["fuel"] = df["fuel_burn"]
 
-            out = Flight(data=df, attrs={**flight.attrs})
+            out = Flight(data=df, attrs={**flight.attrs}, fuel=flight.fuel)
             out.attrs["n_engine"] = adapter.nb_eng
             out.attrs["wingspan"] = adapter.span
             out.attrs["bada_version"] = bada_version
