@@ -1,7 +1,6 @@
 from __future__ import annotations
-
-import pandas as pd
 from typing import Protocol, runtime_checkable
+import pandas as pd
 from pyneats.steps.parsing.views import Flight4D
 from pyneats.core.steps import Step, StepError
 

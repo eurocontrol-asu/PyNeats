@@ -73,8 +73,36 @@ class NMTrajectoryParser(
     ]
 ):
     """
-    Parse NM FTFM/RTFM/CTFM data into a `Flight4D`.
+    Parse Network Manager (NM) trajectory data or AO trajectory data into Flight4D format.
     __call__(df: pd.DataFrame) -> Flight4D
+
+    It performs:
+
+    - Column mapping to canonical schema
+    - Unit conversions 
+    - Timestamp parsing and timezone handling
+    - Data cleaning and validation
+    - Custom fuel properties handling
+    - Schema validation
+
+    The parser ensures:
+    - All required columns are present
+    - Numeric values are valid
+    - Timestamps are properly formatted and timezone-aware
+    - No duplicate timestamps exist
+    - No missing values in required columns
+
+    Attributes:
+        default_params (NMTrajectoryParserParams): Default parameters for parsing
+
+
+    Raises:
+        TrajectoryParserStepError: If parsing fails due to:
+            - Missing required columns
+            - Invalid numeric values
+            - Timestamp parsing errors
+            - Empty trajectory after cleaning
+            - Schema validation failures
     """
 
     default_params = NMTrajectoryParserParams
@@ -135,7 +163,7 @@ class NMTrajectoryParser(
                     "no valid trajectory points after cleaning"
                 )
 
-            # 5) Build attrs 
+            # 5) Build flight attributes 
             attrs: dict[str, Any] = {}
             first = df.iloc[0]
 
@@ -149,7 +177,7 @@ class NMTrajectoryParser(
 
                         )
 
-            # 6) Construct Custom Fuel Object
+            # 6) Construct Custom Fuel Object based on available attributes
 
             q_fuel: float | None = attrs.get("q_fuel")
             hydrogen_content: float | None = attrs.get("hydrogen_content")
@@ -164,10 +192,10 @@ class NMTrajectoryParser(
                                             sulphur_content=sulphur_content,
                                             aromatics_content=aromatics_content,
                                             naphthalene=naphthalene)
-
+            
             # 7) Construct base Flight with required columns only
-            # Required columns only for Flight data
             # Keep required and optional columns
+
             optional_columns = [c for c in df.columns if c in Flight4D.OPTIONAL]
             data_req = df[list(Flight4D.REQUIRED) + list(optional_columns)]
 

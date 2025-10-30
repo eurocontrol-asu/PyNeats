@@ -1,9 +1,10 @@
 from __future__ import annotations
-from typing import Protocol, Tuple, cast
+from abc import abstractmethod
+from typing import Protocol, Tuple, cast, Literal
 
 from packaging import version
 from pathlib import Path
-
+from dataclasses import dataclass
 from pycontrails.physics.units import m_per_s_to_knots, ft_to_m
 
 try:
@@ -27,56 +28,276 @@ __all__ = [
     "BaseBADAAdapter",
     "BADA3Adapter",
     "BADA4Adapter",
+    "FlightPhase",
 ]
+
+
+FlightPhase = Literal["Climb", "Cruise", "Descent"]
+
+
+# -----------------------------------------------------------------------------
+# Protocols
+# -----------------------------------------------------------------------------
+
+
+@dataclass
+class State:
+    v: float
+    h: float
+    m: float
+    M: float
+    config: str
+    phase: FlightPhase
+
+
+@dataclass
+class Atmosphere:
+    delta_tau: float
+    delta: float
+    theta: float
+    sigma: float
 
 
 class AircraftProtocol(Protocol):
     @property
     def nb_eng(self) -> int | None: ...
+
     @property
     def span(self) -> float | None: ...
+
     @property
     def MTOW(self) -> float | None: ...
+
     @property
     def bada_code(self) -> str: ...
+
     @property
     def MPL(self) -> float | None: ...
+
     @property
     def OEW(self) -> float | None: ...
 
 
 class BaseBADAAdapter(AircraftProtocol, Protocol):
+    """Common adapter interface.
+
+    All inputs are **SI units**:
+      - mass: kg
+      - altitude_m: meters (geopotential meters as used in pyBADA atmosphere)
+      - tas_mps: meters/second (TAS)
+      - rocd_mps: meters/second (positive = climb)
+      - accel_mps2: meters/second^2 (time derivative of TAS)
+      - delta_tau: K (delta temperature vs ISA)
+    """
+
     def thrust_fuel_segment(
         self,
         mass: float,
-        alt_ft: float,
-        tas_kt: float,
-        vs_fpm: float,
-        dtas_ktpm: float,
+        altitude_m: float,
+        tas_mps: float,
+        rocd_mps: float,
+        accel_mps2: float,
         delta_tau: float,
-    ) -> Tuple[float, float, str, str]: ...
+    ) -> Tuple[float, float, FlightPhase, str]: ...
 
 
-class BADA4Adapter(BaseBADAAdapter):
+# -----------------------------------------------------------------------------
+# Internal utilities (shared behavior)
+# -----------------------------------------------------------------------------
+
+
+class _PyBADAAdapterBase:
+    """Mixin with shared behaviors and accessors for BADA3/4 adapters."""
+
+    _obj: Bada3Aircraft | Bada4Aircraft
+
+    def __init__(self, rocd_phase_threshold_fpm: float) -> None:
+        # Keep API identical: the passed threshold is in fpm; store and reuse
+        self._rocd_phase_threshold_mps = ft_to_m(rocd_phase_threshold_fpm) / 60.0
+
+    # --- phase label determination (threshold in fpm, input in m/s) ---
+    def _phase_from_rocd(self, rocd_mps: float) -> FlightPhase:
+        if rocd_mps > self._rocd_phase_threshold_mps:
+            return "Climb"
+        if rocd_mps < -self._rocd_phase_threshold_mps:
+            return "Descent"
+        return "Cruise"
+
+    def thrust_fuel_segment(
+        self,
+        mass: float,
+        altitude_m: float,
+        tas_mps: float,
+        rocd_mps: float,
+        accel_mps2: float,
+        delta_tau: float,
+    ) -> Tuple[float, float, FlightPhase, str]:
+        # Get atmosphere properites
+        theta, delta, sigma = atm.atmosphereProperties(altitude_m, delta_tau)
+
+        # BADA API for convertSpeed expects knots; convert our TAS m/s
+        v_kt = m_per_s_to_knots(tas_mps)
+
+        M, CAS, TAS = atm.convertSpeed(
+            v=v_kt,
+            speedType="TAS",
+            theta=theta,
+            delta=delta,
+            sigma=sigma,
+        )
+
+        # delta temperature constant used by BADA 4
+        tau_const: float = theta * const.temp_0 / (theta * const.temp_0 - delta_tau)  # type: ignore
+
+        # Get phase
+        phase = self._phase_from_rocd(rocd_mps)
+
+        # Get configuration
+        cfg = self._obj.flightEnvelope.getConfig(
+            phase=phase,
+            h=altitude_m,  # pyBADA expects altitude [m]
+            mass=mass,
+            v=CAS,  # pyBADA expects calibrated airspeed (CAS), and not TAS [m/s]
+            deltaTemp=delta_tau,
+            hRWY=0.0,
+        )
+
+        # Define TEM state and atmosphere
+        state = State(
+            v=TAS,  # type: ignore
+            h=altitude_m,
+            m=mass,
+            M=M,  # type: ignore
+            config=cfg,
+            phase=phase,
+        )
+
+        atmosphere = Atmosphere(
+            delta_tau=delta_tau,
+            delta=delta,  # type: ignore
+            theta=theta,  # type: ignore
+            sigma=sigma,  # type: ignore
+        )
+
+        # Compute drag from state and atmosphere
+        drag = self.drag(state, atmosphere)  # type: ignore
+
+        # Compute thrust
+        thrust = self.required_thrust(
+            rocd_mps=rocd_mps,
+            mass=mass,
+            tau_const=tau_const,
+            TAS=TAS,  # type: ignore
+            accel_mps2=accel_mps2,
+            drag=drag,
+        )
+
+        thrust_idle = self.thrust_idle(state, atmosphere)
+        thrust_mcmb = self.thrust_climb(state, atmosphere)
+        ff_idle = self.fuel_flow_idle(state, atmosphere)
+        ff_mcmb = self.fuel_flow_climb(state, atmosphere)
+        ff = self.fuel_flow(state, atmosphere, thrust)
+
+        return self._post_process(
+            ff,
+            thrust,
+            ff_idle,
+            thrust_idle,
+            ff_mcmb,
+            thrust_mcmb,
+            phase,
+        )
+
+    def required_thrust(
+        self,
+        rocd_mps: float,
+        mass: float,
+        tau_const: float,
+        TAS: float,
+        accel_mps2: float,
+        drag: float,
+    ) -> float:
+        return rocd_mps * mass * const.g * tau_const / TAS + mass * accel_mps2 + drag  # type: ignore
+
+    @abstractmethod
+    def drag(self, state: State, atmosphere: Atmosphere) -> float: ...
+
+    @abstractmethod
+    def thrust_idle(self, state: State, atmosphere: Atmosphere) -> float | None: ...
+
+    @abstractmethod
+    def thrust_climb(self, state: State, atmosphere: Atmosphere) -> float | None: ...
+
+    @abstractmethod
+    def fuel_flow_climb(self, state: State, atmosphere: Atmosphere) -> float | None: ...
+
+    @abstractmethod
+    def fuel_flow_idle(self, state: State, atmosphere: Atmosphere) -> float | None: ...
+
+    @abstractmethod
+    def fuel_flow(self, state: State, atmosphere: Atmosphere, thrust: float) -> float | None: ...
+
+    @staticmethod
+    def _post_process(
+        ff: float | None,
+        thrust: float | None,
+        ff_idle: float | None,
+        thrust_idle: float | None,
+        ff_mcmb: float | None,
+        thrust_mcmb: float | None,
+        phase: FlightPhase,
+    ) -> Tuple[float, float, FlightPhase, str]:
+        if (
+            ff is None
+            or thrust is None
+            or ff_idle is None
+            or thrust_idle is None
+            or ff_mcmb is None
+            or thrust_mcmb is None
+        ):
+            raise PerformanceStepError("BADA returned None in thrust/fuel computation")
+
+        ff = float(ff)
+        thrust = float(thrust)
+        ff_idle = float(ff_idle)
+        thrust_idle = float(thrust_idle)
+        ff_mcmb = float(ff_mcmb)
+        thrust_mcmb = float(thrust_mcmb)
+
+        if ff < ff_idle or thrust < thrust_idle:
+            return ff_idle, thrust_idle, phase, "LIDL"
+        if ff > ff_mcmb or thrust > thrust_mcmb:
+            return ff_mcmb, thrust_mcmb, phase, "MCMB"
+        return ff, thrust, phase, "TOTAL"
+
+
+# -----------------------------------------------------------------------------
+# BADA 4 Adapter
+# -----------------------------------------------------------------------------
+
+
+class BADA4Adapter(_PyBADAAdapterBase, BaseBADAAdapter):
     def __init__(
         self,
         config_path: str,
         bada4_code: str,
-        rocd_phase_threshold: float = 0.0,
+        rocd_phase_threshold_fpm: float = 0.0,
     ) -> None:
-        self.rocd_phase_threshold = rocd_phase_threshold
+        super().__init__(rocd_phase_threshold_fpm)
 
         bada_version = Path(config_path).name  # e.g. "4.2.1"
         v = version.parse(bada_version)
         short_version = f"{v.major}.{v.minor}"  # e.g. "4.2"
 
-        self._obj = Bada4Aircraft(
+        self._obj: Bada4Aircraft = Bada4Aircraft(
             short_version,
             bada4_code,
             filePath=config_path,
         )
+
         self._bada_code = bada4_code
 
+    # ---- metadata passthroughs ----
     @property
     def nb_eng(self) -> int | None:
         value = getattr(self._obj, "n_eng", None)
@@ -106,155 +327,115 @@ class BADA4Adapter(BaseBADAAdapter):
     def bada_code(self) -> str:
         return self._bada_code
 
-    # --- Core math (unchanged logic) ---
-    def thrust_fuel_segment(
-        self,
-        mass: float,
-        alt_ft: float,  # NOTE: Actually its called with m from bada_model.py
-        tas_kt: float,  # NOTE: Actually its called with m / s from bada_model.py
-        vs_fpm: float,
-        dtas_ktpm: float,  # NOTE: Actually its called with m / s2 from bada_model.py
-        delta_tau: float,
-    ) -> Tuple[float, float, str, str]:
-        # theta, delta, sigma = atm.atmosphereProperties(h=alt_ft, DeltaTau=delta_tau)
-        theta, delta, sigma = atm.atmosphereProperties(alt_ft, delta_tau)
-
-        v = m_per_s_to_knots(tas_kt)
-
-        m, cas, tas = atm.convertSpeed(
-            v=v,  # Input must be in kt. OK
-            speedType="TAS",
-            theta=theta,
-            delta=delta,
-            sigma=sigma,
-        )
-
-        # tau_const = theta * const.tau_0 / (theta * const.tau_0 - delta_tau)
-        tau_const = theta * const.temp_0 / (theta * const.temp_0 - delta_tau)
-
-        rocd = ft_to_m(vs_fpm) / 60  # NOTE: now in m/s
-        acc = dtas_ktpm
-
-        phase = (
-            "Climb"
-            if vs_fpm > self.rocd_phase_threshold
-            else "Descent"
-            if vs_fpm < -self.rocd_phase_threshold
-            else "Cruise"
-        )
-
-        cfg = self._obj.flightEnvelope.getConfig(
-            phase=phase,
-            h=alt_ft,  # Actually is in meters
-            mass=mass,
-            v=cas,  # Calibrated airspeed (CAS) [m/s]
-            deltaTemp=delta_tau,
-            hRWY=0.0,
-        )
+    def drag(self, state: State, atmosphere: Atmosphere) -> float:
+        cfg = state.config
+        delta = atmosphere.delta
+        M = state.M
+        mass = state.m
 
         hlid, lg = self._obj.flightEnvelope.getAeroConfig(config=cfg)
+        cl = self._obj.CL(M=M, delta=delta, mass=mass)
+        cd = self._obj.CD(M=M, CL=cl, HLid=hlid, LG=lg)
+        return self._obj.D(M=M, delta=delta, CD=cd)
 
-        cl = self._obj.CL(M=m, delta=delta, mass=mass)
-        cd = self._obj.CD(M=m, CL=cl, HLid=hlid, LG=lg)
-        drag = self._obj.D(M=m, delta=delta, CD=cd)
+    def thrust_idle(self, state: State, atmosphere: Atmosphere) -> float | None:
+        theta = atmosphere.theta
+        delta = atmosphere.delta
+        delta_tau = atmosphere.delta_tau
+        M = state.M
 
-        rocd_term = rocd * mass * const.g * tau_const / tas  # in meters per second
-        thrust = rocd_term + mass * acc + drag
-
-        thrust_idle = self._obj.Thrust(
+        return self._obj.Thrust(
             rating="LIDL",
             delta=delta,
             theta=theta,
-            M=m,
+            M=M,
             deltaTemp=delta_tau,
         )
 
-        thrust_mcmb = self._obj.Thrust(
+    def thrust_climb(self, state: State, atmosphere: Atmosphere) -> float | None:
+        theta = atmosphere.theta
+        delta = atmosphere.delta
+        delta_tau = atmosphere.delta_tau
+        M = state.M
+
+        return self._obj.Thrust(
             rating="MCMB",
             delta=delta,
             theta=theta,
-            M=m,
+            M=M,
             deltaTemp=delta_tau,
         )
 
-        # NOTE: We just replicated the logic of BADA. But I would:
-        # 1) Here clip the thrust:
-        # thrust = min(max(thrust, thrust_idle), thrust_mcmb)
-        # 2) Then compute the fuel flow for that clipped thrust
-        # 3) Finally, clip the fuel flow if needed (but only for idle IMHO)
-        # ff = min(max(ff, ff_idle), ff_mcmb)
+    def fuel_flow_climb(self, state: State, atmosphere: Atmosphere) -> float | None:
+        theta = atmosphere.theta
+        delta = atmosphere.delta
+        delta_tau = atmosphere.delta_tau
+        M = state.M
+
+        return self._obj.ff(
+            rating="MCMB",
+            delta=delta,
+            theta=theta,
+            M=M,
+            deltaTemp=delta_tau,
+        )
+
+    def fuel_flow_idle(self, state: State, atmosphere: Atmosphere) -> float | None:
+        theta = atmosphere.theta
+        delta = atmosphere.delta
+        delta_tau = atmosphere.delta_tau
+        M = state.M
+
+        return self._obj.ff(
+            rating="LIDL",
+            delta=delta,
+            theta=theta,
+            M=M,
+            deltaTemp=delta_tau,
+        )
+
+    def fuel_flow(self, state: State, atmosphere: Atmosphere, thrust: float) -> float | None:
+        delta = atmosphere.delta
+        M = state.M
+        delta_tau = atmosphere.delta_tau
+        theta = atmosphere.theta
 
         ct = self._obj.CT(
             Thrust=thrust,
             delta=delta,
         )
 
-        ff = self._obj.ff(
+        return self._obj.ff(
             CT=ct,
             delta=delta,
             theta=theta,
-            M=m,
+            M=M,
             deltaTemp=delta_tau,
         )
 
-        ff_idle = self._obj.ff(
-            rating="LIDL",
-            delta=delta,
-            theta=theta,
-            M=m,
-            deltaTemp=delta_tau,
-        )
 
-        ff_mcmb = self._obj.ff(
-            rating="MCMB",
-            delta=delta,
-            theta=theta,
-            M=m,
-            deltaTemp=delta_tau,
-        )
-
-        # in BADA4Adapter.thrust_fuel_segment, after computing the six scalars:
-        if (
-            ff is None
-            or thrust is None
-            or ff_idle is None
-            or thrust_idle is None
-            or ff_mcmb is None
-            or thrust_mcmb is None
-        ):
-            raise PerformanceStepError("BADA returned None in thrust/fuel computation")
-
-        ff = float(ff)
-        thrust = float(thrust)
-        ff_idle = float(ff_idle)
-        thrust_idle = float(thrust_idle)
-        ff_mcmb = float(ff_mcmb)
-        thrust_mcmb = float(thrust_mcmb)
-
-        if ff < ff_idle or thrust < thrust_idle:
-            return ff_idle, thrust_idle, phase, "LIDL"
-        if ff > ff_mcmb or thrust > thrust_mcmb:
-            return ff_mcmb, thrust_mcmb, phase, "MCMB"
-        return ff, thrust, phase, "TOTAL"
+# -----------------------------------------------------------------------------
+# BADA 3 Adapter
+# -----------------------------------------------------------------------------
 
 
-class BADA3Adapter(BaseBADAAdapter):
+class BADA3Adapter(_PyBADAAdapterBase, BaseBADAAdapter):
     def __init__(
         self,
         config_path: str,
         bada3_code: str,
-        rocd_phase_threshold: float = 0.0,
+        rocd_phase_threshold_fpm: float = 0.0,
     ) -> None:
-        self.rocd_phase_threshold = rocd_phase_threshold
+        super().__init__(rocd_phase_threshold_fpm)
         bada_version = Path(config_path).name  # e.g. "3.13"
-
-        self._obj = Bada3Aircraft(
+        self._obj: Bada3Aircraft = Bada3Aircraft(
             bada_version,
             bada3_code,
             filePath=config_path,
         )
         self._bada_code = bada3_code
 
+    # ---- metadata passthroughs ----
     @property
     def nb_eng(self) -> int | None:
         value = getattr(self._obj, "numberOfEngines", None)
@@ -283,126 +464,79 @@ class BADA3Adapter(BaseBADAAdapter):
     def bada_code(self) -> str:
         return self._bada_code
 
-    def thrust_fuel_segment(
-        self,
-        mass: float,
-        alt_ft: float,
-        tas_kt: float,
-        vs_fpm: float,
-        dtas_ktpm: float,
-        delta_tau: float,
-    ) -> Tuple[float, float, str, str]:
-        theta, delta, sigma = atm.atmosphereProperties(alt_ft, delta_tau)
+    def drag(self, state: State, atmosphere: Atmosphere) -> float:
+        v = state.v
+        sigma = atmosphere.sigma
+        mass = state.m
+        cfg = state.config
 
-        v = m_per_s_to_knots(tas_kt)
-        _, CAS, TAS = atm.convertSpeed(
-            v=v,
-            speedType="TAS",
-            theta=theta,
-            delta=delta,
-            sigma=sigma,
-        )
-        # tau_const = theta * const.tau_0 / (theta * const.tau_0 - delta_tau)
-        tau_const = theta * const.temp_0 / (theta * const.temp_0 - delta_tau)
-
-        rocd = ft_to_m(vs_fpm) / 60
-        acc = dtas_ktpm
-
-        phase = (
-            "Climb"
-            if vs_fpm > self.rocd_phase_threshold
-            else "Descent"
-            if vs_fpm < -self.rocd_phase_threshold
-            else "Cruise"
-        )
-
-        cfg = self._obj.flightEnvelope.getConfig(
-            phase=phase,
-            h=alt_ft,  # Actually is in meters
-            mass=mass,
-            v=CAS,  # Calibrated airspeed (CAS) [m/s]
-            deltaTemp=delta_tau,
-            hRWY=0.0,
-        )
-
-        cl = self._obj.CL(tas=TAS, sigma=sigma, mass=mass)
+        cl = self._obj.CL(tas=v, sigma=sigma, mass=mass)
         cd = self._obj.CD(CL=cl, config=cfg)
-        drag = self._obj.D(tas=TAS, sigma=sigma, CD=cd)
+        return self._obj.D(tas=v, sigma=sigma, CD=cd)
 
-        # Config is forced?
-        thrust_idle = self._obj.Thrust(
+    def thrust_idle(self, state: State, atmosphere: Atmosphere) -> float | None:
+        v = state.v
+        altitude_m = state.h
+        delta_tau = atmosphere.delta_tau
+
+        return self._obj.Thrust(
             rating="LIDL",
-            v=TAS,
-            h=alt_ft,
-            config="CR",  # Was forced in previous BADA3Adapter instead of using cfg (AP or LD). Why?
+            v=v,
+            h=altitude_m,
+            config="CR",  # emulates prior behavior
             deltaTemp=delta_tau,
         )
 
-        thrust_mcmb = self._obj.Thrust(
+    def thrust_climb(self, state: State, atmosphere: Atmosphere) -> float | None:
+        v = state.v
+        altitude_m = state.h
+        delta_tau = atmosphere.delta_tau
+        cfg = state.config
+
+        return self._obj.Thrust(
             rating="MCMB",
-            v=TAS,
-            h=alt_ft,
-            config=cfg,  # Does not depend on cfg anyway
+            v=v,
+            h=altitude_m,
+            config=cfg,
             deltaTemp=delta_tau,
         )
-        thrust = rocd * mass * const.g * tau_const / TAS + mass * acc + drag
 
-        # NOTE: We just replicated the logic of BADA. But I would:
-        # 1) Here clip the thrust:
-        # thrust = min(max(thrust, thrust_idle), thrust_mcmb)
-        # 2) Then compute the fuel flow for that clipped thrust
-        # 3) Finally, clip the fuel flow if needed (but only for idle IMHO)
-        # ff = min(max(ff, ff_idle), ff_mcmb)
+    def fuel_flow_idle(self, state: State, atmosphere: Atmosphere) -> float | None:
+        altitude_m = state.h
+        return self._obj.ffMin(h=altitude_m)
+
+    def fuel_flow_climb(self, state: State, atmosphere: Atmosphere) -> float | None:
+        TAS = state.v
+        cfg = state.config
+        altitude_m = state.h
+
+        return self._obj.ff(
+            flightPhase="Climb",
+            config=cfg,
+            v=TAS,
+            h=altitude_m,
+            T=self.thrust_climb(state, atmosphere),
+        )
+
+    def fuel_flow(self, state: State, atmosphere: Atmosphere, thrust: float) -> float | None:
+        v = state.v
+        altitude_m = state.h
+        phase = state.phase
+        cfg = state.config
 
         if phase == "Cruise":
-            ff = self._obj.ff(
+            return self._obj.ff(
                 flightPhase="Cruise",
-                config=cfg,  # Does not depend on cfg anyway
-                v=TAS,
-                h=alt_ft,
-                T=thrust,  # What if thrust is > Max thrust ? or below idle ...
+                config=cfg,
+                v=v,
+                h=altitude_m,
+                T=thrust,
             )
-        else:  # Nominal thrust
-            ff = self._obj.ff(
+        else:
+            return self._obj.ff(
                 flightPhase="Climb",
-                config=cfg,  # Does not depend on cfg anyway
-                v=TAS,
-                h=alt_ft,
-                T=thrust,  # What if thrust is > Max thrust ? Or below idle ...
+                config=cfg,
+                v=v,
+                h=altitude_m,
+                T=thrust,
             )
-
-        # Idle fuel flow
-        ff_idle = self._obj.ffMin(h=alt_ft)
-
-        # Fuel flow at maximum climb thrust
-        ff_mcmb = self._obj.ff(
-            flightPhase="Climb",
-            config=cfg,  # Does not depend on cfg anyway
-            v=TAS,
-            h=alt_ft,
-            T=thrust_mcmb,
-        )
-
-        # Minimal None-guard + cast (keeps math identical, satisfies type checker)
-        if (
-            ff is None
-            or thrust is None
-            or ff_idle is None
-            or thrust_idle is None
-            or ff_mcmb is None
-            or thrust_mcmb is None
-        ):
-            raise PerformanceStepError("BADA returned None in thrust/fuel computation")
-
-        ff = float(ff)
-        thrust = float(thrust)
-        ff_idle = float(ff_idle)
-        thrust_idle = float(thrust_idle)
-        ff_mcmb = float(ff_mcmb)
-        thrust_mcmb = float(thrust_mcmb)
-
-        if ff < ff_idle or thrust < thrust_idle:
-            return ff_idle, thrust_idle, phase, "LIDL"
-        if ff > ff_mcmb or thrust > thrust_mcmb:
-            return ff_mcmb, thrust_mcmb, phase, "MCMB"
-        return ff, thrust, phase, "TOTAL"

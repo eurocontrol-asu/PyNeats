@@ -33,7 +33,17 @@ class PyContrailsInterpolator(
     ]
 ):
     """
-    Thin wrapper around `Flight.resample_and_fill`.
+    Interpolates flight trajectory data 
+
+    This class provides trajectory interpolation functionality . It handles:
+    - Resampling of mandatory flight parameters wrapping 
+    pycontrails' resample_and_fill method
+    - Linear interpolation of optional columns
+    - Input/output validation
+    - Error handling
+
+    Attributes:
+        default_params (PyContrailsInterpolationParams): Default interpolation parameters
 
     - input:  Flight4D (validated upstream)
     - output: Flight4D (validated here, zero-copy)

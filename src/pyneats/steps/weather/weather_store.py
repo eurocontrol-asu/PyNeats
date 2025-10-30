@@ -1,5 +1,3 @@
-# steps/weather/weather_store.py (excerpt)
-
 
 # weather_store.py
 # Utilities for handling weather data storage and retrieval (Zarr/NetCDF)

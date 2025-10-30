@@ -10,21 +10,20 @@ import pandas as pd
 
 @dataclass(frozen=True)
 class BadaMappingPaths:
-    icao_series_engine: Path   # 1) triple key: ICAO + SERIES + ENGINE_ID
-    icao_series: Path          # 2) double key: ICAO + SERIES
-    icao_engine: Path          # 3) double key: ICAO + ENGINE_ID
+    icao_series_engine: Path  # 1) triple key: ICAO + SERIES + ENGINE_ID
+    icao_series: Path  # 2) double key: ICAO + SERIES
+    icao_engine: Path  # 3) double key: ICAO + ENGINE_ID
     default_engine_by_icao: Path  # 4) default engine by ICAO
-    icao_only: Path            # 5) fallback by ICAO only
+    icao_only: Path  # 5) fallback by ICAO only
 
 
 # ------ Shared, cross-instance CSV cache -------------------------------------
 
+
 @lru_cache(maxsize=64)
-def _read_csv_cached(path_str: str,
-                     col_icao: str,
-                     col_series: str,
-                     col_engine: str) -> pd.DataFrame:
-    
+def _read_csv_cached(
+    path_str: str, col_icao: str, col_series: str, col_engine: str
+) -> pd.DataFrame:
     """Read + normalize a CSV and cache by (path, mtime)."""
     df = pd.read_csv(path_str)
 
@@ -42,6 +41,7 @@ def _load_df(path: Path, col_icao: str, col_series: str, col_engine: str) -> pd.
 
 # ------ BadaMapper ------------------------------------------------------------
 
+
 class BadaMapper:
     COL_ICAO = "ICAO"
     COL_SERIES = "ACFT_SERIES"
@@ -56,7 +56,9 @@ class BadaMapper:
     # CSV accessors — each property just pulls from the cross-instance cache
     @cached_property
     def _df_icao_series_engine(self) -> pd.DataFrame:
-        return _load_df(self.paths.icao_series_engine, self.COL_ICAO, self.COL_SERIES, self.COL_ENGINE_ID)
+        return _load_df(
+            self.paths.icao_series_engine, self.COL_ICAO, self.COL_SERIES, self.COL_ENGINE_ID
+        )
 
     @cached_property
     def _df_icao_series(self) -> pd.DataFrame:
@@ -68,7 +70,9 @@ class BadaMapper:
 
     @cached_property
     def _df_default_engine_by_icao(self) -> pd.DataFrame:
-        return _load_df(self.paths.default_engine_by_icao, self.COL_ICAO, self.COL_SERIES, self.COL_ENGINE_ID)
+        return _load_df(
+            self.paths.default_engine_by_icao, self.COL_ICAO, self.COL_SERIES, self.COL_ENGINE_ID
+        )
 
     @cached_property
     def _df_icao_only(self) -> pd.DataFrame:
@@ -78,7 +82,9 @@ class BadaMapper:
     def _coerce_return(
         self, row: pd.Series, engine_id_override: Optional[str] = None
     ) -> Tuple[int, str, str, str]:
-        missing = [c for c in (self.COL_NB_ENG, self.COL_BADA3, self.COL_BADA4) if c not in row.index]
+        missing = [
+            c for c in (self.COL_NB_ENG, self.COL_BADA3, self.COL_BADA4) if c not in row.index
+        ]
         if missing:
             raise KeyError(f"Row missing required columns: {missing}")
 
@@ -100,7 +106,7 @@ class BadaMapper:
         for col, val in filters.items():
             if col not in df.columns:
                 return None
-            mask &= (df[col] == val)
+            mask &= df[col] == val
         if not mask.any():
             return None
         return df.loc[mask].iloc[0]
@@ -139,7 +145,7 @@ class BadaMapper:
         icao_n = icao.strip().upper()
         series_n = series.strip().upper() if series else None
         engine_n = engine_id.strip().upper() if engine_id else None
-        
+
         engine_conservative = self._default_engine_for_icao(icao_n)
 
         # 1) triple key
@@ -149,7 +155,7 @@ class BadaMapper:
                 **{self.COL_ICAO: icao_n, self.COL_SERIES: series_n, self.COL_ENGINE_ID: engine_n},
             )
             if row is not None:
-                return self._coerce_return(row, engine_id_override = engine_n)
+                return self._coerce_return(row, engine_id_override=engine_n)
 
         # 2) (ICAO, SERIES)
         if series_n:
@@ -159,9 +165,9 @@ class BadaMapper:
             )
             if row is not None:
                 if engine_n is not None:
-                    return self._coerce_return(row, engine_id_override = engine_n)
+                    return self._coerce_return(row, engine_id_override=engine_n)
                 elif engine_conservative is not None:
-                    return self._coerce_return(row, engine_id_override = engine_conservative)
+                    return self._coerce_return(row, engine_id_override=engine_conservative)
                 else:
                     return self._coerce_return(row)
 
@@ -172,7 +178,7 @@ class BadaMapper:
                 **{self.COL_ICAO: icao_n, self.COL_ENGINE_ID: engine_n},
             )
             if row is not None:
-                return self._coerce_return(row,  engine_id_override = engine_n)
+                return self._coerce_return(row, engine_id_override=engine_n)
 
         # 4) default engine id by ICAO, then step (3)
 
@@ -182,7 +188,7 @@ class BadaMapper:
                 **{self.COL_ICAO: icao_n, self.COL_ENGINE_ID: engine_conservative},
             )
             if row is not None:
-                return self._coerce_return(row,  engine_id_override = engine_conservative)
+                return self._coerce_return(row, engine_id_override=engine_conservative)
 
         # 5) ICAO only
         row = self._find_one(self._df_icao_only, **{self.COL_ICAO: icao_n})
@@ -205,6 +211,4 @@ class BadaMapper:
             tried.append(f"default ENGINE_ID {engine_conservative} for ICAO={icao_n}")
         tried.append(f"(ICAO={icao_n})")
 
-        raise KeyError(
-            "Unable to resolve BADA mapping. Tried: " + " → ".join(tried)
-        )
+        raise KeyError("Unable to resolve BADA mapping. Tried: " + " → ".join(tried))
