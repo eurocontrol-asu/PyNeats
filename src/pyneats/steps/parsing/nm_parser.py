@@ -57,7 +57,7 @@ class NMTrajectoryParserParams(TrajectoryParserParams):
             "aromatic_content": "AROMATIC_CONTENT",
             "q_fuel": "CALORIFIC_VALUE",
             "sulfur_content": "SULFUR",
-            "naphtalene": "NAPHTHALENE",
+            "naphthalene": "NAPHTHALENE",
         }
     )
     date_format: str = "%Y-%m-%d %H:%M:%S"
@@ -184,7 +184,7 @@ class NMTrajectoryParser(
             h_c_ratio: float | None = attrs.get("h_c_ratio")
             sulphur_content: float | None = attrs.get("sulfur_content")
             aromatics_content: float | None = attrs.get("aromatic_content")
-            naphthalene: float | None = attrs.get("naphtalene")
+            naphthalene: float | None = attrs.get("naphthalene")
 
             fuel_obj: NEATSFuel = NEATSFuel(hydrogen_content=hydrogen_content,
                                             h_c_ratio=h_c_ratio,

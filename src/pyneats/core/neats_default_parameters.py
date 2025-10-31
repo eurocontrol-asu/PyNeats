@@ -56,6 +56,8 @@ DEFAULT_Q_FUEL: Final[float] = 43_130_000.0
 DEFAULT_DELTA_TAU_COMPUTE_METHOD: Final[Literal["point", "zero"]] = "point"
 DEFAULT_DELTA_TAU_FILL_METHOD: Final[Literal["bffill", "none", "zero"]] = "bffill"
 
+DEFAULT_ROCD_PHASE_THRESHOLD: Final[float] = 250  # feet per minute
+
 # Emissions defaults
 DEFAULT_EMISSIONS_KWARGS: Final[Mapping[str, Any]] = {}
 
@@ -71,7 +73,7 @@ DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
     "dt_integration": np.timedelta64(1, "m"),
     "max_age": np.timedelta64(12, "h"),
     "humidity_scaling": DEFAULT_HUMIDITY_SCALING,
-    "interpolation_use_indices": True,  # Note: not specified in document! Default in ModelParams is False
+    "interpolation_use_indices": False,  # Note: not specified in document! Default in ModelParams is False
 }
 
 # ACCF defaults
@@ -92,5 +94,18 @@ DEFAULT_ACCF_KWARGS: Final[Mapping[str, Any]] = {
     "unit_K_per_kg_fuel": True,  # Note: not specified in document! Default in ACCF is False
 }
 
+# Weather interpolation defaults
 
-DEFAULT_ROCD_PHASE_THRESHOLD: Final[float] = 50  # feet per minute
+InterpolationMethod = Literal["linear", "nearest"]
+
+DEFAULT_LAT_BUF: Final[tuple[float, float]] = (0.0, 0.0)
+DEFAULT_LON_BUF:  Final[tuple[float, float]] = (0.0, 0.0)
+DEFAULT_TIME_BUF: Final[tuple[np.timedelta64, np.timedelta64]] = (
+        np.timedelta64(0, "h"),
+        np.timedelta64(0, "h"),
+    )
+DEFAULT_LEVEL_BUF: tuple[float, float] = (0.0, 0.0)
+
+DEFAULT_WEATHER_INTEPOLATION_METHOD: Final[InterpolationMethod] = "linear"
+DEFAULT_WEATHER_USE_INDICES: Final[bool] = False
+

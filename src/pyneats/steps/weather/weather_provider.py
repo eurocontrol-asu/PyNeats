@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Final, Literal, Mapping, Protocol, runtime_checkable, Any
+from typing import Final, Mapping, Protocol, runtime_checkable, Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -24,7 +24,17 @@ from pycontrails import Flight
 from pycontrails.core.met import MetDataset
 from pycontrails.models.humidity_scaling import HumidityScaling
 
-from pyneats.core.neats_default_parameters import DEFAULT_HUMIDITY_SCALING
+from pyneats.core.neats_default_parameters import (
+    DEFAULT_LAT_BUF,
+    DEFAULT_LEVEL_BUF,
+    DEFAULT_LON_BUF,
+    DEFAULT_TIME_BUF,
+    DEFAULT_WEATHER_INTEPOLATION_METHOD,
+    DEFAULT_WEATHER_USE_INDICES,
+    DEFAULT_HUMIDITY_SCALING,
+    InterpolationMethod,
+)
+
 from pyneats.core.steps import BaseStep, Step, StepError, BaseParams
 from pyneats.core.views import ValidationError
 from pyneats.steps.parsing import Flight4D
@@ -111,22 +121,17 @@ class PcHumidityScalingAdapter(HumidityScalingModel):
 
 # ---------------------------- Params ---------------------------------
 
-InterpolationMethod = Literal["linear", "nearest"]
-
 
 @dataclass(frozen=True)
 class WeatherProviderParams(BaseParams):
     # Downselect buffers (lon, lat in deg; time as np.timedelta64; level in model coords)
-    lon_buf: tuple[float, float] = (0.0, 0.0)
-    lat_buf: tuple[float, float] = (0.0, 0.0)
-    time_buf: tuple[np.timedelta64, np.timedelta64] = (
-        np.timedelta64(0, "h"),
-        np.timedelta64(0, "h"),
-    )
-    level_buf: tuple[float, float] = (0.0, 0.0)
+    lon_buf: tuple[float, float] = DEFAULT_LON_BUF
+    lat_buf: tuple[float, float] = DEFAULT_LAT_BUF
+    time_buf: tuple[np.timedelta64, np.timedelta64] = DEFAULT_TIME_BUF
+    level_buf: tuple[float, float] =  DEFAULT_LEVEL_BUF
 
-    method: InterpolationMethod = "linear"
-    use_indices: bool = True
+    method: InterpolationMethod = DEFAULT_WEATHER_INTEPOLATION_METHOD
+    use_indices: bool = DEFAULT_WEATHER_USE_INDICES
 
     # Strict contract: either None, or a model that returns a Flight
     humidity_scaling: HumidityScalingModel | None = field(

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
-from dacite import from_dict
 from time import perf_counter
 from typing import Generic, Protocol, TypeVar, runtime_checkable, Type, Any, Mapping
 import logging
+
+from dacite import from_dict
 import pandas as pd
 
 from pycontrails import Flight

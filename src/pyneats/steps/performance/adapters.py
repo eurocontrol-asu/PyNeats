@@ -1,10 +1,10 @@
 from __future__ import annotations
 from abc import abstractmethod
-from typing import Protocol, Tuple, cast, Literal
-
-from packaging import version
+from typing import Protocol, Tuple, cast, Literal, TypeVar, Generic
 from pathlib import Path
 from dataclasses import dataclass
+
+from packaging import version
 from pycontrails.physics.units import m_per_s_to_knots, ft_to_m
 
 try:
@@ -105,11 +105,12 @@ class BaseBADAAdapter(AircraftProtocol, Protocol):
 # Internal utilities (shared behavior)
 # -----------------------------------------------------------------------------
 
+TObj = TypeVar("TObj", Bada3Aircraft, Bada4Aircraft)
 
-class _PyBADAAdapterBase:
+class _PyBADAAdapterBase(Generic[TObj]):
     """Mixin with shared behaviors and accessors for BADA3/4 adapters."""
 
-    _obj: Bada3Aircraft | Bada4Aircraft
+    _obj: TObj
 
     def __init__(self, rocd_phase_threshold_fpm: float) -> None:
         # Keep API identical: the passed threshold is in fpm; store and reuse
@@ -276,7 +277,7 @@ class _PyBADAAdapterBase:
 # -----------------------------------------------------------------------------
 
 
-class BADA4Adapter(_PyBADAAdapterBase, BaseBADAAdapter):
+class BADA4Adapter(_PyBADAAdapterBase[Bada4Aircraft], BaseBADAAdapter):
     def __init__(
         self,
         config_path: str,
@@ -289,7 +290,7 @@ class BADA4Adapter(_PyBADAAdapterBase, BaseBADAAdapter):
         v = version.parse(bada_version)
         short_version = f"{v.major}.{v.minor}"  # e.g. "4.2"
 
-        self._obj: Bada4Aircraft = Bada4Aircraft(
+        self._obj: Bada4Aircraft  = Bada4Aircraft(
             short_version,
             bada4_code,
             filePath=config_path,
@@ -419,7 +420,7 @@ class BADA4Adapter(_PyBADAAdapterBase, BaseBADAAdapter):
 # -----------------------------------------------------------------------------
 
 
-class BADA3Adapter(_PyBADAAdapterBase, BaseBADAAdapter):
+class BADA3Adapter(_PyBADAAdapterBase[Bada3Aircraft], BaseBADAAdapter):
     def __init__(
         self,
         config_path: str,

@@ -319,8 +319,11 @@ class BADAPerformanceModel(
                 df["delta_tau"] = df["delta_tau"].ffill().bfill().fillna(0.0)
             elif fill == "zero":
                 df["delta_tau"] = df["delta_tau"].fillna(0.0)
+
         else:
             df["delta_tau"] = 0.0
+
+        
 
     # ---------- early exit when AO provides data ----------
     def _early_exit_if_fuel_and_efficiency(
