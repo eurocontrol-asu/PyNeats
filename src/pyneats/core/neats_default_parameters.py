@@ -73,7 +73,7 @@ DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
     "dt_integration": np.timedelta64(1, "m"),
     "max_age": np.timedelta64(12, "h"),
     "humidity_scaling": DEFAULT_HUMIDITY_SCALING,
-    "interpolation_use_indices": False,  # Note: not specified in document! Default in ModelParams is False
+    "interpolation_use_indices": False,  
 }
 
 # ACCF defaults
@@ -107,5 +107,4 @@ DEFAULT_TIME_BUF: Final[tuple[np.timedelta64, np.timedelta64]] = (
 DEFAULT_LEVEL_BUF: tuple[float, float] = (0.0, 0.0)
 
 DEFAULT_WEATHER_INTEPOLATION_METHOD: Final[InterpolationMethod] = "linear"
-DEFAULT_WEATHER_USE_INDICES: Final[bool] = False
-
+DEFAULT_WEATHER_USE_INDICES: Final[bool] = False # Important. If True, delta_tau is wrongly extrapolated bellow the limit altitude

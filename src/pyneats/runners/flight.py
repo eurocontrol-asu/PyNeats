@@ -205,6 +205,7 @@ class FlightRunner:
             "Flight parsing completed successfully with %d points",
             len(self.parsed_flight.data),
         )
+
         return self
 
     # Step 2: Interpolate/reconstruct trajectory
@@ -230,6 +231,7 @@ class FlightRunner:
             "Interpolation completed successfully with %d points",
             len(interpolated_flight.data),
         )
+
         return self
 
     # Step 3: Intersect with weather data
@@ -263,6 +265,7 @@ class FlightRunner:
             "Weather intersection completed successfully with %d points",
             len(self.flight_with_weather.data),
         )
+
         return self
 
     # Step 4: Run Performance model
@@ -287,6 +290,7 @@ class FlightRunner:
         self.flight_with_performance = enriched
         self.flight_with_weather = None
         logger.info("Performance step completed successfully")
+
         return self
 
     # Step 5: Run Emission model
@@ -385,7 +389,6 @@ class FlightRunner:
         end = time.time()
 
         self.flight_with_nonco2.attrs["non_co2_computation_time"] = end - start
-
         return self
 
     # Step 8: Compute Climate Impact (GWP)
@@ -409,6 +412,7 @@ class FlightRunner:
         # keep the typed, zero-copy view
         self.flight_with_climate_impact = enriched
         logger.info("Climate impact (GWP) step completed successfully")
+
         return self
 
     #def get_meta_data(self) -> dict[str, object]:

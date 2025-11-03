@@ -204,7 +204,7 @@ class BADAPerformanceModel(
             self._compute_engine_efficiency_if_missing(df, perf, q_fuel_used)
 
             # 7) build Flight output
-            out = Flight(data=df, attrs={**flight.attrs})
+            out = Flight(data=df, attrs={**flight.attrs}, fuel=flight.fuel)
             self._attach_output_attrs(out, adapter, bada_version, nb_eng, engine_id)
 
             out_view = FlightWithPerformance.from_flight(out)
@@ -343,7 +343,7 @@ class BADAPerformanceModel(
             if "fuel" not in df.columns and "fuel_burn" in df.columns:
                 df["fuel"] = df["fuel_burn"]
 
-            out = Flight(data=df, attrs={**flight.attrs})
+            out = Flight(data=df, attrs={**flight.attrs}, fuel=flight.fuel)
             out.attrs["engine_id"] = engine_id
             out.attrs["n_engine"] = adapter.nb_eng
             out.attrs["wingspan"] = adapter.span
