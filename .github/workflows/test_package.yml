@@ -49,21 +49,7 @@ jobs:
       - name: Install pybada manually
         run: pip install pybada --ignore-requires-python --no-deps
 
-      - name: Write private XML config
-        run: |
-          mkdir -p tests/data/BADA/4.2.1/A320-231
-          mkdir -p tests/data/BADA/4.2.1/B772LR
-          echo "${{ secrets.A320_231_XML }}" > tests/data/BADA/4.2.1/A320-231/A320-231.xml
-          echo "${{ secrets.B772LR_XML }}" > tests/data/BADA/4.2.1/B772LR/B772LR.xml
-          echo "${{ secrets.GPF_XML }}" > tests/data/BADA/4.2.1/GPF.xml
-          mkdir -p tests/data/BADA/3.16/
-          echo "${{ secrets.B77L_OPF }}" > tests/data/BADA/3.16/A320__.OPF
-          echo "${{ secrets.A320_OPF }}" > tests/data/BADA/3.16/B77L__.OPF
-
-      - name: Show first 3 lines of XML
-        run: |
-          echo "=== A320 XML Preview ==="
-          head -n 3 tests/data/BADA/4.2.1/A320-231/A320-231.xml
+      # Here download the BADA files ... 
 
       - name: Run tests
         run: |

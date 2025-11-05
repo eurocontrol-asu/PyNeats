@@ -9,12 +9,15 @@ from pathlib import Path
 
 
 def test_mass_decision_tree(nm_output):  # noqa: F811
+    data_path = Path(__file__).parent / "data"
+    bada_path = data_path / "BADA"
+
+    if not bada_path.exists():
+        pytest.skip("BADA data not available, skipping test.")
+
     rtol = 1e-3
     atol = 1e-8
     check_cols = list(FlightWithPerformance.REQUIRED)
-
-    data_path = Path(__file__).parent / "data"
-    bada_path = data_path / "BADA"
 
     # Setup BADA parameters
     params = BADAPerformanceModelParams(

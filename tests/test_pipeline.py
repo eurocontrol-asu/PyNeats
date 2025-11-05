@@ -17,12 +17,15 @@ def test_pipeline(nm_input, nm_output, weather):  # noqa: F811
                Use pytest tests --met-cache-dir=/custom/path/to/data or set MET_CACHE_DIR environment variable"""
         )
 
+    data_path = Path(__file__).parent / "data"
+    bada_path = data_path / "BADA"
+
+    if not bada_path.exists():
+        pytest.skip("BADA data not available, skipping test.")
+
     rtol = 1e-3
     atol = 1e-8
     check_cols = list(FlightWithContrailsImpact.REQUIRED) + list(FlightWithPerformance.REQUIRED)
-
-    data_path = Path(__file__).parent / "data"
-    bada_path = data_path / "BADA"
 
     # Setup BADA parameters
     performance_params = dict(
