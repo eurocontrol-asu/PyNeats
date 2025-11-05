@@ -225,7 +225,7 @@ class FlightRunner:
             raise RuntimeError(f"Interpolation failed: {e}") from e
 
         self.interpolated_flight = interpolated_flight
-        self.parsed_flight = None
+        #self.parsed_flight = None
 
         logger.info(
             "Interpolation completed successfully with %d points",
@@ -255,7 +255,7 @@ class FlightRunner:
             raise RuntimeError(f"Weather intersection failed: {e}") from e
 
         self.flight_with_weather = enriched
-        self.interpolated_flight = None
+        #self.interpolated_flight = None
 
         # Cache the downsampled met/rad datasets for later use (e.g accfs)
         self._ds_met = self.weather.ds_met()
@@ -288,7 +288,7 @@ class FlightRunner:
             raise RuntimeError(f"Performance evaluation failed: {e}") from e
 
         self.flight_with_performance = enriched
-        self.flight_with_weather = None
+        #self.flight_with_weather = None
         logger.info("Performance step completed successfully")
 
         return self
@@ -312,7 +312,7 @@ class FlightRunner:
 
         # Get the typed, zero-copy view
         self.flight_with_emissions = enriched
-        self.flight_with_performance = None
+        #self.flight_with_performance = None
 
         logger.info("Emissions step completed successfully")
         return self
@@ -341,7 +341,7 @@ class FlightRunner:
 
         # Zero-copy validated view for ergonomic access (e.g., .ef property)
         self.flight_with_contrails = enriched
-        self.flight_with_emissions = None
+        #self.flight_with_emissions = None
 
         logger.info("Contrails step completed successfully")
         end = time.time()
@@ -350,7 +350,7 @@ class FlightRunner:
 
         return self
 
-    # Step 7: Compute non-CO₂ (ACCF)
+    # Step 7: Compute other non-CO₂ effects (aCCF)
     def _nonco2(self) -> Self:
 
         start = time.time()

@@ -1,6 +1,7 @@
 # ruff: noqa: F401
 import pytest
 from tqdm import tqdm
+from pathlib import Path
 from pandas.testing import assert_frame_equal
 from pyneats.steps.climate_functions.views import FlightWithContrailsImpact
 from pyneats.steps.performance.views import FlightWithPerformance
@@ -20,13 +21,22 @@ def test_pipeline(nm_input, nm_output, weather):  # noqa: F811
     atol = 1e-8
     check_cols = list(FlightWithContrailsImpact.REQUIRED) + list(FlightWithPerformance.REQUIRED)
 
+    data_path = Path(__file__).parent / "data"
+    bada_path = data_path / "BADA"
+
+    # Setup BADA parameters
+    performance_params = dict(
+        bada4_root_path=str(bada_path),
+        bada3_root_path=str(bada_path),
+    )
+
     # Let us check performance and contrails columns
     for df, flight in tqdm(zip(nm_input, nm_output), desc="processing test flight ..."):
         # Expected output
         expected_output = FlightWithContrailsImpact.from_flight(flight.copy()).to_dataframe()
 
         # Create flight runner
-        pipeline = FlightRunner(weather, df)
+        pipeline = FlightRunner(weather, df, cfg={"performance": performance_params})
         pipeline.eval()
 
         if pipeline.flight_with_contrails is not None:

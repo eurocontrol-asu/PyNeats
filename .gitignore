@@ -2,6 +2,10 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc 
+
+# BADA private files
+tests/data/BADA/
 
 # C extensions
 *.so

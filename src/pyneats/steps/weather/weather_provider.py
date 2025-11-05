@@ -60,7 +60,9 @@ DEFAULT_REQUIRED_WEATHER_COLS: Final[tuple[str, ...]] = (
     "air_temperature",
     "specific_humidity",
 )
-DEFAULT_OPTIONAL_WEATHER_COLS: Final[tuple[str, ...]] = ("air_pressure",)
+DEFAULT_OPTIONAL_WEATHER_COLS: Final[tuple[str, ...]] = (
+    "geopotential",
+    "potential_vorticity",)
 
 WIND_VARS: Final[tuple[str, ...]] = ("eastward_wind", "northward_wind")
 
@@ -147,7 +149,8 @@ class WeatherProviderParams(BaseParams):
             "northward_wind": "v_wind",
             "air_temperature": "air_temperature",
             "specific_humidity": "specific_humidity",
-            # Optionally include: "air_pressure": "air_pressure",
+            "geopotential": "geopotential",
+            "potential_vorticity": "potential_vorticity",
         }
     )
 
@@ -256,7 +259,7 @@ class WeatherProvider(
     # --- main step ----------------------------------------------------
 
     def run(self, flight: Flight4D) -> FlightWithWeather:
-        # Ensure upstream contract (cheap; explicit)
+        # Ensure upstream contract
         try:
             flight = Flight4D.from_flight(flight)
         except ValidationError as e:
@@ -270,7 +273,7 @@ class WeatherProvider(
         if self._wind is not None:
             self._ds_wind = self.downselect(flight, self._wind)
 
-        # Intersect MET variables and build a new Flight (no in-place mutation)
+        # Intersect MET variables and build a new Flight 
         try:
             
             new_cols: dict[str, NDArray[np.floating[Any]]] = {}

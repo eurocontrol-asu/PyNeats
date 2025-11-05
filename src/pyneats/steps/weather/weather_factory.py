@@ -475,13 +475,13 @@ class DWDFactory(WeatherFactoryProtocol):
             if "level" in ds and float(ds["level"].values[0]) > 2000.0:
                 ds = ds.assign_coords(level=ds["level"].astype("float64") / 100.0)
 
-            # Unit fixes BEFORE mapping (match your script)
+            # Unit fixes BEFORE mapping 
             if "clc" in ds:
                 ds["clc"] = ds["clc"] / 100.0
                 ds["clc"].attrs["units"] = "1"
             if "rhi" in ds and ds["rhi"].attrs.get("units", "-") in ("-", "%"):
                 ds["rhi"].attrs["units"] = "1"
-            # SDR conversion is done later during zarr build if requested
+            # SDR conversion is done later during zarr build 
 
             # Map variables and sanity check units
             # ds = self._standardize_vars(ds, {**self._required_map, **self._optional_map, **self._rad_map})

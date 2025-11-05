@@ -1,49 +1,66 @@
-# https://docs.github.com/en/actions/use-cases-and-examples/building-and-testing/building-and-testing-python
 name: Test Python 🐍 package
 
 on:
-    push:
-      branches: [main, dev]
-      paths-ignore:
-        - "**.md"
-        - "**.bib"
-        - "**.ya?ml"
-        - "LICENSE"
-        - ".gitignore"
-        - "**.ipynb"
-    pull_request:
-        branches: [main, dev]
-        types: [opened, reopened]
-        paths-ignore:
-            - "**.md"
-            - "**.bib"
-            - "**.ya?ml"
-            - "LICENSE"
-            - ".gitignore"
-            - "**.ipynb"
-    workflow_dispatch:
-    workflow_call:
+  push:
+    branches: [main, dev]
+    paths-ignore:
+      - "**.md"
+      - "**.bib"
+      - "**.ya?ml"
+      - "LICENSE"
+      - ".gitignore"
+      - "**.ipynb"
+  pull_request:
+    branches: [main, dev]
+    types: [opened, reopened]
+    paths-ignore:
+      - "**.md"
+      - "**.bib"
+      - "**.ya?ml"
+      - "LICENSE"
+      - ".gitignore"
+      - "**.ipynb"
+  workflow_dispatch:
+  workflow_call:
 
 jobs:
-    build:
-        runs-on: ubuntu-latest
-        strategy:
-            matrix:
-                python-version: ["3.10", "3.11", "3.12", "3.13"]
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
-        steps:
-            - uses: actions/checkout@v5
-            - name: Set up Python ${{ matrix.python-version }}
-              uses: actions/setup-python@v6
-              with:
-                python-version: ${{ matrix.python-version }}
-            - name: Display Python version
-              run: python -c "import sys; print(sys.version)"
-            - name: Install dependencies
-              run: |
-                    python -m pip install --upgrade pip
-                    pip install .[test]
-            - name: Test with pytest
-              run: |
-                    pip install pytest pytest-cov
-                    pytest tests/ --doctest-modules --junitxml=junit/test-results.xml --cov=com --cov-report=xml --cov-report=html
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Display Python version
+        run: python -c "import sys; print(sys.version)"
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Install pybada manually
+        run: pip install pybada --ignore-requires-python --no-deps
+
+      - name: Write private XML config
+        run: |
+          mkdir -p tests/data/BADA/4.2.1/A320-231
+          mkdir -p tests/data/BADA/4.2.1/B772LR
+          echo "${{ secrets.A320_231_XML }}" > tests/data/BADA/4.2.1/A320-231/A320-231.xml
+          echo "${{ secrets.B772LR_XML }}" > tests/data/BADA/4.2.1/B772LR/B772LR.xml
+          echo "${{ secrets.GPF_XML }}" > tests/data/BADA/4.2.1/GPF.xml
+          mkdir -p tests/data/BADA/3.16/
+          echo "${{ secrets.B77L_OPF }}" > tests/data/BADA/3.16/A320__.OPF
+          echo "${{ secrets.A320_OPF }}" > tests/data/BADA/3.16/B77L__.OPF
+
+      - name: Run tests
+        run: |
+          pip install pytest pytest-cov
+          pytest --cov=pyneats --cov-report=xml --cov-report=term-missing tests/

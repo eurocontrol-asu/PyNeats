@@ -79,6 +79,7 @@ DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
 # ACCF defaults
 
 DEFAULT_ACCF_VERSION: Final[str] = "V1.0A"
+DEFAULT_PMO = True
 
 DEFAULT_ACCF_KWARGS: Final[Mapping[str, Any]] = {
     "emission_scenario": "pulse",
@@ -88,7 +89,7 @@ DEFAULT_ACCF_KWARGS: Final[Mapping[str, Any]] = {
     "issr_rhi_threshold": 1.0,
     "efficacy": False,
     "forecast_step": 12,
-    "PMO": True,
+    "PMO": DEFAULT_PMO,
     "pfca": "PCFA-SAC",
     "horizontal_resolution": None,  # Note: Use horizontal resolution of meteorology input data. According to ACCF docs: If None, it will be inferred from the ``met`` dataset for :class:`MetDataset`
     "unit_K_per_kg_fuel": True,  # Note: not specified in document! Default in ACCF is False
