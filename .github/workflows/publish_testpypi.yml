@@ -11,6 +11,7 @@ jobs:
   run-tests:
     name: Run Tests
     uses: ./.github/workflows/test_package.yml
+    secrets: inherit
 
   build:
     name: Build Distribution 📦
