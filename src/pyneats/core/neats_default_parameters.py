@@ -1,10 +1,39 @@
+"""NEATS Default Parameters Module
+
+This module serves as the single source of truth for all default parameters used across
+NEATS pipeline. All parameters described in the RSTS  document are centralized here to ensure:
+
+* Configuration Consistency
+   - No hardcoded parameters exist in computation modules
+   - All defaults are documented and maintainable in one location
+   - Changes to defaults only need to be made here
+
+* Parameter Categories
+   - Trajectory parsing parameters
+   - Interpolation settings
+   - Performance model configuration (BADA3/4)
+   - Emissions calculation parameters
+   - Weather data processing settings
+   - Climate impact models configuration
+     * CoCiP (Contrail Cirrus Prediction)
+     * ACCF (Algorithmic Climate Change Functions)
+   - Fuel properties defaults
+
+* Type Safety
+   - All parameters are typed using Final type hints
+
+* Parameter Customization:
+   While this module defines default values, each processing step can be customized
+   by overloading its specific parameter class
+
+"""
+
 from typing import Final
 from typing import Any, Mapping, Literal
 import numpy as np
 from pycontrails.models.humidity_scaling import (
     ExponentialBoostHumidityScaling,
 )
-
 
 __all__ = [
     "DEFAULT_INTERPOLATOR",
@@ -23,7 +52,7 @@ __all__ = [
     "DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW",
     "DEFAULT_EMISSIONS_KWARGS",
     "DEFAULT_COCIP_KWARGS",
-    "DEFAULT_ACCF_KWARGS",
+    "DEFAULT_CLIMACCF_KWARGS",
     "DEFAULT_ROCD_PHASE_THRESHOLD",
 ]
 
@@ -32,11 +61,9 @@ DEFAULT_TRAJECTORY_PARSER: Final[str] = "nm"
 DEFAULT_PERFORMANCE: Final[str] = "bada"
 DEFAULT_EMISSIONS: Final[str] = "pycontrails"
 DEFAULT_CONTRAILS_MODEL: Final[str] = "cocip"
-DEFAULT_NON_CO2_MODEL: Final[str] = "accf"
+DEFAULT_NON_CO2_MODEL: Final[str] = "local_accf"
 DEFAULT_CLIMATE_IMPACT: Final[str] = "gwp"
 
-# Trajectory parsing defaults
-# Nothing
 
 # Interpolation defaults
 DEFAULT_INTERPOLATION_TIME: Final[str] = "1min"
@@ -78,10 +105,10 @@ DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
 
 # ACCF defaults
 
-DEFAULT_ACCF_VERSION: Final[str] = "V1.0A"
-DEFAULT_PMO = True
+accf_version = Literal["V1.0", "V1.0A"]
+DEFAULT_ACCF_VERSION: Final[accf_version] = "V1.0A"
 
-DEFAULT_ACCF_KWARGS: Final[Mapping[str, Any]] = {
+DEFAULT_CLIMACCF_KWARGS: Final[Mapping[str, Any]] = {
     "emission_scenario": "pulse",
     "climate_indicator": "ATR",
     "time_horizon": 20,
@@ -89,10 +116,10 @@ DEFAULT_ACCF_KWARGS: Final[Mapping[str, Any]] = {
     "issr_rhi_threshold": 1.0,
     "efficacy": False,
     "forecast_step": 12,
-    "PMO": DEFAULT_PMO,
+    "PMO": "True",
     "pfca": "PCFA-SAC",
     "horizontal_resolution": None,  # Note: Use horizontal resolution of meteorology input data. According to ACCF docs: If None, it will be inferred from the ``met`` dataset for :class:`MetDataset`
-    "unit_K_per_kg_fuel": True,  # Note: not specified in document! Default in ACCF is False
+    "unit_K_per_kg_fuel": False,  
 }
 
 # Weather interpolation defaults
@@ -109,3 +136,10 @@ DEFAULT_LEVEL_BUF: tuple[float, float] = (0.0, 0.0)
 
 DEFAULT_WEATHER_INTEPOLATION_METHOD: Final[InterpolationMethod] = "linear"
 DEFAULT_WEATHER_USE_INDICES: Final[bool] = False # Important. If True, delta_tau is wrongly extrapolated bellow the limit altitude
+
+
+# Default Fuel constants
+
+DEFAULT_AROMATICS_CONTENT : Final[float] = 0.25  # default value - Not used in calculations
+DEFAULT_SULPHUR_CONTENT : Final[float] = 0.003   # default value - Not used in calculations
+DEFAULT_NAPHTHALEN_CONTENT : Final[float] = 0.03 # default value - Not used in calculations

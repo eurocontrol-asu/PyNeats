@@ -1,3 +1,16 @@
+"""NEATS Processing Steps Core Module
+
+This module provides the foundational architecture for all NEATS processing steps,
+implementing a generic pipeline pattern with strong typing and error handling.
+
+Key Components:
+   - BaseParams: Foundation for step-specific parameter classes
+   - BaseStep: Abstract base with logging, timing, and error handling
+   - Step: Protocol defining the core interface
+   - InFlight/OutFlight: Type variables for flight data I/O
+"""
+
+
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
@@ -47,9 +60,12 @@ class Step(Protocol[InFlight, OutFlight]):
 
 
 def update_param_dict(
-    param_dict: dict[str, Any],
-    new_params: dict[str, Any],
-) -> None:
+        param_dict: dict[str, Any],
+        new_params: dict[str, Any],
+        ) -> None:
+    
+    """Helper to update parameter dict with new values."""
+
     for param, value in new_params.items():
         try:
             _ = param_dict[param]
@@ -106,8 +122,8 @@ class BaseStep(Generic[InFlight, OutFlight, Params]):
         """Optional hook for subclasses to initialize additional attributes."""
         pass
 
-    # Subclasses implement: core logic without cross-cutting concerns
     def run(self, flight: InFlight) -> OutFlight:  # pragma: no cover
+        """Subclasses implement: core logic without cross-cutting concerns"""
         raise NotImplementedError
 
     # Public callable interface (satisfies Step protocol)

@@ -1,3 +1,19 @@
+""" NEATS Flight Runner Module
+
+This module implements the main execution pipeline for NEATS. 
+It orchestrates the sequential processing of flight data through multiple analysis stages:
+
+Pipeline Stages:
+   - Flight parsing (NM/ADS-B data)
+   - Trajectory interpolation
+   - Weather data intersection
+   - Aircraft performance computation
+   - Emissions calculation
+   - Contrail effects assessment
+   - Other Non-CO2 effects assessment
+   - Climate impact metrics computation
+"""
+
 import logging
 import time
 from typing import Any, Optional
@@ -70,7 +86,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RunnerConfig:
-    # Names correspond to registry entries (case-insensitive)
+    """Names correspond to registry entries (case-insensitive) for each step."""
+
     interpolator: str = DEFAULT_INTERPOLATOR
     trajectory_parser: str = DEFAULT_TRAJECTORY_PARSER
     performance: str = DEFAULT_PERFORMANCE
@@ -414,11 +431,6 @@ class FlightRunner:
         logger.info("Climate impact (GWP) step completed successfully")
 
         return self
-
-    #def get_meta_data(self) -> dict[str, object]:
-    #    if self.flight_with_climate_impact is None:
-    #        raise RuntimeError("No current flight available to extract metadata.")
-    #    return dict(extract_flight_meta(self.flight_with_climate_impact))
 
     def eval(self) -> Self:
         """

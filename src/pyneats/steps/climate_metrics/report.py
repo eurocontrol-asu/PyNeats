@@ -1,3 +1,20 @@
+""" NEATS Flight Runner Module
+
+This module implements the main execution pipeline for NEATS (Non-CO2 Effects of Aviation 
+Transport Simulator). It orchestrates the sequential processing of flight data through 
+multiple analysis stages:
+
+Pipeline Stages:
+   - Flight parsing (NM/ADS-B data)
+   - Trajectory interpolation
+   - Weather data intersection
+   - Aircraft performance computation
+   - Emissions calculation
+   - Contrail formation simulation
+   - Other Non-CO2 effects assessment
+   - Climate impact metrics computation
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, fields

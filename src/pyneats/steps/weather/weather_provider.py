@@ -1,7 +1,7 @@
 """
 weather_provider.py
 
-This script defines WeatherProvider that integrates meteorological data into flight trajectories.
+This module defines WeatherProvider that integrates meteorological data into flight trajectories.
 It allows downselecting meteorological datasets to the flight envelope, interpolating required 
 weather variables, and optionally applying humidity scaling.
 
@@ -126,6 +126,7 @@ class PcHumidityScalingAdapter(HumidityScalingModel):
 
 @dataclass(frozen=True)
 class WeatherProviderParams(BaseParams):
+    """Parameters for WeatherProvider step."""
     # Downselect buffers (lon, lat in deg; time as np.timedelta64; level in model coords)
     lon_buf: tuple[float, float] = DEFAULT_LON_BUF
     lat_buf: tuple[float, float] = DEFAULT_LAT_BUF
@@ -160,6 +161,7 @@ class WeatherProviderParams(BaseParams):
 
 @runtime_checkable
 class WeatherProviderProtocol(Step[Flight4D, FlightWithWeather], Protocol):
+    """Structural contract for WeatherProvider implementations."""
     def met(self) -> MetDataset: ...
     def rad(self) -> MetDataset: ...
     def ds_met(self) -> MetDataset | None: ...
@@ -331,7 +333,7 @@ class WeatherProvider(
         except Exception as e:
             raise WeatherStepError(type(self).__name__, f"intersect failed: {e}") from e
 
-        # Optional humidity scaling with strict Flight-returning contract
+        # Optional humidity scaling 
         if self.params.humidity_scaling is not None:
             try:
                 base = self.params.humidity_scaling.eval(base)

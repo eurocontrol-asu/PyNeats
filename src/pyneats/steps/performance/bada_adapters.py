@@ -42,6 +42,7 @@ FlightPhase = Literal["Climb", "Cruise", "Descent"]
 
 @dataclass
 class State:
+    """ Flight state needed by BADA performance methods."""
     v: float
     h: float
     m: float
@@ -52,6 +53,7 @@ class State:
 
 @dataclass
 class Atmosphere:
+    """ Atmosphere properties needed by BADA performance methods."""
     delta_tau: float
     delta: float
     theta: float
@@ -59,6 +61,7 @@ class Atmosphere:
 
 
 class AircraftProtocol(Protocol):
+    """Common aircraft metadata accessors."""
     @property
     def nb_eng(self) -> int | None: ...
 
@@ -133,6 +136,8 @@ class _PyBADAAdapterBase(Generic[TObj]):
         accel_mps2: float,
         delta_tau: float,
     ) -> Tuple[float, float, FlightPhase, str]:
+        """ Compute thrust and fuel flow for a flight segment."""
+        
         # Get atmosphere properites
         theta, delta, sigma = atm.atmosphereProperties(altitude_m, delta_tau)
 
@@ -218,6 +223,8 @@ class _PyBADAAdapterBase(Generic[TObj]):
         accel_mps2: float,
         drag: float,
     ) -> float:
+        """  Compute required thrust from flight parameters."""
+
         return rocd_mps * mass * const.g * tau_const / TAS + mass * accel_mps2 + drag  # type: ignore
 
     @abstractmethod

@@ -1,3 +1,20 @@
+"""Global Warming Potential (GWP) Metrics Module
+
+This module implements the computation of climate metrics for aviation emissions
+using the Global Warming Potential (GWP) approach. It calculates:
+
+1. Climate Metrics:
+   - Absolute Global Warming Potential (AGWP) in J·m⁻²
+   - CO₂-equivalent emissions in kg for multiple time horizons
+   
+2. Species Covered:
+   - CO₂ baseline using Joos (2013) impulse response function
+   - Contrails using energy forcing and efficacy factors
+   - Non-CO₂ effects (CH4, O3, H2O) using ATR scaling and conversion factors 
+
+The calculations follow the methodologies outlined in Joos (2013), and Dahlmann et al. (2025),
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -7,7 +24,7 @@ import pandas as pd
 from pyneats.core.steps import BaseStep, BaseParams
 from pyneats.core.steps_registry import register
 from pyneats.steps.climate_functions.views import FlightWithContrailsImpact
-from pyneats.steps.climate_functions.accf import FlightWithNonCO2Impact
+from pyneats.steps.climate_functions.climaccf import FlightWithNonCO2Impact
 from pyneats.steps.climate_metrics.protocol import (
     ClimateImpactModel,
     ClimateImpactStepError,
@@ -24,21 +41,18 @@ from pyneats.models.constants import (
     EFFICACY
 )
 
-from pyneats.core.neats_default_parameters import DEFAULT_ACCF_KWARGS
-
+from pyneats.core.neats_default_parameters import DEFAULT_CLIMACCF_KWARGS
 
 __all__ = [
     "GWPParams",
     "GWPMetrics",
 ]
 
-
-
 # Supported species for aCCFs pathway
 SPECIES: Final[tuple[str, ...]] = ("CH4", "O3", "H2O")
 
 # Column name pattern expected for ATR at H0 = 20 years
-ATR_COL_TEMPLATE: Final[str] = "aCCF_{spec}"  # J·m⁻² (per your CLIMaCCF output at H0=20)
+ATR_COL_TEMPLATE: Final[str] = "ATR_20_{spec}"  # J·m⁻² (per your CLIMaCCF output at H0=20)
 
 
 # ---------------------------
@@ -47,6 +61,7 @@ ATR_COL_TEMPLATE: Final[str] = "aCCF_{spec}"  # J·m⁻² (per your CLIMaCCF out
 
 @dataclass(frozen=True)
 class GWPParams(BaseParams):
+    """Parameters for GWP climate metrics computation."""
     horizons: tuple[int, ...] = METRICS_HORIZONS
     surface_earth: float = SURFACE_EARTH
     seconds_per_year: int = SECONDS_PER_YEAR
@@ -71,7 +86,7 @@ class GWPParams(BaseParams):
         default_factory=lambda: EFFICACY
     )
     # Reference horizon H0 for ATR (fixed at 20 per spec)
-    atr_ref_horizon: int = DEFAULT_ACCF_KWARGS.get("time_horizon", 20)
+    atr_ref_horizon: int = DEFAULT_CLIMACCF_KWARGS.get("time_horizon", 20)
 
 
 # ---------------------------
@@ -100,18 +115,21 @@ class GWPMetrics(
     # ---------- Helpers ----------
 
     def _agwp_co2_J_per_m2(self, m_co2: float) -> dict[int, float]:
-        # AGWP_CO2(H) = C(H) * m_CO2 * s_yr    (units: J·m⁻²)
+        """ AGWP_CO2(H) = C(H) * m_CO2 * s_yr    (units: J·m⁻²)"""
+        
         s_yr = self.params.seconds_per_year
         return {h: self.params.agwp_coeff_wm2yr_per_kg[h] * m_co2 * s_yr for h in self.params.horizons}
 
     def _agwp_contrails_J_per_m2(self, total_ef_J: float) -> dict[int, float]:
-        # AGWP_Con(H) = EF * ε_Con / S_Earth    (units: J·m⁻²)
+        """ AGWP_Con(H) = EF * ε_Con / S_Earth    (units: J·m⁻²) """
+
         eps = float(self.params.efficacy.get("Contrails", 1.0))
         s = self.params.surface_earth
         return {h: (total_ef_J * eps) / s for h in self.params.horizons}
 
     def _co2eq_from_agwp_J_per_m2(self, agwp_J_per_m2: dict[int, float]) -> dict[int, float]:
-        # CO2eq(H) = AGWP(H) / ( C(H) * s_yr )  (units: kg)
+        """ CO2eq(H) = AGWP(H) / ( C(H) * s_yr )  (units: kg) """
+
         s_yr = self.params.seconds_per_year
         return {
             h: agwp_J_per_m2[h] / (self.params.agwp_coeff_wm2yr_per_kg[h] * s_yr)
@@ -129,7 +147,7 @@ class GWPMetrics(
         * ε_Spec
         * ATR^{Spec}(H0)
 
-        Expected input: ATR^{Spec}(H0) in **K** (absolute flight total).
+        Expected input: ATR^{Spec}(H0) in **K** 
         Output: AGWP_Spec(H) in **J·m⁻²**.
         """
         eps_spec = float(self.params.efficacy.get(species, 1.0))
@@ -225,10 +243,9 @@ class GWPMetrics(
                 continue
 
             try:
-                # Sum ATR^{Spec}(H0) over trajectory (units should be K·kg_fuel⁻¹)
+                # Sum ATR^{Spec}(H0) over trajectory (units should be K)
                 atr_h0_series = pd.to_numeric(df[atr_col], errors="coerce").fillna(0.0)
-                fuel_burn = pd.to_numeric(df["fuel_burn"], errors="coerce").fillna(0.0)
-                atr_h0_total_K = float((atr_h0_series * fuel_burn).sum())
+                atr_h0_total_K = float((atr_h0_series).sum())
 
 
                 # Compute AGWP_Spec(H)

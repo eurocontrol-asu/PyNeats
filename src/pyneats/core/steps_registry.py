@@ -1,3 +1,10 @@
+""" NEATS Steps Registry Module
+
+This module provides a registry system for NEATS processing steps. It implements
+a factory pattern that allows dynamic registration and instantiation of processing components
+based on their interface types. 
+"""
+
 from __future__ import annotations
 
 from typing import Any, Callable, Dict, Mapping, TypeVar, cast
@@ -14,6 +21,7 @@ __all__ = [
 
 
 class RegistryError(ValueError):
+    """Exception raised for errors in the NEATS registry operations."""
     pass
 
 
@@ -40,6 +48,12 @@ class _BigRegistry:
         self._lock = RLock()
 
     def register(self, t: type[T], name: str) -> Callable[[Ctor[T]], Ctor[T]]:
+        """Register a constructor or class under an interface type and name.
+    
+        This method implements a decorator pattern for registering implementations.
+        Names are case-insensitive and whitespace is stripped. Thread-safety is 
+        ensured using RLock.
+        """
         key = name.lower().strip()
 
         def deco(ctor: Ctor[T]) -> Ctor[T]:
@@ -58,6 +72,12 @@ class _BigRegistry:
         return deco
 
     def build(self, t: type[T], name: str, **params: Any) -> T:
+        """Build an instance of a registered implementation.
+    
+        This method instantiates a registered constructor/class with the given parameters.
+        Names are case-insensitive and whitespace is stripped. Thread-safety is 
+        ensured using RLock.
+        """
         key = name.lower().strip()
 
         with self._lock:
@@ -73,8 +93,8 @@ class _BigRegistry:
         return ctor(**params)
 
     def known(self, t: type[T]) -> Mapping[str, Ctor[T]]:
+        """ Return a shallow copy, cast back to the precise ctor type """
         with self._lock:
-            # Return a shallow copy, cast back to the precise ctor type
             bucket = self._items.get(t, {})
             return {k: cast(Ctor[T], v) for k, v in bucket.items()}
 

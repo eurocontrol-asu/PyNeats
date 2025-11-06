@@ -10,7 +10,7 @@ __all__ = [
     "FlightWithClimateImpact",
 ]
 
-REQUIRED_CLIMATE_COLS: Final[Tuple[str, ...]] = ("aCCF_CH4","aCCF_O3","aCCF_H2O")
+REQUIRED_CLIMATE_COLS: Final[Tuple[str, ...]] = ("ATR_20_CH4","ATR_20_O3","ATR_20_H2O")
 REQUIRED_CONTRAIL_COLS: Final[Tuple[str, ...]] = ("ef",)
 
 

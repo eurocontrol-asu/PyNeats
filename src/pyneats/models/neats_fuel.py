@@ -1,8 +1,19 @@
+""" 
+Custom Fuel Class for inheriting from PyContrail's Fuel classes
+that implement requirements defined for NEATS
+"""
+
 from __future__ import annotations
 
 from typing import Optional
 
 from pycontrails.core.fuel import Fuel, JetA, SAFBlend
+from pyneats.core.neats_default_parameters import (
+    DEFAULT_AROMATICS_CONTENT,
+    DEFAULT_NAPHTHALEN_CONTENT,
+    DEFAULT_SULPHUR_CONTENT,
+)
+
 
 __all__ = [
     "NEATSFuel",
@@ -14,9 +25,9 @@ class NEATSFuel(SAFBlend):
     configurable hydrogen content and/or q_fuel. Independent of pct_blend physics.
     """
     
-    aromatics_content : Optional[float] = 0.25  # default value - Not used in calculations
-    sulphur_content : Optional[float] = 0.003   # default value - Not used in calculations
-    naphthalene : Optional[float] = 0.03        # default value - Not used in calculations
+    aromatics_content : float = DEFAULT_AROMATICS_CONTENT  # default value - Not used in calculations
+    sulphur_content : float = DEFAULT_SULPHUR_CONTENT   # default value - Not used in calculations
+    naphthalene : float = DEFAULT_NAPHTHALEN_CONTENT    # default value - Not used in calculations
 
     def __init__(
         self,

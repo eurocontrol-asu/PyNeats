@@ -1,12 +1,39 @@
-from __future__ import annotations
+"""NEATS Flight Views Module
 
+This module implements a type-safe view system over pycontrails Flight objects,
+providing schema validation and zero-copy data access. It serves as the foundation
+for all flight data representations in the NEATS pipeline.
+
+Key Components:
+
+1. FlightView Base Class:
+   - Zero-copy wrapper around pycontrails Flight objects
+   - Declarative column and attribute requirements
+   - Runtime schema validation
+   - Type-safe access patterns
+   - Inheritance-aware requirement gathering
+
+2. Schema Management:
+   - REQUIRED: Mandatory columns for flight data
+   - OPTIONAL: Optional columns that may be present
+   - ATTRS_REQUIRED: Mandatory flight attributes
+   - ATTRS_OPTIONAL: Optional flight attributes
+
+3. Validation System:
+   - Strict schema checking on view creation
+   - Clear error messages for missing data
+   - Runtime validation helpers
+   - JSON serialization support
+"""
+
+
+from __future__ import annotations
+import warnings
 from typing import ClassVar, Iterable, TypeVar, Tuple, cast, Any
 from pycontrails import Flight
 from pycontrails.utils import json as json_utils
 from pyneats.core.steps import StepError
 import numpy as np
-import warnings
-
 
 __all__ = [
     "ValidationError",
@@ -99,6 +126,7 @@ class FlightView(Flight):
         *,
         require: Iterable[str] | None = None,
     ) -> TView:
+        """Validate that the flight satisfies this view's requirements."""
         required_cols = cls._all_required(require)
         required_attrs = cls._all_attrs_required()
 
@@ -122,17 +150,21 @@ class FlightView(Flight):
     # --- convenience --------------------------------------------------
 
     def has(self, *cols: str) -> bool:
+        """Check if all specified columns are present in the flight."""
         return all(c in self for c in cols)
 
     def ensure(self, *cols: str) -> None:
+        """Raise ValidationError if any specified columns are missing."""
         missing = [c for c in cols if c not in self]
         if missing:
             raise ValidationError(type(self).__name__, f"missing columns: {missing}")
 
     def has_attrs(self, *attrs: str) -> bool:
+        """"""
         return all(a in self.attrs for a in attrs)
 
     def ensure_attrs(self, *attrs: str) -> None:
+        """Raise ValidationError if any specified attrs are missing."""
         missing = [a for a in attrs if a not in self.attrs]
         if missing:
             raise ValidationError(type(self).__name__, f"missing attrs: {missing}")

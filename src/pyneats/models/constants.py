@@ -1,5 +1,7 @@
-from typing import Final, Mapping
+""" Physical and Radiative Constants for Climate Impact Calculations"""
 
+
+from typing import Final, Mapping
 
 __all__ = [
     "METRICS_HORIZONS",
@@ -10,11 +12,16 @@ __all__ = [
     "CONVERSION_FACTORS_AGWP_TO_RF", 
     "CONVERSION_FACTORS_ATR_TO_RF",
     "EFFICACY",
+    "SOLAR_CONSTANT",
+    "ACCF_SCALE_03",
+    "ACCF_SCALE_CH4",
+    "ACCF_SCALE_H2O",
 ]
 
 METRICS_HORIZONS: Final[tuple[int, ...]] = (20, 50, 100)
 SURFACE_EARTH: Final[float] = 5.101e14  # m²
 SECONDS_PER_YEAR: Final[int] = 31_556_952  # s
+SOLAR_CONSTANT: Final[float] = 1360.0  # [W m^-2]
 
 # AR6 Table 7.SM.7 (W·m⁻²·yr·kg⁻¹) -> convert to J·m⁻²·kg⁻¹ by multiplying by seconds/year
 DEFAULT_AGWP_AR6_WM2YR_PER_KG: Mapping[int, float] = {
@@ -51,3 +58,8 @@ EFFICACY: Final[dict[str, float]] = {
     "PMO": 1.0,
 }
 
+# ACCFs scaling factors 
+ACCF_SCALE_03: Final[Mapping[str, float]] = {"V1.0": 1.97, "V1.0A": 11.0}
+ACCF_SCALE_CH4: Final[Mapping[str, float]] = {"V1.0": 2.03, "V1.0A": 35.0}
+ACCF_SCALE_H2O: Final[Mapping[str, float]] =  {"V1.0": 1.0, "V1.0A": 1.0}
+    

@@ -1,10 +1,6 @@
-# climate.py
-
 """
-accf.py
-
-This script builds a wrapper around `pycontrails.models.accf.ACCF` (ClimAccf) to allow for the 
-computation of ACCF climate functions on a flight, adding the results as new columns to the flight data.
+This module builds a wrapper around `pycontrails.models.accf.ACCF` (ClimAccf) to allow for the 
+computation of ACCF climate functions on a flight
 
 Key components:
 - `NonCO2Params`: Parameters for the ACCF model, including meteorological and surface datasets.
@@ -17,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Mapping
+import pandas as pd 
 
 import xarray as xr
 
@@ -29,7 +26,7 @@ from pycontrails.datalib.ecmwf import (
 )
 from pycontrails.core.met_var import TOAOutgoingLongwaveFlux
 
-from pyneats.core.neats_default_parameters import DEFAULT_ACCF_KWARGS
+from pyneats.core.neats_default_parameters import DEFAULT_CLIMACCF_KWARGS
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.emissions.views import FlightWithEmissions
@@ -39,7 +36,7 @@ from pyneats.steps.climate_functions.params import ClimateParams
 
 
 __all__ = [
-    "NonCO2Params",
+    "aCCFParams",
     "ACCFModel",
     "make_accf_surface_view",
 ]
@@ -47,11 +44,12 @@ __all__ = [
 
 # ---- params --------------------------------------------------------
 @dataclass(frozen=True)
-class NonCO2Params(ClimateParams):
+class aCCFParams(ClimateParams):
+    """Parameters for the ACCF (ClimAccf) model."""
     met: MetDataset | None = None
     surface: MetDataset | None = None
 
-    accf_kwargs: Mapping[str, Any] = field(default_factory=lambda: DEFAULT_ACCF_KWARGS)
+    accf_kwargs: Mapping[str, Any] = field(default_factory=lambda: DEFAULT_CLIMACCF_KWARGS)
 
 
 # ---- surface adapter for ACCF -------------------------------------
@@ -69,10 +67,6 @@ def make_accf_surface_view(surface: MetDataset) -> MetDataset:
     # Work on an xr.Dataset view
     ds: xr.Dataset = surface.data
 
-    # Expected names in your snippet
-    # TOAOutgoingLongwaveFlux = "toa_outgoing_longwave_flux"      # source name present in `surface`
-    # TopNetThermalRadiation = "toa_net_thermal_radiation"        # target name expected by ClimAccf
-    # SurfaceSolarDownwardRadiation = "surface_downwelling_shortwave_flux"  # example
 
     # 1) Update attrs for the OLR var, then rename it to "top net thermal"
     if TOAOutgoingLongwaveFlux.standard_name in ds:
@@ -122,7 +116,7 @@ class ACCFModel(
     BaseStep[
         FlightWithEmissions,
         FlightWithNonCO2Impact,
-        NonCO2Params,
+        aCCFParams,
     ]
 ):
     """
@@ -133,7 +127,7 @@ class ACCFModel(
     - Validates required columns and returns a base Flight.
     """
 
-    default_params = NonCO2Params
+    default_params = aCCFParams
 
     def _post_init(self) -> None:
         if self.params.met is None or self.params.surface is None:
@@ -161,8 +155,20 @@ class ACCFModel(
             raise ClimateStepError(f"ACCF initialization failed: {e}") from e
 
     def run(self, flight: FlightWithEmissions) -> FlightWithNonCO2Impact:
+
         try:
+            df: pd.DataFrame = flight.to_dataframe()
+            fuel_burn = pd.to_numeric(df["fuel_burn"], errors="coerce").fillna(0.0)
+            nox_ei = pd.to_numeric(df["nox_ei"], errors="coerce").fillna(0.0)
+            
+            # Compute final ART_20 (K) from aCCF (K per kg fuel for H20, K per kg NOx for CH4 and O3)
+            flight['ATR_20_CH4'] = fuel_burn * nox_ei * df['aCCF_CH4']  # K
+            flight['ATR_20_O3'] = fuel_burn * nox_ei * df['aCCF_O3']  # K
+            flight['ATR_20_H2O'] = fuel_burn * df['aCCF_H2O']   # K
+
             out: Flight = self._impl.eval(flight)
+
+
         except KeyError as e:
             self.logger.error("ACCFbackend: %s", e)
             raise ClimateStepError(f"ACCF output missing required columns: {e}") from e
