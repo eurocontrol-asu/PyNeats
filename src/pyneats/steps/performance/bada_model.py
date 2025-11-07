@@ -508,7 +508,8 @@ class BADAPerformanceModel(
 
         if adapter.MPL is None:
             self.logger.warning(
-                f"BADA adapter for ICAO '{icao}' does not provide MPL, assuming MPL = MTOW - OEW. Conservative case"
+                "BADA adapter for ICAO '%s' does not provide MPL, assuming MPL = MTOW - OEW. Conservative case",
+                icao,
             )
             maximum_payload = maximum_takeoff_weight - operating_empty_weight
         else:
@@ -533,7 +534,9 @@ class BADAPerformanceModel(
         initial_mass = min(maximum_takeoff_weight, zero_fuel_weight + fuel_onboard)
 
         self.logger.debug(
-            f"Initial mass estimate: {initial_mass} kg. MTOW: {maximum_takeoff_weight} kg"
+            "Initial mass estimate: %s kg. MTOW: %s kg",
+            initial_mass,
+            maximum_takeoff_weight,
         )
 
         rel_mass_diff = float("inf")
@@ -551,8 +554,12 @@ class BADAPerformanceModel(
             initial_mass = min(maximum_takeoff_weight, zero_fuel_weight + fuel_onboard)
 
             rel_mass_diff = abs(prev_mass - initial_mass) / prev_mass
+ 
             self.logger.debug(
-                f"Mass estimation iteration {iter_count}: {initial_mass} kg (diff {rel_mass_diff * 100}%)"
+                "Mass estimation iteration %s: %s kg (diff %.2f%%)",
+                iter_count,
+                initial_mass,
+                rel_mass_diff * 100,
             )
             iter_count += 1
 
@@ -565,13 +572,17 @@ class BADAPerformanceModel(
         q_fuel_attr: Optional[float],
         default_q_fuel: float,
     ) -> float:
-        """Apply q_fuel adjustment to fuel_flow if needed."""
+        """Apply a linear q_fuel correction to fuel_flow if necessary, 
+        since BADA fuel flow values are expressed with q_fuel in the denominator"""
 
         q_fuel_used = q_fuel_attr if q_fuel_attr is not None else default_q_fuel
         if q_fuel_attr is not None:
             self.logger.debug(
-                f"'q_fuel' attribute provided ({q_fuel_attr} J/kg), comparing to default {default_q_fuel} J/kg"
+                "'q_fuel' attribute provided (%s J/kg), comparing to default %s J/kg",
+                q_fuel_attr,
+                default_q_fuel,
             )
+            
             if q_fuel_attr != default_q_fuel:
                 ratio = q_fuel_attr / default_q_fuel
                 # Divide fuel_flow by ratio so that fuel_burn stays physically consistent
@@ -584,8 +595,8 @@ class BADAPerformanceModel(
         perf: PerfOutput,
         q_fuel: float,
     ) -> None:
-        """Compute engine_efficiency column if missing in df."""
-        
+        """Compute engine_efficiency column if missing in flight."""
+
         if "engine_efficiency" in df.columns:
             self.logger.debug("'engine_efficiency' column already provided, keeping it")
             return

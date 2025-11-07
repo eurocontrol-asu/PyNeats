@@ -32,6 +32,7 @@ __all__ = [
 
 @dataclass(frozen=True)
 class ContrailsParams(ClimateParams):
+    """Parameters for the CoCiP model."""
     met: MetDataset | None = None
     rad: MetDataset | None = None
 
@@ -49,6 +50,8 @@ class CoCiPModel(
         ContrailsParams,
     ]
 ):
+    """Calculates contrail climate impact using the Pycontrails's CoCiP implementation"""
+
     default_params = ContrailsParams
 
     def _post_init(self) -> None:

@@ -167,7 +167,7 @@ class LocalACCFModel(
         accf = np.where(np.isfinite(accf), np.maximum(accf, 0.0), np.nan)  # clamp negatives to 0
         try:
             #Scaling with version-specific factor
-            accf = accf / self.params.scale_o3[self.params.accf_kwargs['accf_v']]
+            accf /= self.params.scale_o3[self.params.accf_kwargs['accf_v']]
 
             # convert from K-per-kg(NOx) to K-per-kg(fuel) with NOx EI
             accf *= _as_np(flight[self.params.col_nox_ei])
@@ -202,7 +202,7 @@ class LocalACCFModel(
         accf = np.where(np.isfinite(accf), np.minimum(accf, 0.0), np.nan)  # clamp positives to 0
         try:
             #Scaling with version-specific factor
-            accf = accf / self.params.scale_ch4[self.params.accf_kwargs['accf_v']]
+            accf /= self.params.scale_ch4[self.params.accf_kwargs['accf_v']]
 
             # convert from K-per-kg(NOx) to K-per-kg(fuel) with NOx EI
             accf *= _as_np(flight[self.params.col_nox_ei])  
@@ -215,7 +215,6 @@ class LocalACCFModel(
         if self.params.accf_kwargs['PMO']:
             accf = accf * 1.29
 
-        
         return accf
 
     # ---- H2O: raw formula & compute ----

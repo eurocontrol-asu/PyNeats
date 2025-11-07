@@ -55,6 +55,7 @@ class StepError(RuntimeError):
 # --- Structural contract: any callable (InFlight) -> OutFlight qualifies as a Step ---
 @runtime_checkable
 class Step(Protocol[InFlight, OutFlight]):
+    """Protocol defining the core interface for NEATS processing steps."""
     def __call__(self, flight: InFlight) -> OutFlight: ...
 
 

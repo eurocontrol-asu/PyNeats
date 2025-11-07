@@ -52,7 +52,7 @@ __all__ = [
 SPECIES: Final[tuple[str, ...]] = ("CH4", "O3", "H2O")
 
 # Column name pattern expected for ATR at H0 = 20 years
-ATR_COL_TEMPLATE: Final[str] = "ATR_20_{spec}"  # J·m⁻² (per your CLIMaCCF output at H0=20)
+ATR_COL_TEMPLATE: Final[str] = "ATR_20_{spec}"  # J·m⁻² (per CLIMaCCF output at H0=20)
 
 
 # ---------------------------

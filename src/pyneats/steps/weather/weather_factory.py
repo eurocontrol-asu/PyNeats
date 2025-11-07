@@ -1,4 +1,32 @@
-# steps/weather/weather_factory.py
+"""Weather Factory Module
+
+This module provides factory classes for creating weather providers from different 
+meteorological data sources. It supports both ERA5 reanalysis and DWD ICON-2mom 
+forecast data with flexible caching strategies.
+
+1. Data Sources:
+   - ERA5: ECMWF's fifth generation reanalysis
+   - DWD ICON-2mom: German Weather Service's forecast model
+   Both provide:
+   - 3D meteorological fields (temperature, winds, humidity)
+   - Radiation data (surface and TOA fluxes)
+   - Derived quantities (potential vorticity)
+
+2. Key Components:
+   - WeatherFactoryParams: Configuration for data access and caching
+   - ERA5Factory: Factory for ERA5 reanalysis data
+   - DWDFactory: Factory for DWD ICON-2mom forecast data
+   - Cache specifications for both disk (ERA5) and Zarr (DWD) storage
+
+3. Features:
+   - Flexible caching strategies (disk/Zarr)
+   - Automatic unit conversions
+   - Variable standardization
+   - Chunked data access
+   - Thread-safe operations
+   - Comprehensive error handling 
+"""
+
 from __future__ import annotations
 
 import logging
@@ -36,6 +64,12 @@ from pyneats.steps.weather.weather_provider import (
     WeatherProviderProtocol,
 )
 from pyneats.steps.weather.weather_store import ZarrPaths, get_weather_from_zarr
+
+from pyneats.core.neats_default_parameters import (
+    DEFAULT_MET_CHUNKS,
+    DEFAULT_RAD_CHUNKS,
+    DEFAULT_WIND_CHUNKS
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +126,7 @@ class ERA5DiskCacheSpec:
 
 @dataclass(frozen=True)
 class DWDZarrCacheSpec:
+    """Zarr cache specification for DWD ICON-2mom."""
     met_store: str
     rad_store: str
     wind_store: Optional[str] = None  # make optional
@@ -118,6 +153,8 @@ class WeatherCacheConfig:
 # ---------------- params ----------------
 @dataclass(frozen=True)
 class WeatherFactoryParams:
+    """Parameters for weather factory implementations."""
+
     # for ERA5 and for DWD live reading
     data_dir: str
     horizontal_resolution: float = DEFAULT_HORIZONTAL_RES_DEG
@@ -138,6 +175,7 @@ class WeatherFactoryParams:
 
 # ---------------- protocol ----------------
 class WeatherFactoryProtocol:
+    """Protocol for weather factory implementations."""
     def __call__(
         self, asofdate: datetime, hour: Optional[int] = None
     ) -> WeatherProviderProtocol:  # pragma: no cover
@@ -371,18 +409,9 @@ class DWDFactory(WeatherFactoryProtocol):
             rad_ds_xr = rad_ds_xr.expand_dims({"level": [-1]})
 
         # 3) chunk (use defaults similar to your script)
-        met_chunks = zc.met_chunks or {
-            "time": 1,
-            "level": 10,
-            "latitude": 256,
-            "longitude": 256,
-        }
-        rad_chunks = zc.rad_chunks or {
-            "time": 1,
-            "level": 1,
-            "latitude": 256,
-            "longitude": 256,
-        }
+        met_chunks = zc.met_chunks or DEFAULT_MET_CHUNKS
+        rad_chunks = zc.rad_chunks or DEFAULT_RAD_CHUNKS
+
         met_ds_xr = met_ds_xr.chunk(met_chunks)
         rad_ds_xr = rad_ds_xr.chunk(rad_chunks)
 
@@ -419,12 +448,8 @@ class DWDFactory(WeatherFactoryProtocol):
             # choose sensible 2D chunks (add level if present)
 
             wind_ds_xr = ds_wind[[v.standard_name for v in self._wind_map.values()]]
-            wind_chunks = zc.wind_chunks or {
-                "time": 1,
-                "level": 10,
-                "latitude": 256,
-                "longitude": 256,
-            }
+            wind_chunks = zc.wind_chunks or DEFAULT_WIND_CHUNKS
+ 
             wind_ds_xr = wind_ds_xr.chunk(wind_chunks)
 
 

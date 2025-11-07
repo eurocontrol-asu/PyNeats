@@ -143,3 +143,25 @@ DEFAULT_WEATHER_USE_INDICES: Final[bool] = False # Important. If True, delta_tau
 DEFAULT_AROMATICS_CONTENT : Final[float] = 0.25  # default value - Not used in calculations
 DEFAULT_SULPHUR_CONTENT : Final[float] = 0.003   # default value - Not used in calculations
 DEFAULT_NAPHTHALEN_CONTENT : Final[float] = 0.03 # default value - Not used in calculations
+
+# Default chunk dimensions for xarray operations using zarr backend
+DEFAULT_MET_CHUNKS: Final[Mapping[str, Any]]  = {
+    "time": 1,
+    "level": 10,
+    "latitude": 256,
+    "longitude": 256,
+}
+
+DEFAULT_RAD_CHUNKS: Final[Mapping[str, Any]]  = {
+    "time": 1,
+    "level": 1,
+    "latitude": 256,
+    "longitude": 256,
+}
+
+DEFAULT_WIND_CHUNKS: Final[Mapping[str, Any]] = {
+    "time": 1,
+    "level": 10,
+    "latitude": 256,
+    "longitude": 256,
+}

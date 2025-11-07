@@ -1,5 +1,4 @@
 """
-weather_provider.py
 
 This module defines WeatherProvider that integrates meteorological data into flight trajectories.
 It allows downselecting meteorological datasets to the flight envelope, interpolating required 
