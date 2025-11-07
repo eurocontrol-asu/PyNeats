@@ -6,7 +6,7 @@ It integrates multiple established open-source tools to provide a reproducible, 
 
 - [**PyContrails**](https://github.com/contrailcirrus/pycontrails) – for contrail prediction and atmospheric data processing
 - [**ClimAccf**](https://github.com/dlr-pa/climaccf) – for calculating non-CO₂ aviation climate change functions (aCCFs)
-- [**PyBADA**](https://github.com/mbanerd/pybada) – for aircraft performance modelling using EUROCONTROL’s BADA datasets
+- [**PyBADA**](https://github.com/eurocontrol-bada/pybada) – for aircraft performance modelling using EUROCONTROL’s BADA datasets
 - [**open-airclim**](https://github.com/openclimatefix/open-airclim) – for integrating climate response functions and GWP calculations (to be used for method D in future PyNeats versions)
 
 The library is designed for **researchers, airspace operators, regulators, and industry** who need a transparent and auditable implementation for MRV purposes.
