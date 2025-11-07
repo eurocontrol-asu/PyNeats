@@ -1,20 +1,3 @@
-""" NEATS Flight Runner Module
-
-This module implements the main execution pipeline for NEATS (Non-CO2 Effects of Aviation 
-Transport Simulator). It orchestrates the sequential processing of flight data through 
-multiple analysis stages:
-
-Pipeline Stages:
-   - Flight parsing (NM/ADS-B data)
-   - Trajectory interpolation
-   - Weather data intersection
-   - Aircraft performance computation
-   - Emissions calculation
-   - Contrail formation simulation
-   - Other Non-CO2 effects assessment
-   - Climate impact metrics computation
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
@@ -25,11 +8,9 @@ from typing import Any, Mapping, Dict
 
 from pycontrails.core.flight import Flight
 
-import pyneats
 from pyneats.core.neats_default_parameters import (
     DEFAULT_BADA4_VERSION,
     DEFAULT_BADA3_VERSION,
-    DEFAULT_ACCF_VERSION,
 )
 
 __all__ = [
@@ -57,8 +38,6 @@ def dist_version(
     Order:
       1) importlib.metadata.version(dist_name)
       2) (optional) module.__version__
-      3) (optional) git short SHA fallback as 'git-<sha>'
-      4) 'unknown'
 
     Notes:
       - For pyBADA, only (1) is reliable; it does NOT expose __version__.
@@ -108,7 +87,7 @@ class FlightReport:
 
     @classmethod
     def extract(cls, flight: Flight,
-                include_fleet_metadata: bool = False) -> dict[str, Any]:
+                include_fleet_metadata: bool = True) -> dict[str, Any]:
         """
         Extract *only* flight-level fields from Flight.attrs (ignoring missing keys).
 
@@ -167,26 +146,25 @@ class FleetReport:
         dict[str, str]
         """
         return {
-            # Your own package
-            "pyneats_version": getattr(pyneats, "__version__", "unknown"),
-
-            # Works for normal installs; editable installs may fall back to git SHA if enabled
+            "pyneats_version":dist_version(
+                "pyneats", module_name="pyneats",
+            ),
+            
             "pycontrails_version": dist_version(
-                "pycontrails", module_name="pycontrails", allow_git_fallback=True
+                "pycontrails", module_name="pycontrails",
             ),
 
-            # ACCF version comes from your config/constants
-            "climaccf_version": DEFAULT_ACCF_VERSION,
 
-            # BADA parameter versions (your declared defaults for the run)
+            "climaccf_version":  dist_version(
+                "climaccf", module_name="climaccf",
+            ),
+
             "bada4_version": DEFAULT_BADA4_VERSION,
             "bada3_version": DEFAULT_BADA3_VERSION,
 
             # pyBADA exposes no __version__; importlib.metadata is the reliable path
             "pybada_version": dist_version(
-                "pyBADA", module_name="pyBADA",
-                allow_module_dunder_version=False,
-                allow_git_fallback=True,
+                "pyBADA", module_name="pyBADA"
             ),
         }
 

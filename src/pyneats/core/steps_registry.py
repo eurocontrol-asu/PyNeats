@@ -40,7 +40,7 @@ class _BigRegistry:
     Internals:
       _items: Dict[type[Any], Dict[str, Callable[..., Any]]]
     We keep it Any-typed inside and cast at the edges to preserve strong
-    generics on the public API without mypy gymnastics.
+    generics on the public API
     """
 
     def __init__(self) -> None:
@@ -52,7 +52,7 @@ class _BigRegistry:
     
         This method implements a decorator pattern for registering implementations.
         Names are case-insensitive and whitespace is stripped. Thread-safety is 
-        ensured using RLock.
+        ensured
         """
         key = name.lower().strip()
 
@@ -75,8 +75,7 @@ class _BigRegistry:
         """Build an instance of a registered implementation.
     
         This method instantiates a registered constructor/class with the given parameters.
-        Names are case-insensitive and whitespace is stripped. Thread-safety is 
-        ensured using RLock.
+        Names are case-insensitive and whitespace is stripped. 
         """
         key = name.lower().strip()
 
@@ -110,9 +109,6 @@ def register(t: type[T], name: str) -> Callable[[Ctor[T]], Ctor[T]]:
     """
     Decorator to register a constructor/class under an *interface type* and a name.
 
-    Usage:
-        @register(Interpolator, "pycontrails")
-        class PCInterpolator: ...
     """
     return _REGISTRY.register(t, name)
 

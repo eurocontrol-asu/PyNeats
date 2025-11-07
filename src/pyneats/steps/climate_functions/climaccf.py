@@ -61,7 +61,6 @@ def make_accf_surface_view(surface: MetDataset) -> MetDataset:
       - variable aliasing / renaming for ClimAccf expectations
       - minimal attrs/unit tweaks
 
-    This relies on xarray’s copy-on-write semantics for coords/data; large arrays are not duplicated.
     """
 
     # Work on an xr.Dataset view
@@ -161,9 +160,15 @@ class ACCFModel(
             fuel_burn = pd.to_numeric(df["fuel_burn"], errors="coerce").fillna(0.0)
             nox_ei = pd.to_numeric(df["nox_ei"], errors="coerce").fillna(0.0)
             
-            # Compute final ART_20 (K) from aCCF (K per kg fuel for H20, K per kg NOx for CH4 and O3)
-            flight['ATR_20_CH4'] = fuel_burn * nox_ei * df['aCCF_CH4']  # K
-            flight['ATR_20_O3'] = fuel_burn * nox_ei * df['aCCF_O3']  # K
+
+            if not self.params.accf_kwargs["unit_K_per_kg_fuel"]:
+                # Convert aCCF outputs from K per kg NOx to K per kg H2O and K per Fuel 
+                df['aCCF_CH4'] = df['aCCF_CH4'] * nox_ei
+                df['aCCF_O3'] = df['aCCF_O3'] * nox_ei
+
+            # Compute final ART_20 (K) from aCCF outputs (K per kg fuel)
+            flight['ATR_20_CH4'] = fuel_burn * df['aCCF_CH4']  # K
+            flight['ATR_20_O3'] = fuel_burn * df['aCCF_O3']  # K
             flight['ATR_20_H2O'] = fuel_burn * df['aCCF_H2O']   # K
 
             out: Flight = self._impl.eval(flight)

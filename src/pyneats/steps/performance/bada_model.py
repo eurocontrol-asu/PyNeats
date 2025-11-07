@@ -1,3 +1,37 @@
+"""BADA Performance Model Module
+
+This module implements aircraft performance calculations using EUROCONTROL's Base of 
+Aircraft Data (BADA) models. It provides:
+
+1. Aircraft Performance Computation:
+   - Thrust and fuel flow calculation
+   - Aircraft mass estimation
+   - Flight phase detection
+   - Engine efficiency computation
+   - Aircraft-specific parameter lookups
+
+2. BADA Model Integration:
+   - BADA3 and BADA4 model support
+   - Automatic model selection based on aircraft type
+   - Fallback mechanisms between versions
+   - Engine type resolution
+   
+3. Key Features:
+   - Iterative mass estimation for unknown initial mass
+   - Conservative mass estimation with payload factor
+   - Flexible engine efficiency computation
+   - Multiple delta-tau computation methods
+   - True airspeed smoothing
+   - Comprehensive error handling
+
+4. Data Sources:
+   - BADA3/4 coefficient files
+   - Aircraft mapping tables
+   - Engine type databases
+   - Default parameters from RSTS
+"""
+
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -57,6 +91,7 @@ __all__ = [
 
 
 class PerfOutput(TypedDict):
+    """Output of performance calculation step."""
     mass: list[float]
     fuel_flow: list[float]
     thrust: list[float]
@@ -92,6 +127,7 @@ def _normalize_code_or_none(code: Optional[str]) -> Optional[str]:
 
 @dataclass(frozen=True)
 class BADAPerformanceModelParams(PerformanceModelParams):
+    """Parameters for the BADA performance model calculation."""
     true_air_speed_smoothing_window: int = DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW
     q_fuel: float = DEFAULT_Q_FUEL
 
@@ -225,6 +261,7 @@ class BADAPerformanceModel(
     def _extract_aircraft_attrs(
         self, flight: Flight
     ) -> Tuple[str, Optional[str], Optional[str], Optional[float]]:
+        """Extract required aircraft attributes from flight.attrs."""
         icao: Optional[str] = (
             flight.attrs.get("aircraft_type") if hasattr(flight, "attrs") else None
         )
@@ -241,6 +278,7 @@ class BADAPerformanceModel(
     def _resolve_bada_adapter(
         self, icao: str, series: Optional[str], engine_id: Optional[str]
     ) -> tuple[BaseBADAAdapter, str, int, str]:
+        """Resolve BADA adapter based on aircraft type and available info."""
         nb_eng, bada3_code, bada4_code, resolved_engine = self.params.bada_type(
             icao, series=series, engine_id=engine_id
         )
@@ -263,6 +301,7 @@ class BADAPerformanceModel(
 
     # ---------- preprocessing ----------
     def _preprocess(self, flight: Flight) -> pd.DataFrame:
+        """Compute required kinematic columns for performance calculation."""
         df = self._compute_ground_and_true_airspeed(
             flight,
             self.params.true_air_speed_smoothing_window,
@@ -276,6 +315,7 @@ class BADAPerformanceModel(
         return df
 
     def _compute_ground_and_true_airspeed(self, flight: Flight, window: int) -> pd.DataFrame:
+        """Compute ground speed and true airspeed columns."""
         df = flight.dataframe.copy(deep=False)
         df["ground_speed"] = flight.segment_groundspeed()
 
@@ -295,6 +335,7 @@ class BADAPerformanceModel(
         return df
 
     def _compute_kinematics(self, flight: Flight, df: pd.DataFrame) -> None:
+        """Compute kinematic columns: rocd, acceleration, segment_duration."""
         df["segment_duration"] = flight.segment_duration()
         df["rocd"] = flight.segment_rocd()
         df["segment_duration"] = pd.to_numeric(df["segment_duration"], errors="coerce")
@@ -309,6 +350,7 @@ class BADAPerformanceModel(
         method: Literal["point", "zero"],
         fill: Literal["bffill", "zero", "none"],
     ) -> None:
+        """Compute delta-tau (air temperature deviation from ISA)."""
         if method == "point":
             T_isa: NDArray[np.floating] = m_to_T_isa(
                 df["altitude"].to_numpy(dtype=float, copy=False)
@@ -333,6 +375,7 @@ class BADAPerformanceModel(
         engine_id: str,
         flight: Flight,
     ) -> Optional[FlightWithPerformance]:
+        """If AO provided fuel_flow and engine_efficiency, skip BADA model."""
         if "fuel_flow" in df.columns and "engine_efficiency" in df.columns:
             self.logger.debug(
                 "Flight already has 'fuel_flow' and 'engine_efficiency', skipping BADA model",
@@ -358,7 +401,9 @@ class BADAPerformanceModel(
         flight: Flight,
         icao: str,
     ) -> PerfOutput:
-        # Ensure numeric columns used by thrust_fuel
+        """ Choose mass estimation strategy and use iterative estimation with the performance
+        model if needed."""
+
         cols = [
             "altitude",
             "true_airspeed",
@@ -389,6 +434,8 @@ class BADAPerformanceModel(
         df: pd.DataFrame,
         initial_mass: Optional[float],
     ) -> PerfOutput:
+        """Single pass performance calculation with given or initial mass."""
+
         if initial_mass is None and "aircraft_mass" not in df.columns:
             raise PerformanceStepError(
                 "Initial mass not provided and 'aircraft_mass' column missing"
@@ -443,6 +490,8 @@ class BADAPerformanceModel(
         flight: Flight,
         icao: str,
     ) -> PerfOutput:
+        """Iterative initial mass estimation using BADA performance model."""
+
         payload_factor: Optional[float] = flight.attrs.get("payload_factor")
 
         if payload_factor is None:
@@ -516,6 +565,8 @@ class BADAPerformanceModel(
         q_fuel_attr: Optional[float],
         default_q_fuel: float,
     ) -> float:
+        """Apply q_fuel adjustment to fuel_flow if needed."""
+
         q_fuel_used = q_fuel_attr if q_fuel_attr is not None else default_q_fuel
         if q_fuel_attr is not None:
             self.logger.debug(
@@ -533,6 +584,8 @@ class BADAPerformanceModel(
         perf: PerfOutput,
         q_fuel: float,
     ) -> None:
+        """Compute engine_efficiency column if missing in df."""
+        
         if "engine_efficiency" in df.columns:
             self.logger.debug("'engine_efficiency' column already provided, keeping it")
             return

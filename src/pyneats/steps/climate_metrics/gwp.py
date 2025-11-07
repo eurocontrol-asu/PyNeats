@@ -71,7 +71,7 @@ class GWPParams(BaseParams):
         default_factory=lambda: JOOS_AGWP_COEFF_WM2YR_PER_KG
     )
 
-    # Non-contrail species parameters (provide your Dahlmann 2025 / CLIMaCCF tables here)
+    # Non-contrail species parameters
     # K_{AGWP←RF}^{Spec}(H)
     k_agwp_from_rf: Mapping[int, Mapping[str, float]] = field(
         default_factory=lambda: CONVERSION_FACTORS_AGWP_TO_RF
@@ -105,9 +105,8 @@ class GWPMetrics(
     Compute AGWP (J·m⁻²) and CO₂-equivalent (kg) for:
       - CO₂ baseline
       - Contrails (using EF from CoCiP, efficacy, and Earth's surface area)
-      - Other species via aCCFs + conversion factors (Dahlmann 2025, CLIMaCCF)
+      - Other species via aCCFs + conversion factors
 
-    Formulas implemented exactly as specified by the user.
     """
 
     default_params = GWPParams
@@ -246,7 +245,6 @@ class GWPMetrics(
                 # Sum ATR^{Spec}(H0) over trajectory (units should be K)
                 atr_h0_series = pd.to_numeric(df[atr_col], errors="coerce").fillna(0.0)
                 atr_h0_total_K = float((atr_h0_series).sum())
-
 
                 # Compute AGWP_Spec(H)
                 agwp_spec = self._agwp_spec_J_per_m2(sp, atr_h0_total_K)

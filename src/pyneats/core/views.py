@@ -40,13 +40,10 @@ __all__ = [
     "FlightView",
 ]
 
-
 class ValidationError(StepError):
     """Raised when a validated Flight view cannot guarantee its schema."""
 
-
 TView = TypeVar("TView", bound="FlightView")
-
 
 class FlightView(Flight):
     """Zero-copy, typed *view* over a Flight with declarative column requirements."""
@@ -63,10 +60,10 @@ class FlightView(Flight):
 
     @classmethod
     def _all_required(cls, extra: Iterable[str] | None = None) -> Tuple[str, ...]:
-        # Merge REQUIRED across the whole MRO (parents first), dedup while preserving order
+        # Merge REQUIRED across the whole MRO, dedup while preserving order
         seen: set[str] = set()
         out: list[str] = []
-        for base in reversed(cls.__mro__):  # parents first
+        for base in reversed(cls.__mro__): 
             req = getattr(base, "REQUIRED", ())
             for c in req:
                 if c not in seen:
@@ -160,7 +157,7 @@ class FlightView(Flight):
             raise ValidationError(type(self).__name__, f"missing columns: {missing}")
 
     def has_attrs(self, *attrs: str) -> bool:
-        """"""
+        """Check if all specified attrs are present in the flight.attrs."""
         return all(a in self.attrs for a in attrs)
 
     def ensure_attrs(self, *attrs: str) -> None:

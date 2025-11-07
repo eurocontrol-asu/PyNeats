@@ -9,7 +9,7 @@ It calculates temperature responses in K at 20 years horizon for three key speci
    - Water vapor (H2O) direct effects
 
 The use of a local implementation allows for a more efficient computation
-avoidingheavy weather data transfers between PyContrails and ClimaCCF
+avoiding heavy weather data transfers and overheads between PyContrails and ClimaCCF
 """
 
 from __future__ import annotations
@@ -59,11 +59,9 @@ class LocalACCFParams(aCCFParams):
     )
     scale_ch4: Mapping[str, float] = field(
         default_factory=lambda: ACCF_SCALE_CH4,
-
     )
     scale_h2o: Mapping[str, float] = field(
         default_factory=lambda: ACCF_SCALE_H2O,
-
     )
     solar_constant: float =  SOLAR_CONSTANT
 
@@ -94,7 +92,7 @@ def _fin_rowwise(
     lat_series: pd.Series | FloatArray,
     solar_constant: float,
 ) -> FloatArray:
-    """Top-of-atmosphere incoming shortwave parametrization (per your approximation)."""
+    """Top-of-atmosphere incoming shortwave parametrization."""
     times = np.asarray(pd.to_datetime(time_series), dtype="datetime64[ns]")
     doy = (
         (times.astype("datetime64[D]") - times.astype("datetime64[Y]"))
@@ -118,7 +116,7 @@ class LocalACCFModel(
     """Local implementation of Algorithmic Climate Change Functions (ACCF).
     
     This model computes non-CO2 climate impacts for aircraft emissions using the ACCF
-    approach. It calculates impacts for:
+    simple surrogate approach. It calculates impacts for:
     - Ozone (O3) formation
     - Methane (CH4) depletion
     - Water vapor (H2O) effects
@@ -172,7 +170,7 @@ class LocalACCFModel(
             accf = accf / self.params.scale_o3[self.params.accf_kwargs['accf_v']]
 
             # convert from K-per-kg(NOx) to K-per-kg(fuel) with NOx EI
-            accf *= _as_np(flight[self.params.col_nox_ei])  
+            accf *= _as_np(flight[self.params.col_nox_ei])
 
             #Final conversion from K-per-kg(fuel) to K
             accf *= _as_np(flight[self.params.col_fuel_burn])

@@ -59,17 +59,7 @@ class PyContrailsEmissionModel(
 
     def run(self, flight: FlightWithPerformance) -> FlightWithEmissions:
 
-        """Calculate emissions for a flight.
-    
-        Args:
-            flight: Flight data with performance metrics
-            
-        Returns:
-            FlightWithEmissions: Flight data with emissions calculations
-            
-        Raises:
-            EmissionStepError: If the emissions calculation fails
-        """
+        """Calculate emissions for a flight using pycontrails."""
         try:
             out: Flight = self._impl.eval(flight)
         except Exception as e:

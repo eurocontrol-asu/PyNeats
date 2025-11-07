@@ -1,3 +1,29 @@
+"""BADA Aircraft Type Mapping Module
+
+This module implements a hierarchical mapping system for resolving aircraft performance 
+model types from BADA. It provides:
+
+1. Mapping Resolution:
+   Hierarchical resolution of BADA aircraft types using:
+   - ICAO aircraft type designator
+   - Aircraft series
+   - Engine identifier
+   The system follows a fallback chain to ensure maximum coverage.
+
+2. Resolution Chain:
+   a) Full match: ICAO + Series + Engine ID
+   b) Partial match: ICAO + Series
+   c) Partial match: ICAO + Engine ID
+   d) Default engine lookup by ICAO, then retry (c)
+   e) Fallback: ICAO only
+
+3. Key Components:
+   - BadaMappingPaths: Configuration for CSV mapping file locations
+   - BadaMapper: Main resolver implementing the fallback chain
+   - CSV caching system for performance optimization
+
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +36,7 @@ import pandas as pd
 
 @dataclass(frozen=True)
 class BadaMappingPaths:
+    """Paths to CSV files for BADA aircraft type mapping."""
     icao_series_engine: Path  # 1) triple key: ICAO + SERIES + ENGINE_ID
     icao_series: Path  # 2) double key: ICAO + SERIES
     icao_engine: Path  # 3) double key: ICAO + ENGINE_ID
@@ -25,6 +52,7 @@ def _read_csv_cached(
     path_str: str, col_icao: str, col_series: str, col_engine: str
 ) -> pd.DataFrame:
     """Read + normalize a CSV and cache by (path, mtime)."""
+
     df = pd.read_csv(path_str)
 
     # Normalize the key columns if present
@@ -43,6 +71,8 @@ def _load_df(path: Path, col_icao: str, col_series: str, col_engine: str) -> pd.
 
 
 class BadaMapper:
+    """Resolves BADA aircraft types using hierarchical CSV mappings."""
+    
     COL_ICAO = "ICAO"
     COL_SERIES = "ACFT_SERIES"
     COL_ENGINE_ID = "ENGINE_ID"

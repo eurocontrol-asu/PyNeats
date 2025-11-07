@@ -242,7 +242,7 @@ class FlightRunner:
             raise RuntimeError(f"Interpolation failed: {e}") from e
 
         self.interpolated_flight = interpolated_flight
-        #self.parsed_flight = None
+        self.parsed_flight = None
 
         logger.info(
             "Interpolation completed successfully with %d points",
@@ -272,7 +272,7 @@ class FlightRunner:
             raise RuntimeError(f"Weather intersection failed: {e}") from e
 
         self.flight_with_weather = enriched
-        #self.interpolated_flight = None
+        self.interpolated_flight = None
 
         # Cache the downsampled met/rad datasets for later use (e.g accfs)
         self._ds_met = self.weather.ds_met()
@@ -305,7 +305,7 @@ class FlightRunner:
             raise RuntimeError(f"Performance evaluation failed: {e}") from e
 
         self.flight_with_performance = enriched
-        #self.flight_with_weather = None
+        self.flight_with_weather = None
         logger.info("Performance step completed successfully")
 
         return self
@@ -329,7 +329,7 @@ class FlightRunner:
 
         # Get the typed, zero-copy view
         self.flight_with_emissions = enriched
-        #self.flight_with_performance = None
+        self.flight_with_performance = None
 
         logger.info("Emissions step completed successfully")
         return self
@@ -358,7 +358,7 @@ class FlightRunner:
 
         # Zero-copy validated view for ergonomic access (e.g., .ef property)
         self.flight_with_contrails = enriched
-        #self.flight_with_emissions = None
+        self.flight_with_emissions = None
 
         logger.info("Contrails step completed successfully")
         end = time.time()
@@ -408,13 +408,13 @@ class FlightRunner:
         self.flight_with_nonco2.attrs["non_co2_computation_time"] = end - start
         return self
 
-    # Step 8: Compute Climate Impact (GWP)
+    # Step 8: Compute Climate Impact (GWP in the default case)
     def _gwp(self) -> Self:
         if self.flight_with_nonco2 is None:
             logger.error(
-                "Missing flight_with_contrails; did you call _contrails() first?"
+                "Missing flight_with_nonco2; did you call _nonco2() first?"
             )
-            raise RuntimeError("_contrails() must be called before _gwp().")
+            raise RuntimeError("_nonco2() must be called before _gwp().")
 
         try:
             enriched: FlightWithClimateImpact = self.climate_impact(
@@ -428,6 +428,9 @@ class FlightRunner:
 
         # keep the typed, zero-copy view
         self.flight_with_climate_impact = enriched
+        self.flight_with_nonco2 = None
+        self.flight_with_contrails = None
+
         logger.info("Climate impact (GWP) step completed successfully")
 
         return self

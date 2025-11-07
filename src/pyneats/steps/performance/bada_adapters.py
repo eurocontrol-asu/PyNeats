@@ -1,3 +1,36 @@
+"""BADA Adapters Module
+
+This module provides a unified interface to EUROCONTROL's Base of Aircraft Data (BADA) 
+models through adapter classes. It handles both BADA3 and BADA4 implementations with
+consistent error handling and unit conversions.
+
+Key Components:
+
+1. Base Structures:
+   - State: Encapsulates flight state (velocity, altitude, mass, etc.)
+   - Atmosphere: Holds atmospheric properties (temperature, pressure ratios)
+   - AircraftProtocol: Defines common aircraft metadata interface
+   - BaseBADAAdapter: Abstract base for BADA implementations
+
+2. Adapter Classes:
+   - BADA3Adapter: Wrapper for BADA3 aircraft performance model
+   - BADA4Adapter: Wrapper for BADA4 aircraft performance model
+   Both provide:
+   - Thrust and fuel flow calculations
+   - Flight phase detection
+   - Configuration management
+   - Unit conversions
+
+3. Implementation Notes:
+   All calculations follow BADA specifications for:
+   - Drag computation
+   - Thrust levels (idle, climb, total)
+   - Fuel flow rates
+   - Configuration management
+   - Atmospheric corrections
+"""
+
+
 from __future__ import annotations
 from abc import abstractmethod
 from typing import Protocol, Tuple, cast, Literal, TypeVar, Generic
@@ -285,6 +318,7 @@ class _PyBADAAdapterBase(Generic[TObj]):
 
 
 class BADA4Adapter(_PyBADAAdapterBase[Bada4Aircraft], BaseBADAAdapter):
+    """BADA 4 Adapter implementation."""
     def __init__(
         self,
         config_path: str,
@@ -428,6 +462,7 @@ class BADA4Adapter(_PyBADAAdapterBase[Bada4Aircraft], BaseBADAAdapter):
 
 
 class BADA3Adapter(_PyBADAAdapterBase[Bada3Aircraft], BaseBADAAdapter):
+    """BADA 3 Adapter implementation."""
     def __init__(
         self,
         config_path: str,

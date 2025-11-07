@@ -42,7 +42,6 @@ class BaseParams:
 
 
 # --- Variance-aware type variables for pipeline steps ---
-#InFlight = TypeVar("InFlight", Flight, pd.DataFrame, contravariant=True)
 InFlight = TypeVar("InFlight", bound=Flight | pd.DataFrame, contravariant=True)
 OutFlight = TypeVar("OutFlight", bound=Flight, covariant=True)
 Params = TypeVar("Params", bound=BaseParams)
