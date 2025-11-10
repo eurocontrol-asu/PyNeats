@@ -49,7 +49,22 @@ jobs:
       - name: Install pybada manually
         run: pip install pybada --ignore-requires-python --no-deps
 
-      # Here download the BADA files ... 
+      - name: Checkout BADA data repo
+        uses: actions/checkout@v5
+        with:
+          repository: eurocontrol-asu/bada-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: bada_data
+      
+      - name: Copy XML data files
+        run: |
+          mkdir -p tests/data/BADA/3.16
+          mkdir -p tests/data/BADA/4.2.1/A320-231
+          mkdir -p tests/data/BADA/4.2.1/B772RL
+          cp bada_data/*.OPF tests/data/BADA/3.16/
+          cp bada_data/A320-231.xml tests/data/BADA/4.2.1/A320-231/A320-231.xml
+          cp bada_data/B772RL.xml tests/data/BADA/4.2.1/B772RL/B772RL.xml
+          cp bada_data/GPF.xml tests/data/BADA/4.2.1/GPF.xml
 
       - name: Run tests
         run: |
