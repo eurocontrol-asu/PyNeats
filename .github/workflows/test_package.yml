@@ -60,10 +60,10 @@ jobs:
         run: |
           mkdir -p tests/data/BADA/3.16
           mkdir -p tests/data/BADA/4.2.1/A320-231
-          mkdir -p tests/data/BADA/4.2.1/B772RL
+          mkdir -p tests/data/BADA/4.2.1/B772LR
           cp bada_data/*.OPF tests/data/BADA/3.16/
           cp bada_data/A320-231.xml tests/data/BADA/4.2.1/A320-231/A320-231.xml
-          cp bada_data/B772RL.xml tests/data/BADA/4.2.1/B772RL/B772RL.xml
+          cp bada_data/B772LR.xml tests/data/BADA/4.2.1/B772LR/B772LR.xml
           cp bada_data/GPF.xml tests/data/BADA/4.2.1/GPF.xml
 
       - name: Run tests
