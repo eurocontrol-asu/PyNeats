@@ -1,8 +1,9 @@
-import pandas as pd
-import pytest
 import json
 from pathlib import Path
 from typing import List
+import pandas as pd
+import pytest
+
 from pyneats.core.views import FlightView
 
 
@@ -11,9 +12,7 @@ def nm_input() -> List[pd.DataFrame]:
     traffic_path = Path(__file__).parent.parent / "data"
 
     if not traffic_path.is_dir():
-        raise RuntimeError(
-            f"Test traffic path directory does not exist: {traffic_path}"
-        )
+        raise RuntimeError(f"Test traffic path directory does not exist: {traffic_path}")
 
     filepath = traffic_path / "nm_input.csv"
 
@@ -53,9 +52,7 @@ def nm_output() -> List[FlightView]:
     traffic_path = Path(__file__).parent.parent / "data"
 
     if not traffic_path.is_dir():
-        raise RuntimeError(
-            f"Test traffic path directory does not exist: {traffic_path}"
-        )
+        raise RuntimeError(f"Test traffic path directory does not exist: {traffic_path}")
 
     filepath = traffic_path / "nm_output.json"
 
@@ -69,12 +66,6 @@ def nm_output() -> List[FlightView]:
 
     for d in data:
         f = FlightView.from_dict(d)
-
-        # This is needed because it forces it as column instead of attribute when reading from dict
-        # We should force overloaded to_dict to save flight_id as single value (so that is parsed as an attribute) or
-        # also overload the from_dict
-        f["altitude"] = f.altitude
-        f.attrs["flight_id"] = f["flight_id"][0]
         flights.append(f)
 
     # Sort flights by flight_id

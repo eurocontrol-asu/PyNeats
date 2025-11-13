@@ -34,7 +34,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import ClassVar, Final, Mapping, Optional
+from typing import ClassVar, Final, Mapping, Optional, Any
 
 import xarray as xr
 from pycontrails import DiskCacheStore, MetDataset
@@ -65,11 +65,6 @@ from pyneats.steps.weather.weather_provider import (
 )
 from pyneats.steps.weather.weather_store import ZarrPaths, get_weather_from_zarr
 
-from pyneats.core.neats_default_parameters import (
-    DEFAULT_MET_CHUNKS,
-    DEFAULT_RAD_CHUNKS,
-    DEFAULT_WIND_CHUNKS
-)
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +100,30 @@ DEFAULT_PRESSURE_LEVELS_HPA: Final[tuple[float, ...]] = (
 )
 DEFAULT_HORIZONTAL_RES_DEG: Final[float] = 0.25
 DEFAULT_SDR_ACCUMULATE_DT_S: Final[int] = 3600  # 1 hour
+
+
+# Default chunk dimensions for xarray operations using zarr backend
+
+DEFAULT_MET_CHUNKS: Final[Mapping[str, Any]]  = {
+    "time": 1,
+    "level": 10,
+    "latitude": 256,
+    "longitude": 256,
+}
+
+DEFAULT_RAD_CHUNKS: Final[Mapping[str, Any]]  = {
+    "time": 1,
+    "level": 1,
+    "latitude": 256,
+    "longitude": 256,
+}
+
+DEFAULT_WIND_CHUNKS: Final[Mapping[str, Any]] = {
+    "time": 1,
+    "level": 10,
+    "latitude": 256,
+    "longitude": 256,
+}
 
 
 # ---------------- error ----------------

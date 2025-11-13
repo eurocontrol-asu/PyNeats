@@ -5,5 +5,10 @@
   "python.testing.pytestEnabled": true,
   "python.testing.unittestEnabled": false,
   "python.analysis.typeCheckingMode": "basic",
-  "python.analysis.autoImportCompletions": true
+  "python.analysis.autoImportCompletions": true,
+
+  "pylint.args": ["--disable=C0114"],
+
+  "python.analysis.useLibraryCodeForTypes": true,
+
 }

@@ -13,3 +13,4 @@ pyneats/
 │ ├── cli/ # command-line interface
 │ └── utils/ # misc utilities
 └── tests/
+└── examples/

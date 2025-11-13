@@ -1,6 +1,9 @@
+"""
 
-# weather_store.py
-# Utilities for handling weather data storage and retrieval (Zarr/NetCDF)
+Weather data storage and retrieval utilities 
+for handling weather data storage and retrieval (Zarr/NetCDF)
+
+"""
 
 from __future__ import annotations
 from dataclasses import dataclass
@@ -14,6 +17,7 @@ from .weather_provider import WeatherProvider
 # Stores paths to Zarr datasets for meteorological, radiative, and wind data
 @dataclass(frozen=True)
 class ZarrPaths:
+    """Paths to Zarr stores for weather data."""
     met_store: str
     rad_store: str
     wind_store: Optional[str] = None

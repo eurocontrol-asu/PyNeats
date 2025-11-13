@@ -3,7 +3,8 @@ from datetime import datetime
 import os
 
 from pyneats.steps.weather.weather_store import ZarrPaths
-from pyneats.pipeline.fleet import FleetRunnerParams, FleetRunner
+from pyneats.runners.fleet import FleetRunnerParams, FleetRunner
+
 
 # Read recipe inputs
 WEATHER_PATH = "/path/to/DWD/files"

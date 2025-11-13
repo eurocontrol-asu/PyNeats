@@ -1,6 +1,5 @@
 """ Physical and Radiative Constants for Climate Impact Calculations"""
 
-
 from typing import Final, Mapping
 
 __all__ = [

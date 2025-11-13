@@ -136,13 +136,13 @@ class BADAPerformanceModelParams(PerformanceModelParams):
 
     # BADA mapping paths (to packaged resources)
     icao_series_engine_path = Path(
-        str(files("pyneats.resources").joinpath("ECTL_mapping_by_ACFT_SERIES_and_ENGINE_ID.csv"))
+        str(files("pyneats.resources").joinpath("ECTL_mapping_by_ICAO_and_ACFT_SERIES_and_ENGINE_ID.csv"))
     )
     icao_series_path = Path(
-        str(files("pyneats.resources").joinpath("ECTL_mapping_by_ACFT_SERIES.csv"))
+        str(files("pyneats.resources").joinpath("ECTL_mapping_by_ICAO_and_ACFT_SERIES.csv"))
     )
     icao_engine_path = Path(
-        str(files("pyneats.resources").joinpath("ECTL_mapping_by_ENGINE_ID_and_ICAO.csv"))
+        str(files("pyneats.resources").joinpath("ECTL_mapping_by_ICAO_and_ENGINE_ID.csv"))
     )
     default_engine_by_icao_path = Path(
         str(files("pyneats.resources").joinpath("MRR_conservative_mapping.csv"))
@@ -178,6 +178,8 @@ class BADAPerformanceModelParams(PerformanceModelParams):
         series: str | None,
         engine_id: str | None,
     ) -> tuple[int, str, str, str]:
+        """ Resolve BADA type using the mapper """
+
         return self.mapper.bada_type(icao, series, engine_id)
 
 

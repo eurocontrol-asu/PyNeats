@@ -16,7 +16,7 @@ Pipeline Stages:
 
 import logging
 import time
-from typing import Any, Optional
+from typing import Any
 from dataclasses import dataclass, field
 from typing_extensions import Self
 import pandas as pd
@@ -38,7 +38,6 @@ from pyneats.steps.climate_metrics import (
     ClimateImpactStepError,
 
 )
-
 
 from pyneats.steps.interpolation import (
     TrajectoryInterpolator,
@@ -86,7 +85,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RunnerConfig:
-    """Names correspond to registry entries (case-insensitive) for each step."""
+    """Names correspond to registry entries for each step."""
 
     interpolator: str = DEFAULT_INTERPOLATOR
     trajectory_parser: str = DEFAULT_TRAJECTORY_PARSER
@@ -112,7 +111,7 @@ class FlightRunner:
         self,
         weather: WeatherProviderProtocol,
         source: pd.DataFrame | None = None,
-        cfg: Optional[RunnerConfig] = None,
+        cfg: RunnerConfig | None = None,
     ) -> None:
 
         self.cfg = cfg or RunnerConfig()

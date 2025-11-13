@@ -26,13 +26,13 @@ Key Components:
    - JSON serialization support
 """
 
-
 from __future__ import annotations
 import warnings
 from typing import ClassVar, Iterable, TypeVar, Tuple, cast, Any
 from pycontrails import Flight
 from pycontrails.utils import json as json_utils
 from pyneats.core.steps import StepError
+from pyneats.models.neats_fuel import NEATSFuel
 import numpy as np
 
 __all__ = [
@@ -40,10 +40,13 @@ __all__ = [
     "FlightView",
 ]
 
+
 class ValidationError(StepError):
     """Raised when a validated Flight view cannot guarantee its schema."""
 
+
 TView = TypeVar("TView", bound="FlightView")
+
 
 class FlightView(Flight):
     """Zero-copy, typed *view* over a Flight with declarative column requirements."""
@@ -63,7 +66,7 @@ class FlightView(Flight):
         # Merge REQUIRED across the whole MRO, dedup while preserving order
         seen: set[str] = set()
         out: list[str] = []
-        for base in reversed(cls.__mro__): 
+        for base in reversed(cls.__mro__):
             req = getattr(base, "REQUIRED", ())
             for c in req:
                 if c not in seen:
@@ -206,3 +209,23 @@ class FlightView(Flight):
             )
 
         return {**attrs, **data}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> FlightView:
+        # Build the fuel object first
+        
+        fuel_obj: NEATSFuel = NEATSFuel.from_attrs(d)
+
+        # Call the pycontrails from dict
+        f = Flight.from_dict(d)
+
+        # This is needed because it forces it as column instead of attribute when reading from dict
+        # We should force overloaded to_dict to save flight_id as single value (so that is parsed as an attribute) or
+        # also overload the from_dict
+        f["altitude"] = f.altitude
+        f.attrs["flight_id"] = f["flight_id"][0]
+
+        # We force the fuel object
+        f.fuel = fuel_obj
+
+        return cls.from_flight(f)

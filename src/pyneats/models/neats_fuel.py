@@ -5,7 +5,7 @@ that implement requirements defined for NEATS
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Mapping, Any
 
 from pycontrails.core.fuel import Fuel, JetA, SAFBlend
 from pyneats.core.neats_default_parameters import (
@@ -93,4 +93,19 @@ class NEATSFuel(SAFBlend):
 
         # set the blend gate so that downstream code treats as SAFBlend
         object.__setattr__(self, "pct_blend", pct_blend_gate if pct_blend_gate > 0.0 else 1e-12)
+
+    @classmethod
+    def from_attrs(cls, attrs: Mapping[str, Any]) -> NEATSFuel:
+        """
+        Build a NEATSFuel instance from a generic attributes dictionary.
+        Accepts both None and missing values; applies NEATS defaults.
+        """
+        return cls(
+            q_fuel=attrs.get("q_fuel"),
+            hydrogen_content=attrs.get("hydrogen_content"),
+            h_c_ratio=attrs.get("h_c_ratio"),
+            sulphur_content=attrs.get("sulphur_content") or attrs.get("sulfur_content"),
+            aromatics_content=attrs.get("aromatics_content") or attrs.get("aromatic_content"),
+            naphthalene=attrs.get("naphthalene"),
+        )
 

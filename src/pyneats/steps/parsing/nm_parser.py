@@ -179,19 +179,7 @@ class NMTrajectoryParser(
 
             # 6) Construct Custom Fuel Object based on available attributes
 
-            q_fuel: float | None = attrs.get("q_fuel")
-            hydrogen_content: float | None = attrs.get("hydrogen_content")
-            h_c_ratio: float | None = attrs.get("h_c_ratio")
-            sulphur_content: float | None = attrs.get("sulfur_content")
-            aromatics_content: float | None = attrs.get("aromatic_content")
-            naphthalene: float | None = attrs.get("naphthalene")
-
-            fuel_obj: NEATSFuel = NEATSFuel(hydrogen_content=hydrogen_content,
-                                            h_c_ratio=h_c_ratio,
-                                            q_fuel=q_fuel,
-                                            sulphur_content=sulphur_content,
-                                            aromatics_content=aromatics_content,
-                                            naphthalene=naphthalene)
+            fuel_obj: NEATSFuel = NEATSFuel.from_attrs(attrs)
             
             # 7) Construct base Flight with required columns only
             # Keep required and optional columns

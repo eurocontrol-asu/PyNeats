@@ -116,10 +116,9 @@ DEFAULT_CLIMACCF_KWARGS: Final[Mapping[str, Any]] = {
     "issr_rhi_threshold": 1.0,
     "efficacy": False,
     "forecast_step": 12,
-    "PMO": "True",
+    "PMO": True,
     "pfca": "PCFA-SAC",
-    "horizontal_resolution": None,  # Note: Use horizontal resolution of meteorology input data. According to ACCF docs: If None, it will be inferred from the ``met`` dataset for :class:`MetDataset`
-    "unit_K_per_kg_fuel": False,  
+    "horizontal_resolution": None,  
 }
 
 # Weather interpolation defaults
@@ -144,24 +143,4 @@ DEFAULT_AROMATICS_CONTENT : Final[float] = 0.25  # default value - Not used in c
 DEFAULT_SULPHUR_CONTENT : Final[float] = 0.003   # default value - Not used in calculations
 DEFAULT_NAPHTHALEN_CONTENT : Final[float] = 0.03 # default value - Not used in calculations
 
-# Default chunk dimensions for xarray operations using zarr backend
-DEFAULT_MET_CHUNKS: Final[Mapping[str, Any]]  = {
-    "time": 1,
-    "level": 10,
-    "latitude": 256,
-    "longitude": 256,
-}
 
-DEFAULT_RAD_CHUNKS: Final[Mapping[str, Any]]  = {
-    "time": 1,
-    "level": 1,
-    "latitude": 256,
-    "longitude": 256,
-}
-
-DEFAULT_WIND_CHUNKS: Final[Mapping[str, Any]] = {
-    "time": 1,
-    "level": 10,
-    "latitude": 256,
-    "longitude": 256,
-}

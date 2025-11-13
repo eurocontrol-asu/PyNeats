@@ -10,7 +10,10 @@ requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "Philippe VERY", email = "philippe.very@eurocontrol.int" }, 
            { name = "Ramon DALMAU", email = "ramon.dalmau-codina@eurocontrol.int" }, 
-           { name = "Ana-Maria PELIN", email = "ana-maria.pelin.ext@eurocontrol.int" }]
+           { name = "Ana-Maria PELIN", email = "ana-maria.pelin.ext@eurocontrol.int" },
+           {name = "Gabriel JARRY", email = "gabriel.jarry@eurocontrol.int"}]
+
+
 keywords = ["aviation", "climate", "contrails", "metrics", "pipeline"]
 classifiers = [
   "Programming Language :: Python :: 3",

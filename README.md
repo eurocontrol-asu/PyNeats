@@ -30,7 +30,8 @@ The library is designed for **researchers, airspace operators, regulators, and i
 > We recommend installing it in a fresh **conda** or **venv** environment.
 
 ```bash
-git clone https://github.com/<your-org-or-username>/pyneats.git
-cd pyneats
-pip install -e .
 
+git clone https://github.com/eurocontrol-asu/PyNeats.git
+cd PyNeats
+pip install -e .[accf]
+pip install pybada --ignore-requires-python --no-deps
