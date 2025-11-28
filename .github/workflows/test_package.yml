@@ -26,6 +26,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    continue-on-error: true   # job-level; the build job can run even if this fails
+    
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]

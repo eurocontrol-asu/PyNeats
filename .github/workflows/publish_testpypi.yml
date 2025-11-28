@@ -12,7 +12,6 @@ jobs:
     name: Run Tests
     uses: ./.github/workflows/test_package.yml
     secrets: inherit
-    continue-on-error: true
 
   build:
     name: Build Distribution 📦
