@@ -4,9 +4,9 @@ from pyneats.steps.parsing.protocol import (
     TrajectoryParserStepError,
 )
 from pyneats.steps.parsing.params import TrajectoryParserParams
-from pyneats.steps.parsing.nm_parser import (
-    NMTrajectoryParserParams,
-    NMTrajectoryParser,
+from pyneats.steps.parsing.neats_parser import (
+    NeatsTrajectoryParserParams,
+    NeatsTrajectoryParser,
 )
 from pyneats.steps.parsing.adsb_parser import (
     ADSBParser,
@@ -19,8 +19,8 @@ __all__ = [
     "TrajectoryParser",
     "TrajectoryParserStepError",
     "TrajectoryParserParams",
-    "NMTrajectoryParserParams",
-    "NMTrajectoryParser",
+    "NeatsTrajectoryParserParams",
+    "NeatsTrajectoryParser",
     "ADSBParserParams",
     "ADSBParser",
 ]

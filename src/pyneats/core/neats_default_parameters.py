@@ -57,7 +57,7 @@ __all__ = [
 ]
 
 DEFAULT_INTERPOLATOR: Final[str] = "pycontrails"
-DEFAULT_TRAJECTORY_PARSER: Final[str] = "nm"
+DEFAULT_TRAJECTORY_PARSER: Final[str] = "neats"
 DEFAULT_PERFORMANCE: Final[str] = "bada"
 DEFAULT_EMISSIONS: Final[str] = "pycontrails"
 DEFAULT_CONTRAILS_MODEL: Final[str] = "cocip"
@@ -105,8 +105,8 @@ DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
 
 # ACCF defaults
 
-accf_version = Literal["V1.0", "V1.0A"]
-DEFAULT_ACCF_VERSION: Final[accf_version] = "V1.0A"
+ACCFS_VERSIONS = Literal["V1.0", "V1.0A"]
+DEFAULT_ACCF_VERSION: Final[ACCFS_VERSIONS] = "V1.0A"
 
 DEFAULT_CLIMACCF_KWARGS: Final[Mapping[str, Any]] = {
     "emission_scenario": "pulse",

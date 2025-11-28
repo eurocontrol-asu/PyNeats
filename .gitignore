@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 *.pyc 
 
+# Notebooks examples
+notebooks/
+
 # BADA private files
 tests/data/BADA/
 

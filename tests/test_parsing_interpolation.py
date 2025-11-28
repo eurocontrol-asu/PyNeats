@@ -3,14 +3,14 @@
 from tqdm import tqdm
 from pandas.testing import assert_frame_equal
 
-from pyneats.steps.parsing.nm_parser import NMTrajectoryParser
+from pyneats.steps.parsing.neats_parser import NeatsTrajectoryParser
 from pyneats.steps.interpolation import PyContrailsInterpolator
 from pyneats.steps.parsing.views import Flight4D
 from .fixtures.nm_traffic import nm_input, nm_output
 
 
 def test_parsing_and_interpolation(nm_input, nm_output):  # noqa: F811
-    parser = NMTrajectoryParser()
+    parser = NeatsTrajectoryParser()
     interpolator = PyContrailsInterpolator()
 
     rtol = 1e-3

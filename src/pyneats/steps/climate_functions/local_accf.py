@@ -29,7 +29,7 @@ from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
 from pyneats.steps.climate_functions.protocol import NonCO2Model, ClimateStepError
 from pyneats.steps.climate_functions.climaccf import aCCFParams
 
-from pyneats.models.constants import (
+from pyneats.core.constants import (
     ACCF_SCALE_03,
     ACCF_SCALE_CH4,
     ACCF_SCALE_H2O,

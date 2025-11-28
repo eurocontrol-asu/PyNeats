@@ -31,7 +31,7 @@ from pyneats.steps.climate_metrics.protocol import (
 )
 from pyneats.steps.climate_metrics.report import FlightReport
 from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
-from pyneats.models.constants import (
+from pyneats.core.constants import (
     METRICS_HORIZONS,
     SURFACE_EARTH,
     SECONDS_PER_YEAR,
@@ -186,6 +186,13 @@ class GWPMetrics(
         except Exception as e:
             self.logger.exception("Failed to sum contrail EF")
             raise ClimateImpactStepError(f"Failed to aggregate contrail EF: {e}") from e
+        
+         # Aggregate fuel burn (kg)
+        try:
+            total_fuel_burn = float(pd.to_numeric(df["fuel_burn"], errors="coerce").sum())
+        except Exception as e:
+            self.logger.exception("Failed to sum fuel_burn")
+            raise ClimateImpactStepError(f"Failed to aggregate fuel_burn: {e}") from e
 
         # CO₂ baseline mass (kg)
         try:
@@ -199,6 +206,7 @@ class GWPMetrics(
             **FlightReport.extract(flight),
             "contrails_ef_J": total_ef_J,
             "co2_baseline_kg": total_co2_kg,
+            "fuel_burn_kg": total_fuel_burn,
         }
         for k in ("non_co2_computation_time", "contrails_computation_time"):
             if k in flight.attrs:

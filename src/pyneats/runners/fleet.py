@@ -195,7 +195,6 @@ class FleetRunner:
             # This call uses weather_store's per-process cache transparently
             wp = get_weather_from_zarr(zp, t0=window_start_weather, t1=window_end_weather, chunks=chunks)
             #wp = get_weather_from_zarr(zp, chunks=chunks)
-            #out: list[dict[str, Any]] = []
             out = []
             for df_flight in flight_dfs:
                 try:
@@ -203,13 +202,12 @@ class FleetRunner:
                     neats_flight.source = df_flight
                     neats_flight.eval()
                     out.append(_extract_climate_payload(neats_flight, df_flight))
-                    #out.append([df_flight["FLIGHT_ID"].iloc[0]] + list(neats_flight.flight_with_contrails.to_dataframe()[['fuel_flow','fuel_burn','ef']].sum()))
 
                 except Exception as e:
                     fid = df_flight["FLIGHT_ID"].iloc[0] if "FLIGHT_ID" in df_flight else "UNKNOWN"
                     logger.error("[worker] Error processing flight %s: %s", fid, e)
                     out.append({"meta": {"FLIGHT_ID": fid}, "error": str(e)})
-                    #out.append([fid, 'ERROR', 'ERROR', str(e)])
+                    
             gc.collect()
             return out
 
@@ -266,7 +264,6 @@ class FleetRunner:
         df_model["FLIGHT_ID"] = df_model[flight_id_cols].astype(str).agg("_".join, axis=1)
 
 
-        
         timeover_parsed = pd.to_datetime(df_model["TIME_OVER"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
         df_model_sel = df_model.assign(TIMEOVER_PARSED=timeover_parsed)
 

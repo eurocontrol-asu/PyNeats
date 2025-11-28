@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Mapping
 import pandas as pd
 
@@ -15,72 +15,37 @@ from pyneats.steps.parsing.protocol import (
     TrajectoryParserStepError,
     TrajectoryParser,
 )
-from pyneats.models.neats_fuel import NEATSFuel
+from pyneats.core.neats_fuel import NEATSFuel
 
 __all__ = [
-    "NMTrajectoryParserParams",
-    "NMTrajectoryParser",
+    "NeatsTrajectoryParserParams",
+    "NeatsTrajectoryParser",
 ]
 
 
 @dataclass(frozen=True)
-class NMTrajectoryParserParams(TrajectoryParserParams):
+class NeatsTrajectoryParserParams(TrajectoryParserParams):
     """Parameters for parsing NM (Network Manager) trajectory data."""
 
-    mapping_4d: Mapping[str, str] = field(
-        default_factory=lambda: {
-            "LAT": "latitude",
-            "LON": "longitude",
-            "TIME_OVER": "time",
-            "FLIGHT_LEVEL": "altitude",  # FL (hundreds of feet)
-            "FUEL_FLOW": "fuel_flow",
-            "ENGINE_EFFICIENCY": "engine_efficiency",
-            "AIRCRAFT_MASS": "aircraft_mass",
-            "TRUE_AIRSPEED": "true_airspeed",
-        }
-    )
-    attrs_mapping: Mapping[str, str] = field(
-        default_factory=lambda: {
-            "flight_id": "AIRCRAFT_ID",
-            "aircraft_type": "AIRCRAFT_TYPE_ICAO_ID",
-            "aircraft_series": "AIRCRAFT_VERSION",
-            "registration": "REGISTRATION",
-            "departure_airport": "ADEP",
-            "arrival_airport": "ADES",
-            "aobt": "time",
-            "takeoff_weight": "TAKEOFF_WEIGHT",
-            "payload_factor": "PAYLOAD_FACTOR",
-            "model_type": "MODEL_TYPE",
-            "engine_id": "ENGINE_UID",
-            "hydrogen_content": "HYDROGEN_CONTENT",
-            "h_c_ratio": "HYDROGEN_PER_CARBON_RATIO",
-            "aromatic_content": "AROMATIC_CONTENT",
-            "q_fuel": "CALORIFIC_VALUE",
-            "sulfur_content": "SULFUR",
-            "naphthalene": "NAPHTHALENE",
-        }
-    )
     date_format: str = "%Y-%m-%d %H:%M:%S"
     timezone: str = "UTC"  # output tz; parsing is done as UTC then converted
 
 
-@register(TrajectoryParser, "nm")
-class NMTrajectoryParser(
+@register(TrajectoryParser, "neats")
+class NeatsTrajectoryParser(
     BaseStep[
         pd.DataFrame,
         Flight4D,
-        NMTrajectoryParserParams,
+        NeatsTrajectoryParserParams,
     ]
 ):
     """
-    Parse Network Manager (NM) trajectory data or AO trajectory data into Flight4D format.
+    Parse NM trajectory data or AO trajectory data that follows NEATS Json format into Flight4D format.
     __call__(df: pd.DataFrame) -> Flight4D
 
     It performs:
 
-    - Column mapping to canonical schema
-    - Unit conversions 
-    - Timestamp parsing and timezone handling
+
     - Data cleaning and validation
     - Custom fuel properties handling
     - Schema validation
@@ -105,34 +70,34 @@ class NMTrajectoryParser(
             - Schema validation failures
     """
 
-    default_params = NMTrajectoryParserParams
+    default_params = NeatsTrajectoryParserParams
 
     def run(self, flight: pd.DataFrame) -> Flight4D:
         try:
             self.logger.debug("NM parse start: rows=%d, cols=%d", *flight.shape)
 
-            # 1) Rename to canonical schema
-            df = flight.rename(columns=self.params.mapping_4d)
-            missing = [c for c in Flight4D.REQUIRED if c not in df.columns]
-
+            # 1) Check presence of required columns
+            missing = [c for c in Flight4D.REQUIRED if c not in flight.columns]
             if missing:
                 raise TrajectoryParserStepError(
-                    f"missing columns after rename: {missing}"
+                    f"missing required columns: {missing}"
                 )
 
             # 2) FL → meters
             try:
                 alt_ft = (
-                    pd.to_numeric(df["altitude"], errors="coerce")
+                    pd.to_numeric(flight["altitude"], errors="coerce")
                     .mul(100.0)  # FL → ft
-                    .to_numpy(dtype=float, copy=False)  # -> ndarray[float]
+                    .to_numpy(dtype=float, copy=False)
                 )
+                df = flight
                 df["altitude"] = ft_to_m(alt_ft)
 
             except Exception as e:
                 raise TrajectoryParserStepError(
                     f"altitude conversion failed: {e}"
                 ) from e
+
 
             # 3) Parse time (tz-aware)
             try:
@@ -146,10 +111,11 @@ class NMTrajectoryParser(
                     ts = ts.dt.tz_convert(self.params.timezone)
                 df["time"] = ts
             except Exception as e:
-                raise TrajectoryParserStepError(f"timestamp parsing failed: {e}") from e
+                raise TrajectoryParserStepError(
+                    f"timestamp parsing failed: {e}"
+                ) from e
 
-            # 4) Clean, sort, dedup
-            # NOTE: Can AO upload NaNs? Then we should only sort by time here ...
+             # 4) Clean, sort, dedup
             mask = df[list(REQUIRED_4D_COLS)].notna().all(axis=1)
             df = (
                 df.loc[mask]
@@ -162,32 +128,32 @@ class NMTrajectoryParser(
                 raise TrajectoryParserStepError(
                     "no valid trajectory points after cleaning"
                 )
-
-            # 5) Build flight attributes 
+            
+             # 5) Build flight attributes from df.attrs (canonical keys)
+            attrs_input: Mapping[str, Any] = getattr(df, "attrs", {}) or {}
             attrs: dict[str, Any] = {}
-            first = df.iloc[0]
 
-            for attr_key, src_col in self.params.attrs_mapping.items():
-                if src_col in df.columns:
-                    try:
-                        attrs[attr_key] = first[src_col]
-                    except (ValueError, TypeError):
-                        self.logger.warning(
-                            "invalid %r value: %r", attr_key, first[src_col]
+            # Required attrs must be present (or you'll get ValidationError downstream)
+            for k in Flight4D.ATTRS_REQUIRED:
+                if k in attrs_input and attrs_input[k] is not None:
+                    attrs[k] = attrs_input[k]
 
-                        )
+            # Optional attrs if present
+            for k in Flight4D.ATTRS_OPTIONAL:
+                if k in attrs_input and attrs_input[k] is not None:
+                    attrs[k] = attrs_input[k]
+
 
             # 6) Construct Custom Fuel Object based on available attributes
-
             fuel_obj: NEATSFuel = NEATSFuel.from_attrs(attrs)
-            
-            # 7) Construct base Flight with required columns only
-            # Keep required and optional columns
 
+            
+            # 7) Construct base Flight with required + optional columns only
             optional_columns = [c for c in df.columns if c in Flight4D.OPTIONAL]
             data_req = df[list(Flight4D.REQUIRED) + list(optional_columns)]
 
             base = Flight(data=data_req, attrs=attrs, fuel=fuel_obj)
+
 
             # 8) Validate & return typed zero-copy view
             return Flight4D.from_flight(base)

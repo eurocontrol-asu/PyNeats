@@ -8,7 +8,7 @@ __all__ = [
     "FlightWithEmissions",
 ]
 
-REQUIRED_EMISSION_COLS: Final[Tuple[str, ...]] = ("nvpm_ei_m",)
+REQUIRED_EMISSION_COLS: Final[Tuple[str, ...]] = ("nvpm_ei_m","nox_ei")
 
 
 class FlightWithEmissions(FlightWithPerformance):

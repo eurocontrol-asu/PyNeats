@@ -30,9 +30,9 @@ ATTRS_OPTIONAL: Final[Tuple[str, ...]] = (
     "h_c_ratio",
     "q_fuel",
     "aircraft_series",
-    "engine_id",
+    "engine_uid",
     "aromatic_content",
-    "sulfur_content",
+    "sulphur_content",
     "naphtalene",
 )
 
@@ -41,7 +41,6 @@ ATTS_REQUIRED: Final[Tuple[str, ...]] = (
     "aircraft_type",
     "departure_airport",
     "arrival_airport",
-    "registration",
     "model_type",
     "aobt"
 )

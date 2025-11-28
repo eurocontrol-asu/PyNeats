@@ -4,7 +4,7 @@
   "python.testing.pytestArgs": ["tests"],
   "python.testing.pytestEnabled": true,
   "python.testing.unittestEnabled": false,
-  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.typeCheckingMode": "stric",
   "python.analysis.autoImportCompletions": true,
 
   "pylint.args": ["--disable=C0114"],

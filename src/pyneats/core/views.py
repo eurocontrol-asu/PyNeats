@@ -32,7 +32,7 @@ from typing import ClassVar, Iterable, TypeVar, Tuple, cast, Any
 from pycontrails import Flight
 from pycontrails.utils import json as json_utils
 from pyneats.core.steps import StepError
-from pyneats.models.neats_fuel import NEATSFuel
+from pyneats.core.neats_fuel import NEATSFuel
 import numpy as np
 
 __all__ = [

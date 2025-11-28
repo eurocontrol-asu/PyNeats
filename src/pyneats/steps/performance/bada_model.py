@@ -270,9 +270,10 @@ class BADAPerformanceModel(
         if not icao:
             raise KeyError("Flight attrs missing 'aircraft_type'")
 
-        series: Optional[str] = flight.attrs.get("series") if hasattr(flight, "attrs") else None
+        series: Optional[str] = flight.attrs.get("aircraft_series") if hasattr(flight, "attrs") else None
+
         engine_id: Optional[str] = (
-            flight.attrs.get("engine_id") if hasattr(flight, "attrs") else None
+            flight.attrs.get("engine_uid") if hasattr(flight, "attrs") else None
         )
         q_fuel: Optional[float] = flight.attrs.get("q_fuel") if hasattr(flight, "attrs") else None
         return icao, series, engine_id, q_fuel
@@ -389,7 +390,7 @@ class BADAPerformanceModel(
                 df["fuel"] = df["fuel_burn"]
 
             out = Flight(data=df, attrs={**flight.attrs}, fuel=flight.fuel)
-            out.attrs["engine_id"] = engine_id
+            out.attrs["engine_uid"] = engine_id
             out.attrs["n_engine"] = adapter.nb_eng
             out.attrs["wingspan"] = adapter.span
             return FlightWithPerformance.from_flight(out)
@@ -645,4 +646,4 @@ class BADAPerformanceModel(
         out.attrs["wingspan"] = adapter.span
         out.attrs["bada_version"] = bada_version
         out.attrs["bada_code"] = adapter.bada_code
-        out.attrs["engine_id"] = engine_id
+        out.attrs["engine_uid"] = engine_id
