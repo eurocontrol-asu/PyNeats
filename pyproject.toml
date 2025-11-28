@@ -55,6 +55,7 @@ pyneats = ["py.typed", "resources/**/*"]
 [tool.setuptools_scm]
 version_file = "src/pyneats/_version.py"
 fallback_version = "0.0.0-dev"   # optional safety net
+local_scheme = "no-local-version"
 
 [tool.pytest.ini_options]
 pythonpath = "src"

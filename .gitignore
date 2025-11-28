@@ -10,6 +10,9 @@ notebooks/
 # BADA private files
 tests/data/BADA/
 
+# version file
+src/pyneats/_version.py
+
 # C extensions
 *.so
 
