@@ -1,4 +1,33 @@
-# fleet.py
+"""
+Fleet-level orchestration of NEATS climate computations.
+
+This module provides the `FleetRunner` and its configuration container
+`FleetRunnerParams`. Together they implement the "many flights" use case:
+
+    1. Load trajectories for a fleet of flights, either from:
+       - a NEATS / NM-style JSON file (`trajectory_json_filepath`), or
+       - a single pandas.DataFrame containing multiple flights
+         (`trajectory_dataframe`).
+
+    2. For each flight, build a `FlightRunner`, run the full PyNeats /
+       PyContrails pipeline, and collect the resulting per-flight payload
+       (flight metadata + climate metrics).
+
+    3. Aggregate results at fleet level:
+       - `FleetRunner.results` is a dict with:
+           {
+             "fleet_meta_data": FleetReport.collect(),
+             "flight_results": [ ... per-flight payloads ... ],
+           }
+       - `FleetRunner.results_as_dataframe()` flattens `flight_results`
+         into a single DataFrame, with one row per flight and wide
+         climate-metric columns of the form:
+
+             <species>_<horizon>_AGWP_J_per_m2
+             <species>_<horizon>_CO2eq_kg
+
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
