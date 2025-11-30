@@ -23,6 +23,7 @@ import pandas as pd
 
 from pycontrails.core.met import MetDataset
 
+from pyneats.steps import performance
 from pyneats.steps.climate_functions import (
     ContrailsModel,
     FlightWithContrailsImpact,
@@ -112,6 +113,7 @@ class FlightRunner:
         weather: WeatherProviderProtocol,
         source: pd.DataFrame | None = None,
         cfg: RunnerConfig | None = None,
+        bada_path: str | None = None,
     ) -> None:
 
         self.cfg = cfg or RunnerConfig()
@@ -119,6 +121,7 @@ class FlightRunner:
         self._source = None  # initialize backing field before using the property
         self.source = source  # use the property setter for validation
         self.weather = weather
+        self.bada_path = bada_path
 
         self.parser: TrajectoryParser = build(
             TrajectoryParser,
@@ -132,10 +135,16 @@ class FlightRunner:
             **self.cfg.params.get("interpolator", {}),
         )
 
+        performance_params = self.cfg.params.get("performance", {})
+        performance_params.update({
+                "bada4_root_path": self.bada_path,
+                "bada3_root_path": self.bada_path,
+            },
+        )
         self.performance: PerformanceModel = build(
             PerformanceModel,
             self.cfg.performance,
-            **self.cfg.params.get("performance", {}),
+            **performance_params,
         )
 
         self.emission: EmissionModel = build(

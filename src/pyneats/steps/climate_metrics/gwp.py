@@ -202,7 +202,7 @@ class GWPMetrics(
             raise ClimateImpactStepError("Missing required attr 'total_co2'")
 
         # Timings and ancillary metadata 
-        meta = {
+        flight_information = {
             **FlightReport.extract(flight),
             "contrails_ef_J": total_ef_J,
             "co2_baseline_kg": total_co2_kg,
@@ -210,7 +210,7 @@ class GWPMetrics(
         }
         for k in ("non_co2_computation_time", "contrails_computation_time"):
             if k in flight.attrs:
-                meta[k] = float(flight.attrs[k])
+                flight_information[k] = float(flight.attrs[k])
 
         horizons = self.params.horizons
 
@@ -283,7 +283,7 @@ class GWPMetrics(
 
         # Assemble payload
         climate_impact = {
-            "flight_information": {**meta},
+            "flight_information": {**flight_information},
             "climate_metrics": results,
         }
 

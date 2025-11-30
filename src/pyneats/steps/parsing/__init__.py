@@ -8,9 +8,9 @@ from pyneats.steps.parsing.neats_parser import (
     NeatsTrajectoryParserParams,
     NeatsTrajectoryParser,
 )
-from pyneats.steps.parsing.adsb_parser import (
-    ADSBParser,
-    ADSBParserParams,
+from pyneats.steps.parsing.open_sky_parser import (
+    OpenSkyParser,
+    OpenSkyParserParams,
 )
 
 __all__ = [
@@ -21,6 +21,6 @@ __all__ = [
     "TrajectoryParserParams",
     "NeatsTrajectoryParserParams",
     "NeatsTrajectoryParser",
-    "ADSBParserParams",
-    "ADSBParser",
+    "OpenSkyParserParams",
+    "OpenSkyParser",
 ]

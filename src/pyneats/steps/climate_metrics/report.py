@@ -13,6 +13,8 @@ from pyneats.core.neats_default_parameters import (
     DEFAULT_BADA3_VERSION,
 )
 
+import pyneats
+
 __all__ = [
     "FlightReport",
     "FleetReport",
@@ -73,6 +75,7 @@ class FlightReport:
     Subset of PyContrails Flight.attrs relevant for *per-flight* reporting.
     This class defines the keys you care about; extraction returns a dict.
     """
+    flight_id: str | None = None
     registration: str | None = None
     departure_airport: str | None = None
     arrival_airport: str | None = None
@@ -87,7 +90,7 @@ class FlightReport:
 
     @classmethod
     def extract(cls, flight: Flight,
-                include_fleet_metadata: bool = True) -> dict[str, Any]:
+                include_fleet_metadata: bool = False) -> dict[str, Any]:
         """
         Extract *only* flight-level fields from Flight.attrs (ignoring missing keys).
 
@@ -146,10 +149,8 @@ class FleetReport:
         dict[str, str]
         """
         return {
-            "pyneats_version":dist_version(
-                "pyneats", module_name="pyneats",
-            ),
-            
+            "pyneats_version":pyneats.__version__,
+
             "pycontrails_version": dist_version(
                 "pycontrails", module_name="pycontrails",
             ),

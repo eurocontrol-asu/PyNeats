@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import logging
 import pandas as pd
-from dataclasses import dataclass
+
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.parsing.views import Flight4D
@@ -12,15 +14,15 @@ from pyneats.steps.parsing.protocol import (
 )
 
 __all__ = [
-    "ADSBParser",
-    "ADSBParserParams",
+    "OpenSkyParser",
+    "OpenSkyParserParams",
 ]
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class ADSBParserParams(TrajectoryParserParams):
+class OpenSkyParserParams(TrajectoryParserParams):
     """Parameters for parsing ADS-B trajectory data."""
 
     # Placeholder for future parameters
@@ -28,16 +30,16 @@ class ADSBParserParams(TrajectoryParserParams):
 
 
 @register(TrajectoryParser, "adsb")
-class ADSBParser(
+class OpenSkyParser(
     BaseStep[
         pd.DataFrame,
         Flight4D,
-        ADSBParserParams,
+        OpenSkyParserParams,
     ]
 ):
     """Placeholder for an ADS-B specific parser yielding `Flight4D`."""
 
-    default_params = ADSBParserParams
+    default_params = OpenSkyParserParams
 
     def run(self, flight: pd.DataFrame) -> Flight4D:
         raise NotImplementedError("ADSBParser is not yet implemented")
