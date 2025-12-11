@@ -42,7 +42,7 @@ ATTS_REQUIRED: Final[Tuple[str, ...]] = (
     "departure_airport",
     "arrival_airport",
     "model_type",
-    "aobt"
+    "aobt",
 )
 
 

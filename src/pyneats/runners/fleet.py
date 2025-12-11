@@ -81,9 +81,9 @@ class FleetRunnerParams:
     zarr_paths: Optional[ZarrPaths] = None
     # Optional read-time chunks for workers opening zarr; leave None to keep native chunks
     zarr_read_chunks: Optional[Mapping[str, int]] = None
-    njobs: int = DEFAULT_NJOBS,
-    flight_chunk: int = DEFAULT_FLIGHT_CHUNK,
-    bada_path: Optional[str] = None,
+    njobs: int = DEFAULT_NJOBS
+    flight_chunk: int = DEFAULT_FLIGHT_CHUNK
+    bada_path: Optional[str] = None
 
 
 # ---------------------------
@@ -167,10 +167,10 @@ class FleetRunner:
                     horizon = item.get("horizon")
 
                     # Column names such as CO2_20_AGWP_J_per_m2
-                    key_agwp = f"{species}_{horizon}_AGWP_J_per_m2"
+                    key_agwp = f"{species}_{horizon}_EAGWP_J_per_m2"
                     key_co2eq = f"{species}_{horizon}_CO2eq_kg"
 
-                    row[key_agwp] = item.get("AGWP_J_per_m2")
+                    row[key_agwp] = item.get("EAGWP_J_per_m2")
                     row[key_co2eq] = item.get("CO2eq_kg")
 
             rows.append(row)
@@ -212,9 +212,19 @@ class FleetRunner:
                     out.append(output)
 
                 except Exception as e:
-                    fid = df_flight["flight_id"].iloc[0] if "flight_id" in df_flight else "UNKNOWN"
+                    attrs: Mapping[str, Any] = df_flight.attrs or {}
+                    fid: str = attrs["flight_id"] if "flight_id" in attrs else "UNKNOWN"
+                    adep: str = attrs["departure_airport"] if "departure_airport" in attrs else "UNKNOWN"
+                    ades: str = attrs["arrival_airport"] if "arrival_airport" in attrs else "UNKNOWN"
+                    aobt: str = attrs["aobt"] if "aobt" in attrs else "UNKNOWN"
+                    icao: str = attrs["aircraft_type"] if "aircraft_type" in attrs else "UNKNOWN"
                     logger.error("[worker] Error processing flight %s: %s", fid, e)
-                    out.append({"meta": {"flight_id": fid}, "error": str(e)})
+                    out.append({"flight_information" : {"flight_id": fid,
+                                                        "arrival_airport" : ades,
+                                                        "departure_airport" : adep,
+                                                        "aobt" : aobt,
+                                                        "aircraft_type" : icao,},
+                                                        "error": str(e)})
                     
             gc.collect()
             return out

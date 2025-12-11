@@ -23,7 +23,7 @@ zarr_paths=ZarrPaths(met_store=met_store,
 #   latitude           float             Geodetic latitude (deg)
 #   longitude          float             Geodetic longitude (deg)
 #   time               datetime64[ns]    Timestamp of waypoint
-#   altitude           float/int         Altitude (meters)
+#   altitude           float/int         Altitude (FL)
 #   flight_id          str               Unique flight identifier
 #   departure_airport  str               ICAO ADEP
 #   arrival_airport    str               ICAO ADES

@@ -118,7 +118,8 @@ DEFAULT_CLIMACCF_KWARGS: Final[Mapping[str, Any]] = {
     "forecast_step": 12,
     "PMO": True,
     "pfca": "PCFA-SAC",
-    "horizontal_resolution": None,  
+    "horizontal_resolution": None,
+    "unit_K_per_kg_fuel": False
 }
 
 # Weather interpolation defaults

@@ -156,7 +156,9 @@ class ACCFModel(
     def run(self, flight: FlightWithEmissions) -> FlightWithNonCO2Impact:
 
         try:
-            df: pd.DataFrame = flight.to_dataframe()
+
+            out: Flight = self._impl.eval(flight)
+            df: pd.DataFrame = out.to_dataframe()
             fuel_burn = pd.to_numeric(df["fuel_burn"], errors="coerce").fillna(0.0)
             nox_ei = pd.to_numeric(df["nox_ei"], errors="coerce").fillna(0.0)
             
@@ -167,16 +169,14 @@ class ACCFModel(
                 df['aCCF_O3'] = df['aCCF_O3'] * nox_ei
 
             # Compute final ART_20 (K) from aCCF outputs (K per kg fuel)
+
             flight['ATR_20_CH4'] = fuel_burn * df['aCCF_CH4']  # K
             flight['ATR_20_O3'] = fuel_burn * df['aCCF_O3']  # K
             flight['ATR_20_H2O'] = fuel_burn * df['aCCF_H2O']   # K
-
-            out: Flight = self._impl.eval(flight)
-
 
         except KeyError as e:
             self.logger.error("ACCFbackend: %s", e)
             raise ClimateStepError(f"ACCF output missing required columns: {e}") from e
 
         self.logger.info("ACCF step completed successfully")
-        return FlightWithNonCO2Impact.from_flight(out)
+        return FlightWithNonCO2Impact.from_flight(flight)

@@ -51,6 +51,7 @@ def _open_metdataset_from_zarr(
     t0: Optional[str],
     t1: Optional[str],
     chunks: Optional[Mapping[str, int]],
+    provider: str = "DWD",
 ) -> MetDataset:
     """
     Open a Zarr dataset as MetDataset, optionally slice by time and rechunk.
@@ -61,6 +62,7 @@ def _open_metdataset_from_zarr(
         return _DATASET_CACHE[key]
 
     ds = xr.open_zarr(path, consolidated=_is_consolidated(path))
+    ds.attrs['provider'] = provider  # Set provider attribute
     if t0 and t1:
         ds = ds.sel(time=slice(t0, t1))
     if chunks:
@@ -68,6 +70,7 @@ def _open_metdataset_from_zarr(
 
     md = MetDataset(ds)
     _DATASET_CACHE[key] = md
+
     return md
 
 

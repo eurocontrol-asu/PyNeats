@@ -136,11 +136,13 @@ class FlightRunner:
         )
 
         performance_params = self.cfg.params.get("performance", {})
-        performance_params.update({
-                "bada4_root_path": self.bada_path,
-                "bada3_root_path": self.bada_path,
-            },
-        )
+        if self.bada_path is not None:
+            performance_params.update({
+                    "bada4_root_path": self.bada_path,
+                    "bada3_root_path": self.bada_path,
+                },
+            )
+            
         self.performance: PerformanceModel = build(
             PerformanceModel,
             self.cfg.performance,
