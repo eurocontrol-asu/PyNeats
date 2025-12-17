@@ -267,6 +267,13 @@ def split_df_into_flights(
         # Drop attribute columns from the actual trajectory dataframe
         traj_df = grp.drop(columns=attr_columns + ["flight_key"]).reset_index(drop=True)
 
+        # --- Drop columns that are entirely NaN within this flight ---
+        # (optional) keep these even if all-NaN:
+        keep_cols = {"latitude", "longitude", "time", "altitude"}
+        traj_df = traj_df.dropna(axis=1, how="all")
+        traj_df = traj_df.reindex(columns=list(keep_cols.intersection(traj_df.columns)) +
+                                  [c for c in traj_df.columns if c not in keep_cols])
+
         # Assign attrs
         traj_df.attrs = attrs
 
