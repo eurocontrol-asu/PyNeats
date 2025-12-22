@@ -90,6 +90,22 @@ class FastFleetRunnerParams:
         zarr_read_chunks: Read-time chunk hints for zarr (None = use native chunks)
         runner_config: RunnerConfig specifying step implementations and params (default: RunnerConfig())
 
+    RunnerConfig fields used by FastFleetRunner:
+        - trajectory_parser: Used for parallel parsing step
+        - interpolator: Used for parallel interpolation step
+        - performance: Used for parallel performance step
+        - emissions: Used for vectorized emissions step
+        - contrails_model: Used for vectorized contrails step
+        - params: Custom parameters for all above steps
+
+    RunnerConfig fields NOT used (FastFleetRunner uses hardcoded implementations):
+        - non_co2_model: Not used (FastFleetRunner doesn't compute non-CO2 impacts)
+        - climate_impact: Not used (FastFleetRunner doesn't compute climate metrics)
+
+    Note: FastFleetRunner uses hardcoded vectorized implementations for:
+        - Weather intersection (not configurable, optimized for fleet-level)
+        - Humidity scaling (not configurable, uses ExponentialBoostHumidityScaling)
+
     Parallelism (number of workers):
         n_jobs_parsing: Parallel workers for parsing (default: 8)
         n_jobs_interpolation: Parallel workers for interpolation (default: 8)
