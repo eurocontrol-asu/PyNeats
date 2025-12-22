@@ -53,12 +53,12 @@ from numpy.typing import NDArray
 from pycontrails import Flight, Fleet
 from pycontrails.models.humidity_scaling import ExponentialBoostHumidityScaling
 
+from pycontrails.models.cocip import Cocip
+
 from pyneats.core.steps_registry import build
-from pyneats.core.neats_default_parameters import DEFAULT_CONTRAILS_MODEL
 from pyneats.runners.flight import RunnerConfig
 from pyneats.steps.climate_metrics.report import FleetReport
-from pyneats.steps.climate_functions.protocol import ContrailsModel
-from pyneats.steps.emissions.protocol import EmissionModel
+from pyneats.steps.emissions.pycontrails_emissions import PyContrailsEmissionModel
 from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
 from pyneats.steps.parsing.neats_io import neats_json_to_flights, split_df_into_flights
 from pyneats.steps.parsing.protocol import TrajectoryParser
@@ -90,21 +90,23 @@ class FastFleetRunnerParams:
         zarr_read_chunks: Read-time chunk hints for zarr (None = use native chunks)
         runner_config: RunnerConfig specifying step implementations and params (default: RunnerConfig())
 
-    RunnerConfig fields used by FastFleetRunner:
+    RunnerConfig fields used by FastFleetRunner (parallel steps only):
         - trajectory_parser: Used for parallel parsing step
         - interpolator: Used for parallel interpolation step
         - performance: Used for parallel performance step
-        - emissions: Used for vectorized emissions step
-        - contrails_model: Used for vectorized contrails step
-        - params: Custom parameters for all above steps
+        - params: Custom parameters for parsing, interpolation, and performance
 
-    RunnerConfig fields NOT used (FastFleetRunner uses hardcoded implementations):
+    RunnerConfig fields NOT used (FastFleetRunner uses hardcoded PyContrails implementations):
+        - emissions: Not used (FastFleetRunner uses hardcoded PyContrailsEmissionModel)
+        - contrails_model: Not used (FastFleetRunner uses hardcoded Cocip)
         - non_co2_model: Not used (FastFleetRunner doesn't compute non-CO2 impacts)
         - climate_impact: Not used (FastFleetRunner doesn't compute climate metrics)
 
-    Note: FastFleetRunner uses hardcoded vectorized implementations for:
-        - Weather intersection (not configurable, optimized for fleet-level)
-        - Humidity scaling (not configurable, uses ExponentialBoostHumidityScaling)
+    Note: FastFleetRunner uses hardcoded PyContrails vectorized implementations for:
+        - Weather intersection (Fleet.intersect_met, not configurable)
+        - Humidity scaling (ExponentialBoostHumidityScaling, not configurable)
+        - Emissions (PyContrailsEmissionModel, not configurable)
+        - Contrails (Cocip, not configurable - use CoCiP params fields below instead)
 
     Parallelism (number of workers):
         n_jobs_parsing: Parallel workers for parsing (default: 8)
@@ -770,13 +772,8 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Fleet-level emissions calculation for {len(seq)} flights...")
 
-        # Build emissions model using registry pattern (like FlightRunner)
-        emissions_params = self.params.runner_config.params.get("emissions", {})
-        emissions = build(
-            EmissionModel,
-            self.params.runner_config.emissions,
-            **emissions_params,
-        )
+        # Use hardcoded PyContrails emissions model (optimization)
+        emissions = PyContrailsEmissionModel()
 
         # Create Fleet and evaluate
         fleet = Fleet.from_seq(seq)
@@ -800,41 +797,22 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Fleet-level CoCiP evaluation for {len(seq)} flights...")
 
-        # Build contrails model params using registry pattern (like FlightRunner)
-        # Start with custom params from RunnerConfig
-        contrail_params = dict(self.params.runner_config.params.get("contrails_model", {}))
+        # Use hardcoded Cocip model with params from FastFleetRunnerParams
+        params = {
+            "contrail_contrail_overlapping": self.params.contrail_contrail_overlapping,
+            "dt_integration": np.timedelta64(self.params.dt_integration_minutes, "m"),
+            "max_age": np.timedelta64(self.params.max_age_hours, "h"),
+            "humidity_scaling": ExponentialBoostHumidityScaling(
+                rhi_adj=self.params.humidity_scaling_rhi_adj,
+                rhi_boost_exponent=self.params.humidity_scaling_rhi_boost_exponent,
+                clip_upper=self.params.humidity_scaling_clip_upper,
+            ),
+            "interpolation_use_indices": False,
+        }
 
-        # Add required met/rad datasets
-        contrail_params.update({
-            "met": met,
-            "rad": rad,
-        })
-
-        # For backward compatibility: if using default "cocip" model and no custom cocip_kwargs provided,
-        # build default cocip_kwargs from FastFleetRunnerParams fields
-        if self.params.runner_config.contrails_model == DEFAULT_CONTRAILS_MODEL and "cocip_kwargs" not in contrail_params:
-            cocip_kwargs = {
-                "contrail_contrail_overlapping": self.params.contrail_contrail_overlapping,
-                "dt_integration": np.timedelta64(self.params.dt_integration_minutes, "m"),
-                "max_age": np.timedelta64(self.params.max_age_hours, "h"),
-                "humidity_scaling": ExponentialBoostHumidityScaling(
-                    rhi_adj=self.params.humidity_scaling_rhi_adj,
-                    rhi_boost_exponent=self.params.humidity_scaling_rhi_boost_exponent,
-                    clip_upper=self.params.humidity_scaling_clip_upper,
-                ),
-                "interpolation_use_indices": False,
-            }
-            contrail_params["cocip_kwargs"] = cocip_kwargs
-
-        # Build using registry (allows different contrails models, not just CoCiP)
-        contrails_model = build(
-            ContrailsModel,
-            self.params.runner_config.contrails_model,
-            **contrail_params,
-        )
-
+        cocip = Cocip(met=met, rad=rad, params=params)
         fleet = Fleet.from_seq(seq)
-        results_fleet = contrails_model.eval(source=fleet)
+        results_fleet = cocip.eval(source=fleet)
 
         logger.info(f"CoCiP evaluation complete in {time.time() - t0:.2f}s")
         return results_fleet
