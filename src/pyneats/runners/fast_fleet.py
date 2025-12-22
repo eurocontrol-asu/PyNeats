@@ -51,16 +51,21 @@ from joblib.externals.loky import get_reusable_executor
 from numpy.typing import NDArray
 
 from pycontrails import Flight, Fleet
-from pycontrails.models.cocip import Cocip
 from pycontrails.models.humidity_scaling import ExponentialBoostHumidityScaling
 
 from pyneats.core.steps_registry import build
+from pyneats.core.neats_default_parameters import (
+    DEFAULT_INTERPOLATOR,
+    DEFAULT_TRAJECTORY_PARSER,
+    DEFAULT_PERFORMANCE,
+    DEFAULT_EMISSIONS,
+    DEFAULT_CONTRAILS_MODEL,
+)
 from pyneats.steps.climate_metrics.report import FleetReport
-from pyneats.steps.emissions.pycontrails_emissions import PyContrailsEmissionModel
-from pyneats.steps.interpolation.pycontrails_interpolation import PyContrailsInterpolator
+from pyneats.steps.climate_functions.protocol import ContrailsModel
+from pyneats.steps.emissions.protocol import EmissionModel
 from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
 from pyneats.steps.parsing.neats_io import neats_json_to_flights, split_df_into_flights
-from pyneats.steps.parsing.neats_parser import NeatsTrajectoryParser
 from pyneats.steps.parsing.protocol import TrajectoryParser
 from pyneats.steps.parsing.views import Flight4D
 from pyneats.steps.performance import PerformanceModel
@@ -129,6 +134,13 @@ class FastFleetRunnerParams:
     # Zarr read configuration
     zarr_read_chunks: Optional[Mapping[str, int]] = None
 
+    # Step implementations (registry names)
+    trajectory_parser: str = DEFAULT_TRAJECTORY_PARSER
+    interpolator: str = DEFAULT_INTERPOLATOR
+    performance: str = DEFAULT_PERFORMANCE
+    emissions: str = DEFAULT_EMISSIONS
+    contrails_model: str = DEFAULT_CONTRAILS_MODEL
+
     # Parallelism configuration
     n_jobs_parsing: int = 8
     n_jobs_interpolation: int = 8
@@ -164,18 +176,25 @@ class FastFleetRunnerParams:
 _PERF_MODEL_CACHE: Optional[PerformanceModel] = None
 
 
-def _get_perf_model(bada_path: Optional[str]) -> PerformanceModel:
+def _get_perf_model(
+    performance_name: str,
+    performance_params: Dict[str, Any],
+) -> PerformanceModel:
     """
     Build PerformanceModel once per worker process.
     Each joblib worker gets its own cached instance.
+
+    Args:
+        performance_name: Registry name for the performance model
+        performance_params: Parameters to pass to the performance model
     """
     global _PERF_MODEL_CACHE
     if _PERF_MODEL_CACHE is None:
-        performance_params = {}
-        if bada_path is not None:
-            performance_params["bada4_root_path"] = bada_path
-            performance_params["bada3_root_path"] = bada_path
-        _PERF_MODEL_CACHE = build(PerformanceModel, "bada", **performance_params)
+        _PERF_MODEL_CACHE = build(
+            PerformanceModel,
+            performance_name,
+            **performance_params,
+        )
     return _PERF_MODEL_CACHE
 
 
@@ -183,30 +202,39 @@ def _get_perf_model(bada_path: Optional[str]) -> PerformanceModel:
 # Worker functions for parallel processing
 # ---------------------------
 
-def _parse_one(f: pd.DataFrame, parser_params: Dict[str, Any]) -> Flight4D:
+def _parse_one(f: pd.DataFrame, parser_name: str, parser_params: Dict[str, Any]) -> Flight4D:
     """Parse a single flight trajectory."""
-    parser = build(TrajectoryParser, "neats", **parser_params)
+    parser = build(TrajectoryParser, parser_name, **parser_params)
     return parser(f.copy())
 
 
-def _interpolate_one(f: Flight4D, interpolator_params: Dict[str, Any]) -> Flight4D:
+def _interpolate_one(f: Flight4D, interpolator_name: str, interpolator_params: Dict[str, Any]) -> Flight4D:
     """Interpolate a single flight trajectory."""
-    interpolator = build(TrajectoryInterpolator, "pycontrails", **interpolator_params)
+    interpolator = build(TrajectoryInterpolator, interpolator_name, **interpolator_params)
     return interpolator(f)
 
 
 def _performance_one(
-    i: int, f: Flight, bada_path: Optional[str]
+    i: int,
+    f: Flight,
+    performance_name: str,
+    performance_params: Dict[str, Any],
 ) -> Tuple[bool, int, Optional[Flight], Optional[str], str]:
     """
     Calculate performance for a single flight.
+
+    Args:
+        i: Flight index
+        f: Flight object
+        performance_name: Registry name for the performance model
+        performance_params: Parameters to pass to the performance model
 
     Returns:
         (success, index, result_or_none, error_or_none, flight_id)
     """
     flight_id = f.attrs.get("flight_id", "UNKNOWN")
     try:
-        model = _get_perf_model(bada_path)
+        model = _get_perf_model(performance_name, performance_params)
         out = model(f)
         return True, i, out, None, flight_id
     except Exception as e:
@@ -530,14 +558,15 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Parsing {len(self.flights)} flights (n_jobs={self.params.n_jobs_parsing})...")
 
-        # Get step-specific params
+        # Get step name and params
+        parser_name = self.params.trajectory_parser
         parser_params = self.params.params.get("trajectory_parser", {})
 
         seq = Parallel(
             n_jobs=self.params.n_jobs_parsing,
             prefer="processes",
             batch_size=self.params.batch_size_parsing,  # type: ignore[arg-type]
-        )(delayed(_parse_one)(f, parser_params) for f in self.flights)
+        )(delayed(_parse_one)(f, parser_name, parser_params) for f in self.flights)
 
         # Cleanup
         get_reusable_executor().shutdown(wait=True)
@@ -551,14 +580,15 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Interpolating {len(seq)} flights (n_jobs={self.params.n_jobs_interpolation})...")
 
-        # Get step-specific params
+        # Get step name and params
+        interpolator_name = self.params.interpolator
         interpolator_params = self.params.params.get("interpolator", {})
 
         seq = Parallel(
             n_jobs=self.params.n_jobs_interpolation,
             prefer="processes",
             batch_size=self.params.batch_size_interpolation,  # type: ignore[arg-type]
-        )(delayed(_interpolate_one)(f, interpolator_params) for f in seq)
+        )(delayed(_interpolate_one)(f, interpolator_name, interpolator_params) for f in seq)
 
         # Cleanup
         get_reusable_executor().shutdown(wait=True)
@@ -669,13 +699,25 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Performance calculations for {len(seq)} flights (n_jobs={self.params.n_jobs_performance})...")
 
+        # Get step name and params
+        performance_name = self.params.performance
+        performance_params = self.params.params.get("performance", {})
+
+        # Add BADA path to params if provided
+        if self.params.bada_path is not None:
+            performance_params = dict(performance_params)  # Make a copy
+            performance_params.update({
+                "bada4_root_path": self.params.bada_path,
+                "bada3_root_path": self.params.bada_path,
+            })
+
         to_run = list(enumerate(seq))
 
         results = Parallel(
             n_jobs=self.params.n_jobs_performance,
             prefer="processes",
             batch_size=self.params.batch_size_performance,  # type: ignore[arg-type]
-        )(delayed(_performance_one)(i, f, self.params.bada_path) for i, f in to_run)
+        )(delayed(_performance_one)(i, f, performance_name, performance_params) for i, f in to_run)
 
         # Collect successful results and create error records
         good_seq = []
@@ -725,9 +767,13 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Fleet-level emissions calculation for {len(seq)} flights...")
 
-        # Create emissions model with custom params
+        # Build emissions model using registry pattern (like FlightRunner)
         emissions_params = self.params.params.get("emissions", {})
-        emissions = PyContrailsEmissionModel(**emissions_params)
+        emissions = build(
+            EmissionModel,
+            self.params.emissions,
+            **emissions_params,
+        )
 
         # Create Fleet and evaluate
         fleet = Fleet.from_seq(seq)
@@ -751,26 +797,41 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Fleet-level CoCiP evaluation for {len(seq)} flights...")
 
-        # Build CoCiP params (use defaults + any custom overrides)
-        cocip_params = {
-            "contrail_contrail_overlapping": self.params.contrail_contrail_overlapping,
-            "dt_integration": np.timedelta64(self.params.dt_integration_minutes, "m"),
-            "max_age": np.timedelta64(self.params.max_age_hours, "h"),
-            "humidity_scaling": ExponentialBoostHumidityScaling(
-                rhi_adj=self.params.humidity_scaling_rhi_adj,
-                rhi_boost_exponent=self.params.humidity_scaling_rhi_boost_exponent,
-                clip_upper=self.params.humidity_scaling_clip_upper,
-            ),
-            "interpolation_use_indices": False,
-        }
+        # Build contrails model params using registry pattern (like FlightRunner)
+        # Start with custom params from configuration
+        contrail_params = dict(self.params.params.get("contrails_model", {}))
 
-        # Merge with custom cocip params (if any)
-        custom_cocip_params = self.params.params.get("cocip", {})
-        cocip_params.update(custom_cocip_params)
+        # Add required met/rad datasets
+        contrail_params.update({
+            "met": met,
+            "rad": rad,
+        })
 
-        cocip = Cocip(met=met, rad=rad, params=cocip_params)
+        # For backward compatibility: if using default "cocip" model and no custom cocip_kwargs provided,
+        # build default cocip_kwargs from FastFleetRunnerParams fields
+        if self.params.contrails_model == DEFAULT_CONTRAILS_MODEL and "cocip_kwargs" not in contrail_params:
+            cocip_kwargs = {
+                "contrail_contrail_overlapping": self.params.contrail_contrail_overlapping,
+                "dt_integration": np.timedelta64(self.params.dt_integration_minutes, "m"),
+                "max_age": np.timedelta64(self.params.max_age_hours, "h"),
+                "humidity_scaling": ExponentialBoostHumidityScaling(
+                    rhi_adj=self.params.humidity_scaling_rhi_adj,
+                    rhi_boost_exponent=self.params.humidity_scaling_rhi_boost_exponent,
+                    clip_upper=self.params.humidity_scaling_clip_upper,
+                ),
+                "interpolation_use_indices": False,
+            }
+            contrail_params["cocip_kwargs"] = cocip_kwargs
+
+        # Build using registry (allows different contrails models, not just CoCiP)
+        contrails_model = build(
+            ContrailsModel,
+            self.params.contrails_model,
+            **contrail_params,
+        )
+
         fleet = Fleet.from_seq(seq)
-        results_fleet = cocip.eval(source=fleet)
+        results_fleet = contrails_model.eval(source=fleet)
 
         logger.info(f"CoCiP evaluation complete in {time.time() - t0:.2f}s")
         return results_fleet
