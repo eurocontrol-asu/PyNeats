@@ -41,7 +41,8 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -49,7 +50,7 @@ from joblib import Parallel, delayed
 from joblib.externals.loky import get_reusable_executor
 from numpy.typing import NDArray
 
-from pycontrails import Fleet
+from pycontrails import Flight, Fleet
 from pycontrails.models.cocip import Cocip
 from pycontrails.models.humidity_scaling import ExponentialBoostHumidityScaling
 
@@ -57,8 +58,11 @@ from pyneats.core.steps_registry import build
 from pyneats.steps.climate_metrics.report import FleetReport
 from pyneats.steps.emissions.pycontrails_emissions import PyContrailsEmissionModel
 from pyneats.steps.interpolation.pycontrails_interpolation import PyContrailsInterpolator
+from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
 from pyneats.steps.parsing.neats_io import neats_json_to_flights, split_df_into_flights
 from pyneats.steps.parsing.neats_parser import NeatsTrajectoryParser
+from pyneats.steps.parsing.protocol import TrajectoryParser
+from pyneats.steps.parsing.views import Flight4D
 from pyneats.steps.performance import PerformanceModel
 from pyneats.steps.weather.weather_store import ZarrPaths, get_weather_from_zarr
 
@@ -149,6 +153,9 @@ class FastFleetRunnerParams:
     emissions_critical_columns: Tuple[str, ...] = ("fuel_burn", "nvpm_ei_n")
     cocip_critical_columns: Tuple[str, ...] = ("ef",)
 
+    # Step-specific parameters (similar to FlightRunner's RunnerConfig)
+    params: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+
 
 # ---------------------------
 # Per-process cache for performance model
@@ -176,21 +183,21 @@ def _get_perf_model(bada_path: Optional[str]) -> PerformanceModel:
 # Worker functions for parallel processing
 # ---------------------------
 
-def _parse_one(f: pd.DataFrame) -> pd.DataFrame:
+def _parse_one(f: pd.DataFrame) -> Flight4D:
     """Parse a single flight trajectory."""
     parser = NeatsTrajectoryParser()
     return parser(f.copy())
 
 
-def _interpolate_one(f: pd.DataFrame) -> pd.DataFrame:
+def _interpolate_one(f: Flight4D) -> Flight4D:
     """Interpolate a single flight trajectory."""
     interpolator = PyContrailsInterpolator()
     return interpolator(f)
 
 
 def _performance_one(
-    i: int, f: pd.DataFrame, bada_path: Optional[str]
-) -> Tuple[bool, int, Optional[pd.DataFrame], Optional[str], str]:
+    i: int, f: Flight, bada_path: Optional[str]
+) -> Tuple[bool, int, Optional[Flight], Optional[str], str]:
     """
     Calculate performance for a single flight.
 
@@ -408,10 +415,10 @@ class FastFleetRunner:
 
     def _check_and_filter_failed_flights(
         self,
-        seq: List[pd.DataFrame],
+        seq: List[Union[Flight, Flight4D, pd.DataFrame]],
         critical_columns: Tuple[str, ...],
         step_name: str,
-    ) -> Tuple[List[pd.DataFrame], List[Dict[str, Any]]]:
+    ) -> Tuple[List[Union[Flight, Flight4D, pd.DataFrame]], List[Dict[str, Any]]]:
         """
         Check for failed flights based on NaN values in critical columns.
 
@@ -419,7 +426,7 @@ class FastFleetRunner:
         or if the column is missing entirely.
 
         Args:
-            seq: List of flight DataFrames to check
+            seq: List of Flight/Flight4D objects or DataFrames to check
             critical_columns: Tuple of column names to check for NaN
             step_name: Name of the pipeline step (for error messages)
 
@@ -432,9 +439,13 @@ class FastFleetRunner:
         errors = []
 
         for flight in seq:
-            # Get dataframe and attrs
-            df = flight.dataframe if hasattr(flight, "dataframe") else flight
-            attrs = flight.attrs if hasattr(flight, "attrs") else {}
+            # Get dataframe and attrs (handle Flight, Flight4D, pd.DataFrame)
+            if isinstance(flight, pd.DataFrame):
+                df = flight
+                attrs = getattr(flight, "attrs", {})
+            else:
+                df = flight.dataframe if hasattr(flight, "dataframe") else flight.data
+                attrs = flight.attrs if hasattr(flight, "attrs") else {}
 
             # Check if any critical column has ALL NaN values or is missing
             has_failure = False
@@ -511,7 +522,7 @@ class FastFleetRunner:
             logger.error(f"Error loading trajectories from DataFrame: {e}")
             raise
 
-    def _parallel_parsing(self) -> List[pd.DataFrame]:
+    def _parallel_parsing(self) -> List[Flight4D]:
         """Parse trajectories in parallel."""
         if self.flights is None:
             raise RuntimeError("Flights not loaded")
@@ -522,7 +533,7 @@ class FastFleetRunner:
         seq = Parallel(
             n_jobs=self.params.n_jobs_parsing,
             prefer="processes",
-            batch_size=self.params.batch_size_parsing,
+            batch_size=self.params.batch_size_parsing,  # type: ignore[arg-type]
         )(delayed(_parse_one)(f) for f in self.flights)
 
         # Cleanup
@@ -530,9 +541,9 @@ class FastFleetRunner:
         gc.collect()
 
         logger.info(f"Parsing complete in {time.time() - t0:.2f}s")
-        return seq
+        return seq  # type: ignore[return-value]
 
-    def _parallel_interpolation(self, seq: List[pd.DataFrame]) -> List[pd.DataFrame]:
+    def _parallel_interpolation(self, seq: List[Flight4D]) -> List[Flight4D]:
         """Interpolate trajectories in parallel."""
         t0 = time.time()
         logger.info(f"Interpolating {len(seq)} flights (n_jobs={self.params.n_jobs_interpolation})...")
@@ -540,7 +551,7 @@ class FastFleetRunner:
         seq = Parallel(
             n_jobs=self.params.n_jobs_interpolation,
             prefer="processes",
-            batch_size=self.params.batch_size_interpolation,
+            batch_size=self.params.batch_size_interpolation,  # type: ignore[arg-type]
         )(delayed(_interpolate_one)(f) for f in seq)
 
         # Cleanup
@@ -548,14 +559,14 @@ class FastFleetRunner:
         gc.collect()
 
         logger.info(f"Interpolation complete in {time.time() - t0:.2f}s")
-        return seq
+        return seq  # type: ignore[return-value]
 
     def _fleet_weather_intersection(
         self,
-        seq: List[pd.DataFrame],
+        seq: List[Flight4D],
         met: Any,
         wind: Any,
-    ) -> List[pd.DataFrame]:
+    ) -> List[Flight]:
         """
         Perform fleet-level weather intersection (vectorized).
 
@@ -625,7 +636,7 @@ class FastFleetRunner:
         logger.info(f"Weather intersection complete in {time.time() - t0:.2f}s")
         return fleet_with_weather.to_flight_list()
 
-    def _apply_humidity_scaling(self, seq: List[pd.DataFrame]) -> List[pd.DataFrame]:
+    def _apply_humidity_scaling(self, seq: List[Flight]) -> List[Flight]:
         """Apply humidity scaling to fleet."""
         t0 = time.time()
         logger.info("Applying humidity scaling...")
@@ -642,7 +653,7 @@ class FastFleetRunner:
         logger.info(f"Humidity scaling complete in {time.time() - t0:.2f}s")
         return fleet.to_flight_list()
 
-    def _parallel_performance(self, seq: List[pd.DataFrame]) -> Tuple[List[pd.DataFrame], List[Dict[str, Any]]]:
+    def _parallel_performance(self, seq: List[Flight]) -> Tuple[List[Flight], List[Dict[str, Any]]]:
         """
         Calculate performance in parallel with per-process caching.
 
@@ -657,7 +668,7 @@ class FastFleetRunner:
         results = Parallel(
             n_jobs=self.params.n_jobs_performance,
             prefer="processes",
-            batch_size=self.params.batch_size_performance,
+            batch_size=self.params.batch_size_performance,  # type: ignore[arg-type]
         )(delayed(_performance_one)(i, f, self.params.bada_path) for i, f in to_run)
 
         # Collect successful results and create error records
@@ -698,7 +709,7 @@ class FastFleetRunner:
         logger.info(f"Performance calculations complete in {time.time() - t0:.2f}s ({len(good_seq)}/{len(seq)} succeeded)")
         return good_seq, error_records
 
-    def _fleet_emissions(self, seq: List[pd.DataFrame]) -> List[pd.DataFrame]:
+    def _fleet_emissions(self, seq: List[Flight]) -> List[Flight]:
         """
         Calculate emissions for entire fleet (vectorized).
 
@@ -720,7 +731,7 @@ class FastFleetRunner:
 
     def _fleet_cocip(
         self,
-        seq: List[pd.DataFrame],
+        seq: List[Flight],
         met: Any,
         rad: Any,
     ) -> Fleet:
@@ -754,7 +765,7 @@ class FastFleetRunner:
 
     def _extract_results(
         self,
-        successful_flights: List[pd.DataFrame],
+        successful_flights: List[Flight],
         error_records: List[Dict[str, Any]]
     ) -> None:
         """
