@@ -54,13 +54,8 @@ from pycontrails import Flight, Fleet
 from pycontrails.models.humidity_scaling import ExponentialBoostHumidityScaling
 
 from pyneats.core.steps_registry import build
-from pyneats.core.neats_default_parameters import (
-    DEFAULT_INTERPOLATOR,
-    DEFAULT_TRAJECTORY_PARSER,
-    DEFAULT_PERFORMANCE,
-    DEFAULT_EMISSIONS,
-    DEFAULT_CONTRAILS_MODEL,
-)
+from pyneats.core.neats_default_parameters import DEFAULT_CONTRAILS_MODEL
+from pyneats.runners.flight import RunnerConfig
 from pyneats.steps.climate_metrics.report import FleetReport
 from pyneats.steps.climate_functions.protocol import ContrailsModel
 from pyneats.steps.emissions.protocol import EmissionModel
@@ -93,20 +88,19 @@ class FastFleetRunnerParams:
     Optional:
         bada_path: Path to BADA coefficient files
         zarr_read_chunks: Read-time chunk hints for zarr (None = use native chunks)
+        runner_config: RunnerConfig specifying step implementations and params (default: RunnerConfig())
 
     Parallelism (number of workers):
         n_jobs_parsing: Parallel workers for parsing (default: 8)
         n_jobs_interpolation: Parallel workers for interpolation (default: 8)
         n_jobs_performance: Parallel workers for performance (-1 = all cores)
-        n_jobs_emissions: Parallel workers for emissions (default: 8)
 
     Batch sizes (tune based on memory/CPU):
         batch_size_parsing: Joblib batch size for parsing (default: 32)
         batch_size_interpolation: Joblib batch size for interpolation (default: 32)
         batch_size_performance: Joblib batch size for performance (default: 16)
-        batch_size_emissions: Joblib batch size for emissions (default: 32)
 
-    CoCiP parameters:
+    CoCiP parameters (backward compatibility - prefer using runner_config.params):
         contrail_contrail_overlapping: Enable contrail overlapping (default: False)
         dt_integration_minutes: Integration time step in minutes (default: 1)
         max_age_hours: Maximum contrail age in hours (default: 12)
@@ -134,12 +128,8 @@ class FastFleetRunnerParams:
     # Zarr read configuration
     zarr_read_chunks: Optional[Mapping[str, int]] = None
 
-    # Step implementations (registry names)
-    trajectory_parser: str = DEFAULT_TRAJECTORY_PARSER
-    interpolator: str = DEFAULT_INTERPOLATOR
-    performance: str = DEFAULT_PERFORMANCE
-    emissions: str = DEFAULT_EMISSIONS
-    contrails_model: str = DEFAULT_CONTRAILS_MODEL
+    # Step implementations and parameters (shared with FlightRunner)
+    runner_config: RunnerConfig = field(default_factory=RunnerConfig)
 
     # Parallelism configuration
     n_jobs_parsing: int = 8
@@ -151,7 +141,7 @@ class FastFleetRunnerParams:
     batch_size_interpolation: int = 32
     batch_size_performance: int = 16
 
-    # CoCiP parameters
+    # CoCiP parameters (backward compatibility - prefer using runner_config.params)
     contrail_contrail_overlapping: bool = False
     dt_integration_minutes: int = 1
     max_age_hours: int = 12
@@ -164,9 +154,6 @@ class FastFleetRunnerParams:
     humidity_scaling_critical_columns: Tuple[str, ...] = ("specific_humidity",)
     emissions_critical_columns: Tuple[str, ...] = ("fuel_burn", "nvpm_ei_n")
     cocip_critical_columns: Tuple[str, ...] = ("ef",)
-
-    # Step-specific parameters (similar to FlightRunner's RunnerConfig)
-    params: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
 
 # ---------------------------
@@ -558,9 +545,9 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Parsing {len(self.flights)} flights (n_jobs={self.params.n_jobs_parsing})...")
 
-        # Get step name and params
-        parser_name = self.params.trajectory_parser
-        parser_params = self.params.params.get("trajectory_parser", {})
+        # Get step name and params from RunnerConfig
+        parser_name = self.params.runner_config.trajectory_parser
+        parser_params = self.params.runner_config.params.get("trajectory_parser", {})
 
         seq = Parallel(
             n_jobs=self.params.n_jobs_parsing,
@@ -580,9 +567,9 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Interpolating {len(seq)} flights (n_jobs={self.params.n_jobs_interpolation})...")
 
-        # Get step name and params
-        interpolator_name = self.params.interpolator
-        interpolator_params = self.params.params.get("interpolator", {})
+        # Get step name and params from RunnerConfig
+        interpolator_name = self.params.runner_config.interpolator
+        interpolator_params = self.params.runner_config.params.get("interpolator", {})
 
         seq = Parallel(
             n_jobs=self.params.n_jobs_interpolation,
@@ -699,9 +686,9 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Performance calculations for {len(seq)} flights (n_jobs={self.params.n_jobs_performance})...")
 
-        # Get step name and params
-        performance_name = self.params.performance
-        performance_params = self.params.params.get("performance", {})
+        # Get step name and params from RunnerConfig
+        performance_name = self.params.runner_config.performance
+        performance_params = self.params.runner_config.params.get("performance", {})
 
         # Add BADA path to params if provided
         if self.params.bada_path is not None:
@@ -768,10 +755,10 @@ class FastFleetRunner:
         logger.info(f"Fleet-level emissions calculation for {len(seq)} flights...")
 
         # Build emissions model using registry pattern (like FlightRunner)
-        emissions_params = self.params.params.get("emissions", {})
+        emissions_params = self.params.runner_config.params.get("emissions", {})
         emissions = build(
             EmissionModel,
-            self.params.emissions,
+            self.params.runner_config.emissions,
             **emissions_params,
         )
 
@@ -798,8 +785,8 @@ class FastFleetRunner:
         logger.info(f"Fleet-level CoCiP evaluation for {len(seq)} flights...")
 
         # Build contrails model params using registry pattern (like FlightRunner)
-        # Start with custom params from configuration
-        contrail_params = dict(self.params.params.get("contrails_model", {}))
+        # Start with custom params from RunnerConfig
+        contrail_params = dict(self.params.runner_config.params.get("contrails_model", {}))
 
         # Add required met/rad datasets
         contrail_params.update({
@@ -809,7 +796,7 @@ class FastFleetRunner:
 
         # For backward compatibility: if using default "cocip" model and no custom cocip_kwargs provided,
         # build default cocip_kwargs from FastFleetRunnerParams fields
-        if self.params.contrails_model == DEFAULT_CONTRAILS_MODEL and "cocip_kwargs" not in contrail_params:
+        if self.params.runner_config.contrails_model == DEFAULT_CONTRAILS_MODEL and "cocip_kwargs" not in contrail_params:
             cocip_kwargs = {
                 "contrail_contrail_overlapping": self.params.contrail_contrail_overlapping,
                 "dt_integration": np.timedelta64(self.params.dt_integration_minutes, "m"),
@@ -826,7 +813,7 @@ class FastFleetRunner:
         # Build using registry (allows different contrails models, not just CoCiP)
         contrails_model = build(
             ContrailsModel,
-            self.params.contrails_model,
+            self.params.runner_config.contrails_model,
             **contrail_params,
         )
 
