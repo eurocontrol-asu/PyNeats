@@ -104,6 +104,11 @@ class FastFleetRunnerParams:
         humidity_scaling_rhi_adj: RHi adjustment factor (default: 0.9779)
         humidity_scaling_rhi_boost_exponent: RHi boost exponent (default: 1.635)
         humidity_scaling_clip_upper: Upper clip for humidity scaling (default: 1.65)
+
+    Error detection for vectorized steps:
+        weather_critical_columns: Columns to check for NaN after weather intersection
+        humidity_scaling_critical_columns: Columns to check after humidity scaling
+        cocip_critical_columns: Columns to check after CoCiP evaluation
     """
 
     # Required
@@ -138,6 +143,11 @@ class FastFleetRunnerParams:
     humidity_scaling_rhi_adj: float = 0.9779
     humidity_scaling_rhi_boost_exponent: float = 1.635
     humidity_scaling_clip_upper: float = 1.65
+
+    # Critical columns for error detection in vectorized steps
+    weather_critical_columns: Tuple[str, ...] = ("air_temperature", "specific_humidity")
+    humidity_scaling_critical_columns: Tuple[str, ...] = ("specific_humidity",)
+    cocip_critical_columns: Tuple[str, ...] = ("ef",)
 
 
 # ---------------------------
@@ -277,6 +287,9 @@ class FastFleetRunner:
         """
         logger.info("FastFleetRunner: Starting optimized pipeline")
 
+        # Initialize error tracking
+        error_records: List[Dict[str, Any]] = []
+
         # Step 1: Load trajectories
         self._load_trajectories()
 
@@ -298,25 +311,49 @@ class FastFleetRunner:
         # Step 4: Parallel interpolation
         seq = self._parallel_interpolation(seq)
 
-        # Step 5: Fleet-level weather intersection
+        # Step 5: Fleet-level weather intersection (vectorized)
         seq = self._fleet_weather_intersection(seq, met, wind)
+        # Check for failures after weather intersection
+        seq, errors = self._check_and_filter_failed_flights(
+            seq,
+            self.params.weather_critical_columns,
+            "weather intersection"
+        )
+        error_records.extend(errors)
 
-        # Step 6: Apply humidity scaling
+        # Step 6: Apply humidity scaling (vectorized)
         seq = self._apply_humidity_scaling(seq)
+        # Check for failures after humidity scaling
+        seq, errors = self._check_and_filter_failed_flights(
+            seq,
+            self.params.humidity_scaling_critical_columns,
+            "humidity scaling"
+        )
+        error_records.extend(errors)
 
         # Step 7: Parallel performance
-        seq = self._parallel_performance(seq)
+        seq, perf_errors = self._parallel_performance(seq)
+        error_records.extend(perf_errors)
 
         # Step 8: Parallel emissions
         seq = self._parallel_emissions(seq)
 
-        # Step 9: Fleet-level CoCiP
+        # Step 9: Fleet-level CoCiP (vectorized)
         fleet_with_contrails = self._fleet_cocip(seq, met, rad)
 
-        # Step 10: Extract results
-        self._extract_results(fleet_with_contrails)
+        # Step 10: Check for CoCiP failures and extract results
+        flight_list = fleet_with_contrails.to_flight_list()
+        flight_list, errors = self._check_and_filter_failed_flights(
+            flight_list,
+            self.params.cocip_critical_columns,
+            "CoCiP evaluation"
+        )
+        error_records.extend(errors)
 
-        logger.info("FastFleetRunner: Pipeline complete")
+        # Step 11: Extract results (both successful and errors)
+        self._extract_results(flight_list, error_records)
+
+        logger.info(f"FastFleetRunner: Pipeline complete - {len(flight_list)} successful, {len(error_records)} failed")
         return self
 
     def results_as_dataframe(self) -> pd.DataFrame:
@@ -367,6 +404,72 @@ class FastFleetRunner:
     # ---------------------------
     # Internal pipeline steps
     # ---------------------------
+
+    def _check_and_filter_failed_flights(
+        self,
+        seq: List[pd.DataFrame],
+        critical_columns: Tuple[str, ...],
+        step_name: str,
+    ) -> Tuple[List[pd.DataFrame], List[Dict[str, Any]]]:
+        """
+        Check for failed flights based on NaN values in critical columns.
+
+        Flights are considered failed if ALL values in ANY critical column are NaN
+        or if the column is missing entirely.
+
+        Args:
+            seq: List of flight DataFrames to check
+            critical_columns: Tuple of column names to check for NaN
+            step_name: Name of the pipeline step (for error messages)
+
+        Returns:
+            Tuple of (successful_flights, error_records)
+            - successful_flights: List of flights that passed validation
+            - error_records: List of error dicts for failed flights
+        """
+        successful = []
+        errors = []
+
+        for flight in seq:
+            # Get dataframe and attrs
+            df = flight.dataframe if hasattr(flight, "dataframe") else flight
+            attrs = flight.attrs if hasattr(flight, "attrs") else {}
+
+            # Check if any critical column has ALL NaN values or is missing
+            has_failure = False
+            failed_columns = []
+
+            for col in critical_columns:
+                if col not in df.columns:
+                    has_failure = True
+                    failed_columns.append(f"{col} (missing)")
+                elif df[col].isna().all():
+                    has_failure = True
+                    failed_columns.append(f"{col} (all NaN)")
+
+            if has_failure:
+                # Extract flight info for error record
+                flight_id = attrs.get("flight_id", "UNKNOWN")
+                error_record = {
+                    "flight_information": {
+                        "flight_id": flight_id,
+                        "departure_airport": attrs.get("departure_airport", "UNKNOWN"),
+                        "arrival_airport": attrs.get("arrival_airport", "UNKNOWN"),
+                        "aobt": attrs.get("aobt", "UNKNOWN"),
+                        "aircraft_type": attrs.get("aircraft_type", "UNKNOWN"),
+                        "engine_uid": attrs.get("engine_uid", "UNKNOWN"),
+                    },
+                    "error": f"Failed at {step_name}: {', '.join(failed_columns)}"
+                }
+                errors.append(error_record)
+                logger.warning(f"Flight {flight_id} failed at {step_name}: {', '.join(failed_columns)}")
+            else:
+                successful.append(flight)
+
+        if errors:
+            logger.warning(f"{len(errors)}/{len(seq)} flights failed at {step_name}")
+
+        return successful, errors
 
     def _load_trajectories(self) -> None:
         """Load trajectories from JSON file or DataFrame."""
@@ -538,8 +641,13 @@ class FastFleetRunner:
         logger.info(f"Humidity scaling complete in {time.time() - t0:.2f}s")
         return fleet.to_flight_list()
 
-    def _parallel_performance(self, seq: List[pd.DataFrame]) -> List[pd.DataFrame]:
-        """Calculate performance in parallel with per-process caching."""
+    def _parallel_performance(self, seq: List[pd.DataFrame]) -> Tuple[List[pd.DataFrame], List[Dict[str, Any]]]:
+        """
+        Calculate performance in parallel with per-process caching.
+
+        Returns:
+            Tuple of (successful_flights, error_records)
+        """
         t0 = time.time()
         logger.info(f"Performance calculations for {len(seq)} flights (n_jobs={self.params.n_jobs_performance})...")
 
@@ -551,27 +659,43 @@ class FastFleetRunner:
             batch_size=self.params.batch_size_performance,
         )(delayed(_performance_one)(i, f, self.params.bada_path) for i, f in to_run)
 
-        # Collect successful results in original order
+        # Collect successful results and create error records
         good_seq = []
-        n_fail = 0
+        error_records = []
+
         for ok, i, out, err, flight_id in sorted(results, key=lambda x: x[1]):
             if ok:
                 good_seq.append(out)
             else:
-                n_fail += 1
+                # Get flight attrs from original sequence
+                original_flight = seq[i]
+                attrs = original_flight.attrs if hasattr(original_flight, "attrs") else {}
+
+                error_record = {
+                    "flight_information": {
+                        "flight_id": flight_id,
+                        "departure_airport": attrs.get("departure_airport", "UNKNOWN"),
+                        "arrival_airport": attrs.get("arrival_airport", "UNKNOWN"),
+                        "aobt": attrs.get("aobt", "UNKNOWN"),
+                        "aircraft_type": attrs.get("aircraft_type", "UNKNOWN"),
+                        "engine_uid": attrs.get("engine_uid", "UNKNOWN"),
+                    },
+                    "error": f"Failed at performance calculation: {err}"
+                }
+                error_records.append(error_record)
                 logger.error(
                     f"Performance calculation failed for flight {flight_id} (index {i}): {err}"
                 )
 
-        if n_fail > 0:
-            logger.warning(f"{n_fail}/{len(seq)} flights failed performance calculations")
+        if error_records:
+            logger.warning(f"{len(error_records)}/{len(seq)} flights failed performance calculations")
 
         # Cleanup
         get_reusable_executor().shutdown(wait=True)
         gc.collect()
 
         logger.info(f"Performance calculations complete in {time.time() - t0:.2f}s ({len(good_seq)}/{len(seq)} succeeded)")
-        return good_seq
+        return good_seq, error_records
 
     def _parallel_emissions(self, seq: List[pd.DataFrame]) -> List[pd.DataFrame]:
         """Calculate emissions in parallel."""
@@ -625,21 +749,28 @@ class FastFleetRunner:
         logger.info(f"CoCiP evaluation complete in {time.time() - t0:.2f}s")
         return results_fleet
 
-    def _extract_results(self, fleet_with_contrails: Fleet) -> None:
+    def _extract_results(
+        self,
+        successful_flights: List[pd.DataFrame],
+        error_records: List[Dict[str, Any]]
+    ) -> None:
         """
-        Extract results from Fleet and format for output.
+        Extract results from successful flights and merge with error records.
+
+        Args:
+            successful_flights: List of flights that completed successfully
+            error_records: List of error records from failed flights
 
         This matches the FleetRunner.results format for compatibility.
         """
         logger.info("Extracting results...")
 
-        # For now, create a simple summary similar to the experimental code
-        # TODO: Integrate with full climate metrics reporting if needed
-        rows = []
+        # Extract results from successful flights
+        successful_results = []
 
-        for flight in fleet_with_contrails.to_flight_list():
-            attrs = flight.attrs
-            df = flight.dataframe
+        for flight in successful_flights:
+            attrs = flight.attrs if hasattr(flight, "attrs") else {}
+            df = flight.dataframe if hasattr(flight, "dataframe") else flight
 
             # Basic flight information and fuel/contrail metrics
             payload = {
@@ -674,11 +805,17 @@ class FastFleetRunner:
                     },
                 ],
             }
-            rows.append(payload)
+            successful_results.append(payload)
+
+        # Merge successful results with error records
+        all_results = successful_results + error_records
 
         self.results = {
             "fleet_meta_data": FleetReport.collect(),
-            "flight_results": rows,
+            "flight_results": all_results,
         }
 
-        logger.info(f"Results extracted for {len(rows)} flights")
+        logger.info(
+            f"Results extracted: {len(successful_results)} successful, "
+            f"{len(error_records)} failed, {len(all_results)} total"
+        )
