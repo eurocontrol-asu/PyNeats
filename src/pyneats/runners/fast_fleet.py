@@ -183,15 +183,15 @@ def _get_perf_model(bada_path: Optional[str]) -> PerformanceModel:
 # Worker functions for parallel processing
 # ---------------------------
 
-def _parse_one(f: pd.DataFrame) -> Flight4D:
+def _parse_one(f: pd.DataFrame, parser_params: Dict[str, Any]) -> Flight4D:
     """Parse a single flight trajectory."""
-    parser = NeatsTrajectoryParser()
+    parser = build(TrajectoryParser, "neats", **parser_params)
     return parser(f.copy())
 
 
-def _interpolate_one(f: Flight4D) -> Flight4D:
+def _interpolate_one(f: Flight4D, interpolator_params: Dict[str, Any]) -> Flight4D:
     """Interpolate a single flight trajectory."""
-    interpolator = PyContrailsInterpolator()
+    interpolator = build(TrajectoryInterpolator, "pycontrails", **interpolator_params)
     return interpolator(f)
 
 
@@ -530,11 +530,14 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Parsing {len(self.flights)} flights (n_jobs={self.params.n_jobs_parsing})...")
 
+        # Get step-specific params
+        parser_params = self.params.params.get("trajectory_parser", {})
+
         seq = Parallel(
             n_jobs=self.params.n_jobs_parsing,
             prefer="processes",
             batch_size=self.params.batch_size_parsing,  # type: ignore[arg-type]
-        )(delayed(_parse_one)(f) for f in self.flights)
+        )(delayed(_parse_one)(f, parser_params) for f in self.flights)
 
         # Cleanup
         get_reusable_executor().shutdown(wait=True)
@@ -548,11 +551,14 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Interpolating {len(seq)} flights (n_jobs={self.params.n_jobs_interpolation})...")
 
+        # Get step-specific params
+        interpolator_params = self.params.params.get("interpolator", {})
+
         seq = Parallel(
             n_jobs=self.params.n_jobs_interpolation,
             prefer="processes",
             batch_size=self.params.batch_size_interpolation,  # type: ignore[arg-type]
-        )(delayed(_interpolate_one)(f) for f in seq)
+        )(delayed(_interpolate_one)(f, interpolator_params) for f in seq)
 
         # Cleanup
         get_reusable_executor().shutdown(wait=True)
@@ -719,8 +725,9 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Fleet-level emissions calculation for {len(seq)} flights...")
 
-        # Create emissions model
-        emissions = PyContrailsEmissionModel()
+        # Create emissions model with custom params
+        emissions_params = self.params.params.get("emissions", {})
+        emissions = PyContrailsEmissionModel(**emissions_params)
 
         # Create Fleet and evaluate
         fleet = Fleet.from_seq(seq)
@@ -744,7 +751,8 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Fleet-level CoCiP evaluation for {len(seq)} flights...")
 
-        params = {
+        # Build CoCiP params (use defaults + any custom overrides)
+        cocip_params = {
             "contrail_contrail_overlapping": self.params.contrail_contrail_overlapping,
             "dt_integration": np.timedelta64(self.params.dt_integration_minutes, "m"),
             "max_age": np.timedelta64(self.params.max_age_hours, "h"),
@@ -756,7 +764,11 @@ class FastFleetRunner:
             "interpolation_use_indices": False,
         }
 
-        cocip = Cocip(met=met, rad=rad, params=params)
+        # Merge with custom cocip params (if any)
+        custom_cocip_params = self.params.params.get("cocip", {})
+        cocip_params.update(custom_cocip_params)
+
+        cocip = Cocip(met=met, rad=rad, params=cocip_params)
         fleet = Fleet.from_seq(seq)
         results_fleet = cocip.eval(source=fleet)
 
