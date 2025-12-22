@@ -108,6 +108,7 @@ class FastFleetRunnerParams:
     Error detection for vectorized steps:
         weather_critical_columns: Columns to check for NaN after weather intersection
         humidity_scaling_critical_columns: Columns to check after humidity scaling
+        emissions_critical_columns: Columns to check after emissions calculation
         cocip_critical_columns: Columns to check after CoCiP evaluation
     """
 
@@ -128,13 +129,11 @@ class FastFleetRunnerParams:
     n_jobs_parsing: int = 8
     n_jobs_interpolation: int = 8
     n_jobs_performance: int = -1  # -1 = use all cores
-    n_jobs_emissions: int = 8
 
     # Batch sizes
     batch_size_parsing: int = 32
     batch_size_interpolation: int = 32
     batch_size_performance: int = 16
-    batch_size_emissions: int = 32
 
     # CoCiP parameters
     contrail_contrail_overlapping: bool = False
@@ -147,6 +146,7 @@ class FastFleetRunnerParams:
     # Critical columns for error detection in vectorized steps
     weather_critical_columns: Tuple[str, ...] = ("air_temperature", "specific_humidity")
     humidity_scaling_critical_columns: Tuple[str, ...] = ("specific_humidity",)
+    emissions_critical_columns: Tuple[str, ...] = ("fuel_burn", "nvpm_ei_n")
     cocip_critical_columns: Tuple[str, ...] = ("ef",)
 
 
@@ -186,12 +186,6 @@ def _interpolate_one(f: pd.DataFrame) -> pd.DataFrame:
     """Interpolate a single flight trajectory."""
     interpolator = PyContrailsInterpolator()
     return interpolator(f)
-
-
-def _emissions_one(f: pd.DataFrame) -> pd.DataFrame:
-    """Calculate emissions for a single flight."""
-    emissions = PyContrailsEmissionModel()
-    return emissions(f)
 
 
 def _performance_one(
@@ -276,10 +270,10 @@ class FastFleetRunner:
             3. Parallel parsing of trajectories
             4. Parallel interpolation
             5. Fleet-level weather intersection (vectorized)
-            6. Apply humidity scaling
+            6. Fleet-level humidity scaling (vectorized)
             7. Parallel performance calculations
-            8. Parallel emissions calculations
-            9. Fleet-level CoCiP evaluation
+            8. Fleet-level emissions calculations (vectorized)
+            9. Fleet-level CoCiP evaluation (vectorized)
             10. Extract and format results
 
         Returns:
@@ -321,7 +315,7 @@ class FastFleetRunner:
         )
         error_records.extend(errors)
 
-        # Step 6: Apply humidity scaling (vectorized)
+        # Step 6: Fleet-level humidity scaling (vectorized)
         seq = self._apply_humidity_scaling(seq)
         # Check for failures after humidity scaling
         seq, errors = self._check_and_filter_failed_flights(
@@ -335,8 +329,15 @@ class FastFleetRunner:
         seq, perf_errors = self._parallel_performance(seq)
         error_records.extend(perf_errors)
 
-        # Step 8: Parallel emissions
-        seq = self._parallel_emissions(seq)
+        # Step 8: Fleet-level emissions (vectorized)
+        seq = self._fleet_emissions(seq)
+        # Check for failures after emissions
+        seq, errors = self._check_and_filter_failed_flights(
+            seq,
+            self.params.emissions_critical_columns,
+            "emissions calculation"
+        )
+        error_records.extend(errors)
 
         # Step 9: Fleet-level CoCiP (vectorized)
         fleet_with_contrails = self._fleet_cocip(seq, met, rad)
@@ -697,23 +698,25 @@ class FastFleetRunner:
         logger.info(f"Performance calculations complete in {time.time() - t0:.2f}s ({len(good_seq)}/{len(seq)} succeeded)")
         return good_seq, error_records
 
-    def _parallel_emissions(self, seq: List[pd.DataFrame]) -> List[pd.DataFrame]:
-        """Calculate emissions in parallel."""
+    def _fleet_emissions(self, seq: List[pd.DataFrame]) -> List[pd.DataFrame]:
+        """
+        Calculate emissions for entire fleet (vectorized).
+
+        This is an optimization: instead of calculating emissions per-flight,
+        we create a Fleet and use PyContrails' vectorized operations.
+        """
         t0 = time.time()
-        logger.info(f"Emissions calculations for {len(seq)} flights (n_jobs={self.params.n_jobs_emissions})...")
+        logger.info(f"Fleet-level emissions calculation for {len(seq)} flights...")
 
-        seq = Parallel(
-            n_jobs=self.params.n_jobs_emissions,
-            prefer="processes",
-            batch_size=self.params.batch_size_emissions,
-        )(delayed(_emissions_one)(f) for f in seq)
+        # Create emissions model
+        emissions = PyContrailsEmissionModel()
 
-        # Cleanup
-        get_reusable_executor().shutdown(wait=True)
-        gc.collect()
+        # Create Fleet and evaluate
+        fleet = Fleet.from_seq(seq)
+        fleet_with_emissions = emissions.eval(fleet)
 
         logger.info(f"Emissions calculations complete in {time.time() - t0:.2f}s")
-        return seq
+        return fleet_with_emissions.to_flight_list()
 
     def _fleet_cocip(
         self,
