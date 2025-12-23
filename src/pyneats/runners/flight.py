@@ -23,7 +23,6 @@ import pandas as pd
 
 from pycontrails.core.met import MetDataset
 
-from pyneats.steps import performance
 from pyneats.steps.climate_functions import (
     ContrailsModel,
     FlightWithContrailsImpact,

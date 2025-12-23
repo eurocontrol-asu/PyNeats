@@ -91,7 +91,7 @@ class HumidityScalingModel(Protocol):
 
 class PcHumidityScalingAdapter(HumidityScalingModel):
     """
-    Adapter to wrap pycontrails' ConstantHumidityScaling so that `.eval()` returns a Flight.
+    Adapter to wrap pycontrails' HumidityScaling so that `.eval()` returns a Flight.
     If pycontrails returns None (in-place) we pass back the input Flight.
     """
 
