@@ -86,7 +86,9 @@ DEFAULT_DELTA_TAU_FILL_METHOD: Final[Literal["bffill", "none", "zero"]] = "bffil
 DEFAULT_ROCD_PHASE_THRESHOLD: Final[float] = 250  # feet per minute
 
 # Emissions defaults
-DEFAULT_EMISSIONS_KWARGS: Final[Mapping[str, Any]] = {}
+DEFAULT_EMISSIONS_KWARGS: Final[Mapping[str, Any]] = {
+    "use_meem": False,
+}
 
 # Cocip default arguments
 DEFAULT_HUMIDITY_SCALING = ExponentialBoostHumidityScaling(
@@ -101,6 +103,7 @@ DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
     "max_age": np.timedelta64(12, "h"),
     "humidity_scaling": DEFAULT_HUMIDITY_SCALING,
     "interpolation_use_indices": False,  
+    "vpm_activation": False,
 }
 
 # ACCF defaults

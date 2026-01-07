@@ -221,7 +221,7 @@ class BADAPerformanceModel(
 
     # ---------- public API ----------
     def run(self, flight: FlightWithWeather) -> FlightWithPerformance:
-        """ Run BADA performance model on the given flight data. """
+        """Run BADA performance model on the given flight data."""
 
         # --- Preprocessing + aircraft data extraction ---
         try:
@@ -289,8 +289,8 @@ class BADAPerformanceModel(
         q_fuel_attr: float | None,
         force_bada3: bool = False,
     ) -> FlightWithPerformance:
-        """ Run BADA performance model on the given flight data, with optional BADA3 enforcement. """
-        
+        """Run BADA performance model on the given flight data, with optional BADA3 enforcement."""
+
         try:
             # 1) resolve adapter + core attrs
             adapter, bada_version, nb_eng, engine_id = self._resolve_bada_adapter(
@@ -302,17 +302,16 @@ class BADAPerformanceModel(
             if early is not None:
                 return early
 
-            # 3) choose mass strategy + compute perf
-            perf = self._choose_mass_strategy(adapter, df, flight, icao)
+            # 3) choose mass strategy + compute perf (now returns q_fuel_used)
+            perf, q_fuel_used = self._choose_mass_strategy(
+                adapter, df, flight, icao, q_fuel_attr, self.params.q_fuel
+            )
 
-            # 4) apply q_fuel correction if provided
-            q_fuel_used = self._apply_q_fuel_adjustment(perf, q_fuel_attr, self.params.q_fuel)
-
-            # 5) finalize df columns, compute efficiency if needed
+            # 4) finalize df columns, compute efficiency if needed (using q_fuel_used)
             self._finalize_columns(df, perf)
             self._compute_engine_efficiency_if_missing(df, perf, q_fuel_used)
 
-            # 6) build Flight output
+            # 5) build Flight output
             out = Flight(data=df, attrs={**flight.attrs}, fuel=flight.fuel)
             self._attach_output_attrs(out, adapter, bada_version, nb_eng, engine_id)
 
@@ -478,9 +477,21 @@ class BADAPerformanceModel(
         df: pd.DataFrame,
         flight: Flight,
         icao: str,
-    ) -> PerfOutput:
+        q_fuel_attr: Optional[float],
+        default_q_fuel: float,
+    ) -> Tuple[PerfOutput, float]:
         """Choose mass estimation strategy and use iterative estimation with the performance
-        model if needed."""
+        model if needed. Returns both perf output and q_fuel_used."""
+
+        # Determine q_fuel to use
+        q_fuel_used = q_fuel_attr if q_fuel_attr is not None else default_q_fuel
+
+        if q_fuel_attr is not None:
+            self.logger.debug(
+                "'q_fuel' attribute provided (%s J/kg), using it instead of default %s J/kg",
+                q_fuel_attr,
+                default_q_fuel,
+            )
 
         cols = [
             "altitude",
@@ -496,23 +507,43 @@ class BADAPerformanceModel(
 
         if "aircraft_mass" in df.columns:
             self.logger.debug("'aircraft_mass' column provided, using it")
-            return self._single_pass_performance(adapter, df, initial_mass=None)
+            perf = self._single_pass_performance(
+                adapter,
+                df,
+                initial_mass=None,
+                q_fuel_used=q_fuel_used,
+                default_q_fuel=default_q_fuel,
+            )
+            return perf, q_fuel_used
 
         initial_mass: Optional[float] = flight.attrs.get("takeoff_weight")
         if initial_mass is not None:
             self.logger.debug("'takeoff_weight' attribute provided, using it")
-            return self._single_pass_performance(adapter, df, initial_mass=initial_mass)
+            perf = self._single_pass_performance(
+                adapter,
+                df,
+                initial_mass=initial_mass,
+                q_fuel_used=q_fuel_used,
+                default_q_fuel=default_q_fuel,
+            )
+            return perf, q_fuel_used
 
         # iterative estimation
-        return self._estimate_initial_mass_iterative(adapter, df, flight, icao)
+        perf = self._estimate_initial_mass_iterative(
+            adapter, df, flight, icao, q_fuel_used, default_q_fuel
+        )
+        return perf, q_fuel_used
 
     def _single_pass_performance(
         self,
         adapter: BaseBADAAdapter,
         df: pd.DataFrame,
         initial_mass: Optional[float],
+        q_fuel_used: float,
+        default_q_fuel: float,
     ) -> PerfOutput:
-        """Single pass performance calculation with given or initial mass."""
+        """Single pass performance calculation with given or initial mass.
+        Now applies q_fuel correction during calculation."""
 
         if initial_mass is None and "aircraft_mass" not in df.columns:
             raise PerformanceStepError(
@@ -523,6 +554,9 @@ class BADAPerformanceModel(
                 "Both initial mass and 'aircraft_mass' column provided; ignoring initial mass"
             )
             initial_mass = None
+
+        # Calculate correction ratio
+        q_fuel_ratio = q_fuel_used / default_q_fuel
 
         mass_arr: list[float] = []
         ff_arr: list[float] = []
@@ -544,14 +578,17 @@ class BADAPerformanceModel(
                 _as_float(pt.delta_tau),
             )
 
+            # Apply q_fuel correction immediately
+            ff_corrected = _as_float(ff) / q_fuel_ratio
+
             mass_arr.append(pt_mass)
-            ff_arr.append(_as_float(ff))
+            ff_arr.append(ff_corrected)
             thrust_arr.append(_as_float(thrust))
             phase_arr.append(phase)
             segment_arr.append(str(thrust_seg))
 
             if mass_curr is not None:
-                mass_curr -= _as_float(ff) * _as_float(pt.segment_duration)
+                mass_curr -= ff_corrected * _as_float(pt.segment_duration)
 
         return PerfOutput(
             mass=mass_arr,
@@ -567,6 +604,8 @@ class BADAPerformanceModel(
         df: pd.DataFrame,
         flight: Flight,
         icao: str,
+        q_fuel_used: float,
+        default_q_fuel: float,
     ) -> PerfOutput:
         """Iterative initial mass estimation using BADA performance model."""
 
@@ -606,6 +645,8 @@ class BADAPerformanceModel(
             adapter,
             df.assign(aircraft_mass=initial_mass_guess),
             initial_mass=None,
+            q_fuel_used=q_fuel_used,
+            default_q_fuel=default_q_fuel,
         )
         fuel_consumed = float((np.asarray(perf["fuel_flow"]) * df["segment_duration"]).sum())
         fuel_onboard = fuel_consumed * fuel_factor
@@ -626,7 +667,13 @@ class BADAPerformanceModel(
         ):
             prev_mass = initial_mass
 
-            perf = self._single_pass_performance(adapter, df, initial_mass=initial_mass)
+            perf = self._single_pass_performance(
+                adapter,
+                df,
+                initial_mass=initial_mass,
+                q_fuel_used=q_fuel_used,
+                default_q_fuel=default_q_fuel,
+            )
             fuel_consumed = float((np.asarray(perf["fuel_flow"]) * df["segment_duration"]).sum())
             fuel_onboard = fuel_consumed * fuel_factor
             initial_mass = min(maximum_takeoff_weight, zero_fuel_weight + fuel_onboard)
@@ -644,36 +691,14 @@ class BADAPerformanceModel(
         return perf
 
     # ---------- post-processing ----------
-    def _apply_q_fuel_adjustment(
-        self,
-        perf: PerfOutput,
-        q_fuel_attr: Optional[float],
-        default_q_fuel: float,
-    ) -> float:
-        """Apply a linear q_fuel correction to fuel_flow if necessary,
-        since BADA fuel flow values are expressed with q_fuel in the denominator"""
-
-        q_fuel_used = q_fuel_attr if q_fuel_attr is not None else default_q_fuel
-        if q_fuel_attr is not None:
-            self.logger.debug(
-                "'q_fuel' attribute provided (%s J/kg), comparing to default %s J/kg",
-                q_fuel_attr,
-                default_q_fuel,
-            )
-
-            if q_fuel_attr != default_q_fuel:
-                ratio = q_fuel_attr / default_q_fuel
-                # Divide fuel_flow by ratio so that fuel_burn stays physically consistent
-                perf["fuel_flow"] = (np.asarray(perf["fuel_flow"], dtype=float) / ratio).tolist()
-        return q_fuel_used
-
     def _compute_engine_efficiency_if_missing(
         self,
         df: pd.DataFrame,
         perf: PerfOutput,
-        q_fuel: float,
+        q_fuel_used: float,
     ) -> None:
-        """Compute engine_efficiency column if missing in flight."""
+        """Compute engine_efficiency column if missing in flight.
+        Now uses the correct q_fuel_used value."""
 
         if "engine_efficiency" in df.columns:
             self.logger.debug("'engine_efficiency' column already provided, keeping it")
@@ -682,14 +707,12 @@ class BADAPerformanceModel(
         tas: NDArray[np.floating] = df["true_airspeed"].to_numpy(dtype=float, copy=False)
         thrust: NDArray[np.floating] = np.asarray(perf["thrust"], dtype=float)
         ff: NDArray[np.floating] = np.asarray(perf["fuel_flow"], dtype=float)
-        #is_descent: NDArray[np.bool_] = np.asarray(perf["phase"], dtype=str) == "Descent"
 
         df["engine_efficiency"] = overall_propulsion_efficiency(
             tas,
             thrust,
             ff,
-            q_fuel,
-            # is_descent=is_descent, too noisy 
+            q_fuel_used,  # Use the corrected q_fuel value
             is_descent=False,
             threshold=0.5,
         )

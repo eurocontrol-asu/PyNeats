@@ -223,11 +223,10 @@ class BadaMapper:
         # 5) ICAO only
         row = self._find_one(self._df_icao_only, **{self.COL_ICAO: icao_n})
         if row is not None:
-            # If this row has an ENGINE_ID, pass it through; else empty string.
-            override = None
-            if self.COL_ENGINE_ID not in row.index or not str(row[self.COL_ENGINE_ID]).strip():
-                override = ""
-            return self._coerce_return(row, engine_id_override=override)
+            if engine_conservative:
+                return self._coerce_return(row, engine_id_override=engine_conservative)
+            else:
+                return self._coerce_return(row, engine_id_override=None)
 
         # Nothing worked
         tried = []

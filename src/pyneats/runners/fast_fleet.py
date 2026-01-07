@@ -32,6 +32,7 @@ from pyneats.runners.flight import RunnerConfig
 from pyneats.steps.climate_metrics.report import FleetReport
 from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
 from pyneats.steps.parsing.neats_io import neats_json_to_flights, split_df_into_flights
+from pyneats.steps.parsing.neats_parser import NEATSFuel
 from pyneats.steps.parsing.protocol import TrajectoryParser
 from pyneats.steps.parsing.views import Flight4D
 from pyneats.steps.performance import PerformanceModel
@@ -301,7 +302,26 @@ class FastFleetRunner:
     # ---------------------------
     # Public API
     # ---------------------------
-
+    @staticmethod
+    def _seq_to_fleet(seq: List[Flight]) -> Fleet:
+        for s in seq:
+            s["q_fuel"] = np.full(len(s), s.fuel.q_fuel)
+            s["ei_h2o"] = np.full(len(s), s.fuel.ei_h2o)
+            s.fuel = None 
+            
+        return Fleet.from_seq(seq)
+    
+    @staticmethod
+    def _fleet_to_seq(fleet: Fleet) -> List[Flight]:
+        seq = fleet.to_flight_list()
+        
+        for s in seq:
+            del s["q_fuel"]
+            del s["ei_h2o"]
+            s.fuel = NEATSFuel.from_attrs(s.attrs)
+            
+        return seq
+     
     def eval(self) -> "FastFleetRunner":
         """
         Execute the full optimized pipeline.
@@ -580,7 +600,7 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info(f"Fleet-level weather intersection for {len(seq)} flights...")
 
-        pyc_fleet = Fleet.from_seq(seq)
+        pyc_fleet = self._seq_to_fleet(seq)
 
         # Downselect weather data to fleet bounds
         ds_met = pyc_fleet.downselect_met(
@@ -610,7 +630,7 @@ class FastFleetRunner:
         fleet_with_weather = Fleet(data=df, attrs=pyc_fleet.attrs, fl_attrs=pyc_fleet.fl_attrs)
 
         logger.info(f"Weather intersection complete in {time.time() - t0:.2f}s")
-        return fleet_with_weather.to_flight_list()
+        return self._fleet_to_seq(fleet_with_weather)
 
     @staticmethod
     def _intersect_weather_variables(
@@ -664,11 +684,11 @@ class FastFleetRunner:
         t0 = time.time()
         logger.info("Applying humidity scaling...")
 
-        fleet = Fleet.from_seq(seq)
+        fleet = self._seq_to_fleet(seq)
         fleet = self.params.humidity_scaling.eval(fleet)
 
         logger.info(f"Humidity scaling complete in {time.time() - t0:.2f}s")
-        return fleet.to_flight_list()
+        return self._fleet_to_seq(fleet)
 
     def _fleet_cocip(self, seq: List[Flight], met: Any, rad: Any) -> List[Flight]:
         """Run CoCiP once on entire fleet (vectorized)."""
@@ -676,11 +696,11 @@ class FastFleetRunner:
         logger.info(f"Fleet-level CoCiP evaluation for {len(seq)} flights...")
 
         cocip = Cocip(met=met, rad=rad, **self.params.cocip_kwargs)
-        fleet = Fleet.from_seq(seq)
+        fleet = self._seq_to_fleet(seq)
         results_fleet = cocip.eval(source=fleet)
 
         logger.info(f"CoCiP evaluation complete in {time.time() - t0:.2f}s")
-        return results_fleet.to_flight_list()
+        return self._fleet_to_seq(results_fleet)
 
     # ---------------------------
     # Results extraction
