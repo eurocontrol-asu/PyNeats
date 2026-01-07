@@ -23,6 +23,7 @@ import pandas as pd
 
 from pycontrails import Flight
 from pyneats.core.steps import BaseStep
+from pyneats.core.neats_default_parameters import DEFAULT_ACCF_VALIDITY_PRESSURE
 from pyneats.core.steps_registry import register
 from pyneats.steps.emissions.views import FlightWithEmissions
 from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
@@ -52,7 +53,8 @@ class LocalACCFParams(aCCFParams):
     col_latitude: str = "latitude"                      # [deg]
     col_potential_vorticity: str = "potential_vorticity"
     col_nox_ei: str = "nox_ei"     # [kg(NOx)/kg(fuel)]
-    col_fuel_burn: str = "fuel_burn" # [kg(fuel)]   
+    col_fuel_burn: str = "fuel_burn" # [kg(fuel)]
+    col_air_pressure: str = "air_pressure"
 
     scale_o3: Mapping[str, float] = field(
         default_factory=lambda: ACCF_SCALE_03
@@ -261,6 +263,13 @@ class LocalACCFModel(
         o3 = self.compute_o3(flight)
         ch4 = self.compute_ch4(flight)
         h2o = self.compute_h2o(flight)
+
+        # Discounting output values from the regression functions on part of the flight 
+        # that are outside the validity region of aCCFs formulas
+        mask_pressure = flight[self.params.col_air_pressure]> DEFAULT_ACCF_VALIDITY_PRESSURE
+        o3[mask_pressure] = 0.0
+        ch4[mask_pressure] = 0.0
+        h2o[mask_pressure] = 0.0
 
         # Write directly on the flight
         flight["ATR_20_O3"] = o3

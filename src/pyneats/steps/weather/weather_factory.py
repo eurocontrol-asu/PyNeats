@@ -34,7 +34,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import ClassVar, Final, Mapping, Optional, Any
+from typing import ClassVar, Mapping, Optional
 
 import xarray as xr
 from pycontrails import DiskCacheStore, MetDataset
@@ -65,6 +65,15 @@ from pyneats.steps.weather.weather_provider import (
 )
 from pyneats.steps.weather.weather_store import ZarrPaths, get_weather_from_zarr
 
+from pyneats.core.compute_parameters import (
+    DEFAULT_SDR_ACCUMULATE_DT_S,
+    DEFAULT_HORIZONTAL_RES_DEG,
+    DEFAULT_PRESSURE_LEVELS_HPA,
+    DEFAULT_WEATHER_OFFSET_H,
+    DEFAULT_WIND_CHUNKS,
+    DEFAULT_MET_CHUNKS,
+    DEFAULT_RAD_CHUNKS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,48 +91,8 @@ __all__ = [
     "DWDFactory",
 ]
 
-# ---------------- defaults ----------------
-DEFAULT_WEATHER_OFFSET_H: Final[int] = 36
-DEFAULT_PRESSURE_LEVELS_HPA: Final[tuple[float, ...]] = (
-    550,
-    500,
-    450,
-    400,
-    350,
-    300,
-    250,
-    225,
-    200,
-    175,
-    150,
-    125,
-)
-DEFAULT_HORIZONTAL_RES_DEG: Final[float] = 0.25
-DEFAULT_SDR_ACCUMULATE_DT_S: Final[int] = 3600  # 1 hour
 
 
-# Default chunk dimensions for xarray operations using zarr backend
-
-DEFAULT_MET_CHUNKS: Final[Mapping[str, Any]]  = {
-    "time": 1,
-    "level": 10,
-    "latitude": 256,
-    "longitude": 256,
-}
-
-DEFAULT_RAD_CHUNKS: Final[Mapping[str, Any]]  = {
-    "time": 1,
-    "level": 1,
-    "latitude": 256,
-    "longitude": 256,
-}
-
-DEFAULT_WIND_CHUNKS: Final[Mapping[str, Any]] = {
-    "time": 1,
-    "level": 10,
-    "latitude": 256,
-    "longitude": 256,
-}
 
 
 # ---------------- error ----------------
@@ -484,7 +453,6 @@ class DWDFactory(WeatherFactoryProtocol):
                 compat="equals",
             )
             wind_ds_combined = wind_ds_combined.sortby("level")
-            
             wind_ds_xr = wind_ds_combined.chunk(wind_chunks)
 
 
@@ -525,7 +493,6 @@ class DWDFactory(WeatherFactoryProtocol):
                 ds["clc"].attrs["units"] = "1"
             if "rhi" in ds and ds["rhi"].attrs.get("units", "-") in ("-", "%"):
                 ds["rhi"].attrs["units"] = "1"
-            # SDR conversion is done later during zarr build 
 
             # Map variables and sanity check units
             # ds = self._standardize_vars(ds, {**self._required_map, **self._optional_map, **self._rad_map})

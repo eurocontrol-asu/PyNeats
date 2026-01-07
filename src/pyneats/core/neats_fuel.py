@@ -12,6 +12,8 @@ from pyneats.core.neats_default_parameters import (
     DEFAULT_AROMATICS_CONTENT,
     DEFAULT_NAPHTHALEN_CONTENT,
     DEFAULT_SULPHUR_CONTENT,
+    DEFAULT_HYDROGEN_CONTENT, 
+    DEFAULT_Q_FUEL,
 )
 
 
@@ -53,11 +55,10 @@ class NEATSFuel(SAFBlend):
             # Convert H/C atomic ratio to hydrogen *mass percent* (×100 to keep PyContrails' convention)
             h_wt_pct = (r * 1.008) / (12.011 + r * 1.008) * 100.0
         else:
-            h_wt_pct = base.hydrogen_content  # Jet-A default (~13.8)
+            h_wt_pct = DEFAULT_HYDROGEN_CONTENT
 
         # --- Resolve q_fuel
-        qf = float(q_fuel) if q_fuel is not None else base.q_fuel
-
+        qf = float(q_fuel) if q_fuel is not None else DEFAULT_Q_FUEL
 
         # --- Storing Optional Fuel Attributes from AOs, not used at this stage
         if aromatics_content is not None:

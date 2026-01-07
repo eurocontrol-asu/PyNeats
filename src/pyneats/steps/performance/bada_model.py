@@ -52,6 +52,7 @@ from pycontrails.physics.jet import (
 from pyneats.core.neats_default_parameters import (
     DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW,
     DEFAULT_Q_FUEL,
+    REFERENCE_Q_FUEL,
     DEFAULT_DELTA_TAU_COMPUTE_METHOD,
     DEFAULT_DELTA_TAU_FILL_METHOD,
     DEFAULT_PAYLOAD_FACTOR,
@@ -130,7 +131,7 @@ class BADAPerformanceModelParams(PerformanceModelParams):
     """Parameters for the BADA performance model calculation."""
 
     true_air_speed_smoothing_window: int = DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW
-    q_fuel: float = DEFAULT_Q_FUEL
+    reference_q_fuel: float = REFERENCE_Q_FUEL
 
     delta_tau_compute_method: Literal["point", "zero"] = DEFAULT_DELTA_TAU_COMPUTE_METHOD
     delta_tau_fill_method: Literal["bffill", "none", "zero"] = DEFAULT_DELTA_TAU_FILL_METHOD
@@ -304,7 +305,7 @@ class BADAPerformanceModel(
 
             # 3) choose mass strategy + compute perf (now returns q_fuel_used)
             perf, q_fuel_used = self._choose_mass_strategy(
-                adapter, df, flight, icao, q_fuel_attr, self.params.q_fuel
+                adapter, df, flight, icao, q_fuel_attr, self.params.reference_q_fuel
             )
 
             # 4) finalize df columns, compute efficiency if needed (using q_fuel_used)
@@ -347,7 +348,8 @@ class BADAPerformanceModel(
         engine_id: Optional[str] = (
             flight.attrs.get("engine_uid") if hasattr(flight, "attrs") else None
         )
-        q_fuel: Optional[float] = flight.attrs.get("q_fuel") if hasattr(flight, "attrs") else None
+        q_fuel: Optional[float] = flight.fuel.q_fuel
+
         return icao, series, engine_id, q_fuel
 
     def _resolve_bada_adapter(
@@ -478,19 +480,19 @@ class BADAPerformanceModel(
         flight: Flight,
         icao: str,
         q_fuel_attr: Optional[float],
-        default_q_fuel: float,
+        reference_q_fuel: float,
     ) -> Tuple[PerfOutput, float]:
         """Choose mass estimation strategy and use iterative estimation with the performance
         model if needed. Returns both perf output and q_fuel_used."""
 
         # Determine q_fuel to use
-        q_fuel_used = q_fuel_attr if q_fuel_attr is not None else default_q_fuel
+        q_fuel_used = q_fuel_attr if q_fuel_attr is not None else reference_q_fuel
 
         if q_fuel_attr is not None:
             self.logger.debug(
                 "'q_fuel' attribute provided (%s J/kg), using it instead of default %s J/kg",
                 q_fuel_attr,
-                default_q_fuel,
+                reference_q_fuel,
             )
 
         cols = [
@@ -512,7 +514,7 @@ class BADAPerformanceModel(
                 df,
                 initial_mass=None,
                 q_fuel_used=q_fuel_used,
-                default_q_fuel=default_q_fuel,
+                default_q_fuel=reference_q_fuel,
             )
             return perf, q_fuel_used
 
@@ -524,13 +526,13 @@ class BADAPerformanceModel(
                 df,
                 initial_mass=initial_mass,
                 q_fuel_used=q_fuel_used,
-                default_q_fuel=default_q_fuel,
+                default_q_fuel=reference_q_fuel,
             )
             return perf, q_fuel_used
 
         # iterative estimation
         perf = self._estimate_initial_mass_iterative(
-            adapter, df, flight, icao, q_fuel_used, default_q_fuel
+            adapter, df, flight, icao, q_fuel_used, reference_q_fuel
         )
         return perf, q_fuel_used
 
