@@ -1,4 +1,4 @@
-from typing  import Final, Mapping, Any
+from typing  import Final, Mapping, Any, Literal
 
 __all__ = [
     "DEFAULT_NJOBS",
@@ -52,3 +52,6 @@ DEFAULT_WIND_CHUNKS: Final[Mapping[str, Any]] = {
     "longitude": 256,
 }
 
+# Zarr Chunking 
+ZARR_CACHING_STRATEGY = Literal["all_variables", "by_variable"]
+DEFAULT_ZARR_CACHING_STRATEGY : Final[ZARR_CACHING_STRATEGY] = "by_variable"

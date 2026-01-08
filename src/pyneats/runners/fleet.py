@@ -59,7 +59,7 @@ from pyneats.steps.parsing.views import Flight4D
 from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
 
 from pyneats.steps.weather.weather_provider import FlightWithWeather
-from pyneats.steps.weather.weather_store import ZarrPaths, get_weather_from_zarr
+from pyneats.steps.weather.weather_store import ZarrPaths, get_weather_from_zarr, clear_dataset_cache
 
 from pyneats.steps.performance import PerformanceModel
 from pyneats.steps.performance.views import FlightWithPerformance
@@ -118,7 +118,7 @@ class FleetRunnerParams(RunnerConfig):
     zarr_read_chunks: Mapping[str, int] | None = None
 
     # Parallelism configuration (joblib)
-    n_jobs: int = DEFAULT_NJOBS
+    njobs: int = DEFAULT_NJOBS
     batch_size: int = DEFAULT_BATCH_SIZE
     prefer: str = DEFAULT_JOBLIB_PREFERENCE
 
@@ -638,8 +638,14 @@ class FleetRunner:
             ._nonco2() # pylint: disable=protected-access
             ._climate_metrics() # pylint: disable=protected-access
             ._extract_results() # pylint: disable=protected-access
+            ._clean_memory()  # pylint: disable=protected-access
         )
 
+    def _clean_memory(self) -> Self:
+
+        clear_dataset_cache()
+
+        return self
     
     def results_as_dataframe(self) -> pd.DataFrame:
         """
@@ -693,10 +699,10 @@ class FleetRunner:
         processor_func: Callable[[T], U],
     ) -> Tuple[List[U], List[Dict[str, Any]]]:
         t0 = time.time()
-        logger.info("%s %d flights (n_jobs=%s)...", step_name.capitalize(), len(seq), self.cfg.n_jobs)
+        logger.info("%s %d flights (n_jobs=%s)...", step_name.capitalize(), len(seq), self.cfg.njobs)
 
         results = Parallel(
-            n_jobs=self.cfg.n_jobs,
+            n_jobs=self.cfg.njobs,
             prefer=self.cfg.prefer,
             batch_size=self.cfg.batch_size,
         )(

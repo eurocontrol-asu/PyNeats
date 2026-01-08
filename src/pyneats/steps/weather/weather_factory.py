@@ -29,13 +29,14 @@ forecast data with flexible caching strategies.
 
 from __future__ import annotations
 
+import gc
 import logging
 import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import ClassVar, Mapping, Optional
-
+import zarr
 import xarray as xr
 from pycontrails import DiskCacheStore, MetDataset
 from pycontrails.core.met_var import (
@@ -73,6 +74,11 @@ from pyneats.core.compute_parameters import (
     DEFAULT_WIND_CHUNKS,
     DEFAULT_MET_CHUNKS,
     DEFAULT_RAD_CHUNKS,
+)
+
+from pyneats.core.compute_parameters import (
+    DEFAULT_ZARR_CACHING_STRATEGY,
+    ZARR_CACHING_STRATEGY
 )
 
 logger = logging.getLogger(__name__)
@@ -129,6 +135,8 @@ class DWDZarrCacheSpec:
         DEFAULT_SDR_ACCUMULATE_DT_S  # 1 hour by default; None to skip
     )
 
+    zarr_caching_strategy: ZARR_CACHING_STRATEGY = DEFAULT_ZARR_CACHING_STRATEGY
+
 
 @dataclass(frozen=True)
 class WeatherCacheConfig:
@@ -148,6 +156,7 @@ class WeatherFactoryParams:
     horizontal_resolution: float = DEFAULT_HORIZONTAL_RES_DEG
     pressure_levels: tuple[float, ...] = DEFAULT_PRESSURE_LEVELS_HPA
     weather_offset_hours: int = DEFAULT_WEATHER_OFFSET_H
+    
 
     # unified optional cache config
     cache: Optional[WeatherCacheConfig] = None
@@ -399,7 +408,7 @@ class DWDFactory(WeatherFactoryProtocol):
         # 3) chunk (use defaults similar to your script)
         met_chunks = zc.met_chunks or DEFAULT_MET_CHUNKS
         rad_chunks = zc.rad_chunks or DEFAULT_RAD_CHUNKS
-
+        
         met_ds_xr = met_ds_xr.chunk(met_chunks)
         rad_ds_xr = rad_ds_xr.chunk(rad_chunks)
 
@@ -420,8 +429,9 @@ class DWDFactory(WeatherFactoryProtocol):
                 rad_ds_xr[sdr] = rad_ds_xr[sdr] * float(zc.sdr_accumulate_dt_s)
                 rad_ds_xr[sdr].attrs["units"] = "J m**-2"
 
-            met_ds_xr.to_zarr(zc.met_store, mode=mode, consolidated=True)
-            rad_ds_xr.to_zarr(zc.rad_store, mode=mode, consolidated=True)
+
+            self.store_zarr(met_ds_xr, zc.met_store, mode, zc.zarr_caching_strategy)
+            self.store_zarr(rad_ds_xr, zc.rad_store, mode, zc.zarr_caching_strategy)
 
         except Exception as e:
             raise WeatherFactoryError(f"Writing zarr failed: {e}") from e
@@ -455,15 +465,35 @@ class DWDFactory(WeatherFactoryProtocol):
             wind_ds_combined = wind_ds_combined.sortby("level")
             wind_ds_xr = wind_ds_combined.chunk(wind_chunks)
 
-
             os.makedirs(os.path.dirname(zc.wind_store), exist_ok=True)
-            wind_ds_xr.to_zarr(zc.wind_store, mode=mode, consolidated=True)
+            
+            self.store_zarr(wind_ds_xr, zc.wind_store, mode, zc.zarr_caching_strategy)
 
         logger.info(
             "DWD zarr cache built",
             extra={"met_store": zc.met_store, "rad_store": zc.rad_store},
         )
         return (zc.met_store, zc.rad_store)
+    
+    @staticmethod
+    def store_zarr(met_dataset : xr.Dataset,
+                   store: str,
+                   mode: str,
+                   strategy: ZARR_CACHING_STRATEGY):
+
+        if strategy == "all_variables":
+            met_dataset.to_zarr(store, mode=mode, consolidated=True)
+        else:
+            met_var_list = list(met_dataset.data_vars)
+            for i, var_name in enumerate(met_var_list):
+                var_ds = met_dataset[[var_name]]
+                write_mode = "w" if i == 0 else "a"
+                var_ds.to_zarr(store, mode=write_mode, consolidated=False)
+                del var_ds
+                gc.collect()
+
+            # Consolidate metadata after all variables written
+            zarr.consolidate_metadata(store)
 
     # ---------- live loader (NetCDF) mirroring your script ----------
     def _load_and_standardize_live(
@@ -495,7 +525,6 @@ class DWDFactory(WeatherFactoryProtocol):
                 ds["rhi"].attrs["units"] = "1"
 
             # Map variables and sanity check units
-            # ds = self._standardize_vars(ds, {**self._required_map, **self._optional_map, **self._rad_map})
             ds = self._standardize_vars(ds, var_map)
 
             ds.attrs.update(

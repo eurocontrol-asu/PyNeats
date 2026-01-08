@@ -138,7 +138,7 @@ DEFAULT_TIME_BUF: Final[tuple[np.timedelta64, np.timedelta64]] = (
         np.timedelta64(0, "h"),
         np.timedelta64(0, "h"),
     )
-DEFAULT_LEVEL_BUF: tuple[float, float] = (0.0, 0.0)
+DEFAULT_LEVEL_BUF: tuple[float, float] = (0.0, 40.0)
 
 DEFAULT_WEATHER_INTEPOLATION_METHOD: Final[InterpolationMethod] = "linear"
 DEFAULT_WEATHER_USE_INDICES: Final[bool] = False # Important. If True, delta_tau is wrongly extrapolated bellow the limit altitude
@@ -150,3 +150,7 @@ DEFAULT_AROMATICS_CONTENT : Final[float] = 0.25  # default value - Not used in c
 DEFAULT_SULPHUR_CONTENT : Final[float] = 0.003   # default value - Not used in calculations
 DEFAULT_NAPHTHALEN_CONTENT : Final[float] = 0.03 # default value - Not used in calculations
 DEFAULT_HYDROGEN_CONTENT : Final[float] = 13.79 # default value provided by the consortium (DLR/TO70)
+
+# Zarr Chunking 
+ZARR_CACHING_STRATEGY = Literal["all_variables", "by_variable"]
+DEFAULT_ZARR_CACHING_STRATEGY : Final[ZARR_CACHING_STRATEGY] = "all_variables"

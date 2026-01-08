@@ -30,7 +30,7 @@ from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
 from pyneats.steps.climate_functions.protocol import NonCO2Model, ClimateStepError
 from pyneats.steps.climate_functions.climaccf import aCCFParams
 
-from pyneats.core.constants import (
+from pyneats.core.physics import (
     ACCF_SCALE_03,
     ACCF_SCALE_CH4,
     ACCF_SCALE_H2O,
@@ -55,6 +55,7 @@ class LocalACCFParams(aCCFParams):
     col_nox_ei: str = "nox_ei"     # [kg(NOx)/kg(fuel)]
     col_fuel_burn: str = "fuel_burn" # [kg(fuel)]
     col_air_pressure: str = "air_pressure"
+    col_phase: str = "phase"
 
     scale_o3: Mapping[str, float] = field(
         default_factory=lambda: ACCF_SCALE_03
@@ -264,12 +265,22 @@ class LocalACCFModel(
         ch4 = self.compute_ch4(flight)
         h2o = self.compute_h2o(flight)
 
-        # Discounting output values from the regression functions on part of the flight 
+        # Discounting output values from the regression functions on part of the flight
         # that are outside the validity region of aCCFs formulas
-        mask_pressure = flight[self.params.col_air_pressure]> DEFAULT_ACCF_VALIDITY_PRESSURE
-        o3[mask_pressure] = 0.0
-        ch4[mask_pressure] = 0.0
-        h2o[mask_pressure] = 0.0
+        # Create the mask for INVALID rows
+
+        # Condition 1: Pressure is too high (Altitude too low)
+        bad_pressure = flight[self.params.col_air_pressure] > DEFAULT_ACCF_VALIDITY_PRESSURE
+
+        # Condition 2: Phase is not Cruise
+        bad_phase = flight[self.params.col_phase] != "Cruise"
+
+        # Combine the masks
+        mask = bad_pressure | bad_phase
+
+        o3[mask] = 0.0
+        ch4[mask] = 0.0
+        h2o[mask] = 0.0
 
         # Write directly on the flight
         flight["ATR_20_O3"] = o3

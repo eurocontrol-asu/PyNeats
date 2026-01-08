@@ -31,7 +31,7 @@ from pyneats.steps.climate_metrics.protocol import (
 )
 from pyneats.steps.climate_metrics.report import FlightReport
 from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
-from pyneats.core.constants import (
+from pyneats.core.physics import (
     METRICS_HORIZONS,
     SURFACE_EARTH,
     SECONDS_PER_YEAR,

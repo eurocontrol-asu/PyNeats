@@ -52,14 +52,12 @@ trajectory_dataframe = pd.DataFrame({col: pd.Series(dtype="object") for col in T
 BADA_PATH = "/path/to/bada/files/"
 
 n_jobs = 30
-flight_chunk = 16
 
 #Instantiate Fleet Object
 params = FleetRunnerParams(    
     trajectory_dataframe = trajectory_dataframe,
     zarr_paths=zarr_paths,
     njobs=n_jobs,
-    flight_chunk=flight_chunk,
     bada_path=BADA_PATH,
 )
 

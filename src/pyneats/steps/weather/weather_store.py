@@ -73,7 +73,23 @@ def _open_metdataset_from_zarr(
 
     return md
 
+def clear_dataset_cache() -> None:
+    """Clear in-memory MetDataset cache and close underlying datasets.
 
+    Call this after processing a zarr group when you no longer need
+    the cached weather data and want to reclaim memory.
+    """
+    for md in _DATASET_CACHE.values():
+        ds = getattr(md, "data", None)
+        close = getattr(ds, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                pass
+    _DATASET_CACHE.clear()
+
+    
 # Open wind MetDataset, or fall back to met if wind store is not provided
 def _open_wind_metdataset(
     wind_path: Optional[str],
