@@ -476,23 +476,43 @@ class DWDFactory(WeatherFactoryProtocol):
         return (zc.met_store, zc.rad_store)
     
     @staticmethod
-    def store_zarr(met_dataset : xr.Dataset,
+    def store_zarr(met_dataset: xr.Dataset,
                    store: str,
                    mode: str,
-                   strategy: ZARR_CACHING_STRATEGY):
+                   strategy: str):
 
         if strategy == "all_variables":
+            # Standard fast write (higher peak memory)
             met_dataset.to_zarr(store, mode=mode, consolidated=True)
+            print("all_variables",strategy)
         else:
+            # Low-memory sequential write
+            print(strategy)
             met_var_list = list(met_dataset.data_vars)
+            
             for i, var_name in enumerate(met_var_list):
                 var_ds = met_dataset[[var_name]]
-                write_mode = "w" if i == 0 else "a"
-                var_ds.to_zarr(store, mode=write_mode, consolidated=False)
+                
+                if i == 0:
+                    # First pass: Initialize the store (mode="w")
+                    # CRITICAL SAFETY: We explicitly merge ALL coordinates from the parent 
+                    # met_dataset into this first write. This ensures the full grid (lat, lon, time)
+                    # is defined in the Zarr store immediately, preventing errors if the first 
+                    # variable doesn't happen to use all dimensions.
+                    init_ds = var_ds.merge(met_dataset.coords)
+                    init_ds.to_zarr(store, mode="w", consolidated=False)
+                    del init_ds # clean up the temporary object
+                else:
+                    # Subsequent passes: Append ONLY the data variable (mode="a")
+                    # We drop the coordinates to prevent Xarray from trying to check or 
+                    # re-write them, which saves time and avoids conflict errors.
+                    var_ds.drop_vars(var_ds.coords).to_zarr(store, mode="a", consolidated=False)
+                
+                # Force memory release before the next loop iteration
                 del var_ds
                 gc.collect()
 
-            # Consolidate metadata after all variables written
+            # Consolidate metadata exactly once at the very end
             zarr.consolidate_metadata(store)
 
     # ---------- live loader (NetCDF) mirroring your script ----------

@@ -54,4 +54,4 @@ DEFAULT_WIND_CHUNKS: Final[Mapping[str, Any]] = {
 
 # Zarr Chunking 
 ZARR_CACHING_STRATEGY = Literal["all_variables", "by_variable"]
-DEFAULT_ZARR_CACHING_STRATEGY : Final[ZARR_CACHING_STRATEGY] = "by_variable"
+DEFAULT_ZARR_CACHING_STRATEGY : Final[ZARR_CACHING_STRATEGY] = "all_variables"

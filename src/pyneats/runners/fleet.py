@@ -600,21 +600,31 @@ class FleetRunner:
 
     @staticmethod
     def _seq_to_fleet(seq: List[Flight]) -> Fleet:
+
         for s in seq:
+            s.attrs['columns'] = set(s.data.keys())
             s["q_fuel"] = np.full(len(s), s.fuel.q_fuel)
             s["ei_h2o"] = np.full(len(s), s.fuel.ei_h2o)
             s.fuel = None
-            
-        return Fleet.from_seq(seq)
+
+        fleet : Fleet = Fleet.from_seq(seq)
+        fleet.attrs['columns'] = set(fleet.data.keys())
+        return fleet
     
     @staticmethod
     def _fleet_to_seq(fleet: Fleet) -> List[Flight]:
+        
+        fleet_columns = fleet.attrs.pop('columns')
         seq = fleet.to_flight_list()
         
         for s in seq:
-            del s["q_fuel"]
-            del s["ei_h2o"]
+            flight_columns = s.attrs.pop('columns')
+            columns_to_delete = fleet_columns.difference(flight_columns)
+
+            for c in columns_to_delete:
+                s.data.pop(c)
             s.fuel = NEATSFuel.from_attrs(s.attrs)
+
         return seq
     
     def eval(self) -> Self:

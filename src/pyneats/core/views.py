@@ -127,6 +127,7 @@ class FlightView(Flight):
         require: Iterable[str] | None = None,
     ) -> TView:
         """Validate that the flight satisfies this view's requirements."""
+
         required_cols = cls._all_required(require)
         required_attrs = cls._all_attrs_required()
 

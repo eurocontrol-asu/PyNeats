@@ -51,7 +51,6 @@ from pycontrails.physics.jet import (
 
 from pyneats.core.neats_default_parameters import (
     DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW,
-    DEFAULT_Q_FUEL,
     REFERENCE_Q_FUEL,
     DEFAULT_DELTA_TAU_COMPUTE_METHOD,
     DEFAULT_DELTA_TAU_FILL_METHOD,
@@ -63,6 +62,7 @@ from pyneats.core.neats_default_parameters import (
     DEFAULT_BADA3_VERSION,
     DEFAULT_ROCD_PHASE_THRESHOLD,
 )
+
 from pyneats.core.steps_registry import register
 from pyneats.core.steps import BaseStep
 from pyneats.steps.weather.weather_provider import FlightWithWeather
