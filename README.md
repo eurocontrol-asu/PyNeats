@@ -33,5 +33,5 @@ The library is designed for **researchers, airspace operators, regulators, and i
 
 git clone https://github.com/eurocontrol-asu/PyNeats.git
 cd PyNeats
-pip install -e .[accf]
+pip install -e .
 pip install pybada --ignore-requires-python --no-deps

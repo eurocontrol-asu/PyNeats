@@ -28,7 +28,7 @@ dependencies = [
   "xarray==2024.10.0",
   "pycontrails[ecmwf,gcp,gfs,jupyter,pyproj]==0.60.1",
   "dacite>=1.9.2",
-  "zarr>=2.18.3"
+  "zarr>=2.18.3,<3"
 ]
 
 [project.optional-dependencies]
