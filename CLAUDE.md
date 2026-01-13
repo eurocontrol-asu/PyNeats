@@ -32,7 +32,7 @@ PyNeats currently has two major issues:
 - **Testing overhead**: Every step needs dual test coverage
 
 **2. Legacy Python Setup**
-- Using setuptools-scm instead of modern hatch-vcs
+- Using setuptools-scm instead of modern hatch-vcs (manual version management)
 - No standardized developer workflows (Makefile)
 - No pre-commit hooks for code quality
 - No automated changelog generation
@@ -49,11 +49,12 @@ PyNeats currently has two major issues:
 
 **Modern Python Practices (2026 Standards):**
 - Migrate to `uv` for dependency management
+- Migrate to `hatch-vcs` for automatic versioning from git tags (no more manual `__version__` updates!)
 - Add `Makefile` for standardized commands
-- Add pre-commit hooks (ruff, mypy)
+- Add pre-commit hooks (ruff formatter + linter, mypy)
 - Add `cliff.toml` for automated changelogs
 - Modernize CI/CD workflows with security audits
-- Add MkDocs documentation site
+- Add MkDocs documentation site (deferred to later phase)
 - Add Dependabot for dependency updates
 - Add comprehensive README badges
 
@@ -186,13 +187,14 @@ git commit -m "Phase 1: Add validators and schemas
 - Add tests with 100% coverage
 - All quality checks pass"
 
-# Claude does NOT push - user decides when to push
+# After commit, Claude pushes to the working branch
+git push -u origin claude/refactor-fleet-only-9triX
 ```
 
 ### **Branch Strategy**
 - **Main branch**: `main` (protected, never commit here)
-- **Refactoring branch**: `refactor/fleet-only-architecture` (Claude commits here after approval)
-- **Phase branches** (optional): `phase-1-foundation`, `phase-2-cocip`, etc.
+- **Refactoring branch**: `claude/refactor-fleet-only-9triX` (Claude commits and pushes here after user approval)
+- **Phase branches**: Not needed - all work on single refactoring branch
 
 ### **Commit Message Format**
 ```
@@ -227,8 +229,7 @@ Quality checks:
 #### **Before Every Commit:**
 ```bash
 # 1. Run formatting
-black src/pyneats tests/
-isort src/pyneats tests/
+ruff format src/pyneats tests/
 
 # 2. Run linting
 ruff check src/pyneats tests/ --fix
@@ -259,33 +260,20 @@ pytest tests/performance/ -v
 
 ## Quality Standards
 
-### **Code Formatting**
+### **Code Formatting & Linting**
 
-#### **black** (Code Formatter)
+#### **ruff** (All-in-One Formatter & Linter - 2026 Standard)
 ```bash
-black src/pyneats tests/
-```
-- Line length: 100 (from pyproject.toml)
-- Python 3.11+ target
-- Must pass before commit
+# Format code (replaces black + isort)
+ruff format src/pyneats tests/
 
-#### **isort** (Import Organizer)
-```bash
-isort src/pyneats tests/
-```
-- Profile: black
-- Line length: 100
-- Must pass before commit
-
-### **Linting**
-
-#### **ruff** (Fast Python Linter)
-```bash
+# Lint code
 ruff check src/pyneats tests/ --fix
 ```
-- Line length: 100
-- Python 3.10+ target
-- Must fix all issues before commit
+- Line length: 88
+- Python 3.11+ target
+- Replaces black and isort
+- Must pass before commit
 - Auto-fix enabled where safe
 
 ### **Type Checking**
@@ -295,6 +283,7 @@ ruff check src/pyneats tests/ --fix
 mypy src/pyneats
 ```
 - Strict mode enabled
+- Python 3.11+ target
 - All public functions must have type hints
 - Return types required
 - Must pass with 0 errors before commit
@@ -343,7 +332,9 @@ git cliff --output CHANGELOG.md
 These modernization tasks will be integrated into Phase 0 and Phase 1.
 
 #### **Build System & Dependencies**
-- [ ] Migrate from `setuptools-scm` to `hatch-vcs` for versioning
+- [ ] Migrate from `setuptools-scm` to `hatch-vcs` for automatic versioning from git tags
+  - **Benefit**: No more manual `__version__` updates! Version comes from git tags automatically
+  - Tag a release: `git tag v1.2.3` → hatch-vcs handles the rest
 - [ ] Update `pyproject.toml` to use `dependency-groups` instead of `optional-dependencies`
 - [ ] Add `py.typed` marker (already exists, verify)
 - [ ] Ensure `src/` layout is optimal (already using src/)
@@ -358,8 +349,9 @@ These modernization tasks will be integrated into Phase 0 and Phase 1.
   - `make audit` - Security audit (pip-audit)
   - `make docs-serve` - Serve docs locally
 - [ ] Create `.pre-commit-config.yaml`:
-  - Ruff formatter and linter
+  - Ruff formatter (`ruff format`) and linter (`ruff check`)
   - MyPy type checker
+  - Note: Ruff replaces both black and isort (2026 standard)
 - [ ] Install pre-commit hooks: `uv run pre-commit install`
 
 #### **CI/CD Workflows**
@@ -414,12 +406,12 @@ These modernization tasks will be integrated into Phase 0 and Phase 1.
 
 #### **Configuration Updates**
 - [ ] Update `pyproject.toml`:
-  - Add hatch-vcs configuration
-  - Update ruff configuration (line length: **88**, target: py310+)
-  - Update mypy to strict mode
+  - Add hatch-vcs configuration for automatic versioning
+  - Update ruff configuration (line length: **88**, target: py311+)
+  - Update mypy to strict mode (target: py311+)
   - Update pytest configuration
   - Add coverage configuration
-  - Keep Python 3.10+ support (no breaking changes)
+  - Update Python requirement to 3.11+ (pycontrails dependency requires it)
 
 ### **BADA Download Preservation**
 
@@ -487,7 +479,8 @@ bada_data/
 - [x] Define success criteria
 - [x] Establish working agreement
 - [x] Define modernization plan (2026 standards)
-- [ ] User creates refactoring branch
+- [x] Create refactoring branch (`claude/refactor-fleet-only-9triX`)
+- [ ] User reviews and approves CLAUDE.md
 - [ ] User approves fleet-only refactoring plan
 - [ ] User approves modernization plan
 
@@ -554,13 +547,14 @@ bada_data/
 **Workstream B: Modernization**
 
 - [ ] **1.7** Update `pyproject.toml`
-  - Migrate from `setuptools-scm` to `hatch-vcs`
+  - Migrate from `setuptools-scm` to `hatch-vcs` (automatic versioning from git tags)
   - Change `optional-dependencies` to `dependency-groups`
   - Add dev group: pytest, ruff, mypy, pre-commit, pip-audit
   - Add docs group: mkdocs-material, mkdocstrings (for future use)
-  - Update ruff configuration (line length: 88, target: py310+)
-  - Update mypy to strict mode
+  - Update ruff configuration (line length: 88, target: py311+)
+  - Update mypy to strict mode (target: py311+)
   - Update pytest, coverage configurations
+  - Update Python requirement to 3.11+ (pycontrails requires it)
   - Add hatch-vcs version configuration
 
 - [ ] **1.8** Create `Makefile`
@@ -569,8 +563,9 @@ bada_data/
   - Test: `make help` shows all commands
 
 - [ ] **1.9** Create `.pre-commit-config.yaml`
-  - Ruff formatter and linter
+  - Ruff formatter (`ruff format`) and linter (`ruff check`)
   - MyPy type checker
+  - Note: Ruff replaces black and isort
   - Install: `uv run pre-commit install`
   - Test: `uv run pre-commit run --all-files`
 
@@ -656,16 +651,16 @@ Refactoring foundation:
 - Unit tests for validators, schemas, and fleet_utils
 
 Modernization (2026 standards):
-- Migrated to hatch-vcs for versioning
+- Migrated to hatch-vcs for automatic versioning from git tags
 - Added Makefile for standardized dev commands
-- Added pre-commit hooks (ruff + mypy)
+- Added pre-commit hooks (ruff format + check, mypy)
 - Migrated CI/CD to uv package manager
 - Added security audits (pip-audit)
 - Added Dependabot for automated updates
 - Added cliff for automated changelogs
 - Added professional README badges
 - Preserved BADA download in CI workflows (BADA3/BADA4 paths)
-- Updated ruff to line length 88
+- Updated to Python 3.11+ and ruff line length 88
 
 Quality checks:
 ✓ ruff format + check: all pass
@@ -917,8 +912,7 @@ git commit -m "Phase 3: Add UnifiedRunner (Fleet-only architecture)"
 - [ ] **4.6** Run full quality check
   ```bash
   # Formatting
-  black src/pyneats tests/ examples/
-  isort src/pyneats tests/ examples/
+  ruff format src/pyneats tests/ examples/
 
   # Linting
   ruff check src/pyneats tests/ examples/
@@ -942,8 +936,7 @@ git commit -m "Phase 3: Add UnifiedRunner (Fleet-only architecture)"
 #### **Validation Criteria**
 ```bash
 # All quality checks pass
-black --check src/ tests/ examples/
-isort --check src/ tests/ examples/
+ruff format --check src/ tests/ examples/
 ruff check src/ tests/ examples/
 mypy src/pyneats
 
@@ -990,13 +983,13 @@ Documentation and cleanup:
 
 ### **Last Updated**: 2026-01-13
 
-### **Active Branch**: Not created yet
+### **Active Branch**: `claude/refactor-fleet-only-9triX`
 
 ### **Blockers**: None
 
 ### **Next Actions**
-1. User creates branch: `git checkout -b refactor/fleet-only-architecture`
-2. User reviews and approves CLAUDE.md
+1. ✓ Branch created: `claude/refactor-fleet-only-9triX`
+2. ⏳ User reviews and approves CLAUDE.md
 3. Begin Phase 1: Foundation
 
 ---
@@ -1015,17 +1008,12 @@ Documentation and cleanup:
 All tools configured in `pyproject.toml`:
 
 ```toml
-[tool.black]
-line-length = 88
-target-version = ['py311']
-
-[tool.isort]
-profile = "black"
-line_length = 88
-
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py311"
+
+[tool.ruff.format]
+# Ruff replaces black and isort
 
 [tool.mypy]
 strict = true
@@ -1034,6 +1022,9 @@ python_version = "3.11"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+
+[tool.hatch.version]
+source = "vcs"  # Automatic versioning from git tags
 ```
 
 ### **Test Markers**
