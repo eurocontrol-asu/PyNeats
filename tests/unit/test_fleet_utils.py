@@ -4,6 +4,7 @@ from typing import List
 
 import numpy as np
 import pandas as pd
+from datetime import datetime
 import pytest
 from pycontrails import Flight
 
@@ -17,7 +18,7 @@ class TestFlightsToFleet:
 
     def test_single_flight_conversion(self) -> None:
         """Test converting single flight to Fleet."""
-        df = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": [0, 60]})
+        df = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": pd.to_datetime([0, 60], unit="s")})
         fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
         flight = Flight(df, fuel=fuel)
         flight.attrs["flight_id"] = "TEST123"
@@ -31,8 +32,8 @@ class TestFlightsToFleet:
 
     def test_multiple_flights_conversion(self) -> None:
         """Test converting multiple flights to Fleet."""
-        df1 = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": [0, 60]})
-        df2 = pd.DataFrame({"latitude": [53.0], "longitude": [2.0], "altitude": [12000], "time": [120]})
+        df1 = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": pd.to_datetime([0, 60], unit="s")})
+        df2 = pd.DataFrame({"latitude": [53.0], "longitude": [2.0], "altitude": [12000], "time": pd.to_datetime([120], unit="s")})
 
         fuel1 = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
         fuel2 = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
@@ -48,7 +49,7 @@ class TestFlightsToFleet:
 
     def test_fuel_object_converted_to_columns(self) -> None:
         """Test that fuel objects are converted to q_fuel and ei_h2o columns."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": [0]})
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": pd.to_datetime([0], unit="s")})
         fuel = NEATSFuel(q_fuel=43.5e6, hydrogen_content=13.8)
         flight = Flight(df, fuel=fuel)
 
@@ -59,7 +60,7 @@ class TestFlightsToFleet:
 
     def test_columns_tracked_in_attrs(self) -> None:
         """Test that original column sets are tracked in attrs."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": [0]})
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": pd.to_datetime([0], unit="s")})
         fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
         flight = Flight(df, fuel=fuel)
 
@@ -81,7 +82,7 @@ class TestFleetToFlights:
                 "latitude": [51.0, 52.0],
                 "longitude": [0.0, 1.0],
                 "altitude": [10000, 11000],
-                "time": [0, 60],
+                "time": pd.to_datetime([0, 60], unit="s"),
                 "q_fuel": [43.0e6, 43.0e6],
                 "ei_h2o": [1.24, 1.24],
                 "flight_id": [0, 0],
@@ -106,7 +107,7 @@ class TestFleetToFlights:
                 "latitude": [51.0],
                 "longitude": [0.0],
                 "altitude": [10000],
-                "time": [0],
+                "time": pd.to_datetime([0], unit="s"),
                 "q_fuel": [43.0e6],
                 "ei_h2o": [1.24],
                 "flight_id": [0],
@@ -134,7 +135,7 @@ class TestRoundtripConversion:
                 "latitude": [51.0, 52.0, 53.0],
                 "longitude": [0.0, 1.0, 2.0],
                 "altitude": [10000, 11000, 12000],
-                "time": [0, 60, 120],
+                "time": pd.to_datetime([0, 60, 120], unit="s"),
             }
         )
         fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
@@ -158,7 +159,7 @@ class TestRoundtripConversion:
 
     def test_roundtrip_preserves_fuel_object(self) -> None:
         """Test that roundtrip conversion preserves fuel object."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": [0]})
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": pd.to_datetime([0], unit="s")})
         fuel = NEATSFuel(q_fuel=43.5e6, hydrogen_content=13.8)
         original_flight = Flight(df, fuel=fuel)
 
@@ -172,7 +173,7 @@ class TestRoundtripConversion:
 
     def test_roundtrip_preserves_attrs(self) -> None:
         """Test that roundtrip conversion preserves flight attributes."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": [0]})
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": pd.to_datetime([0], unit="s")})
         fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
         original_flight = Flight(df, fuel=fuel)
         original_flight.attrs["flight_id"] = "ABC123"
@@ -187,10 +188,10 @@ class TestRoundtripConversion:
 
     def test_roundtrip_with_multiple_flights(self) -> None:
         """Test roundtrip with multiple flights."""
-        df1 = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": [0, 60]})
-        df2 = pd.DataFrame({"latitude": [53.0], "longitude": [2.0], "altitude": [12000], "time": [120]})
+        df1 = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": pd.to_datetime([0, 60], unit="s")})
+        df2 = pd.DataFrame({"latitude": [53.0], "longitude": [2.0], "altitude": [12000], "time": pd.to_datetime([120], unit="s")})
         df3 = pd.DataFrame(
-            {"latitude": [54.0, 55.0, 56.0], "longitude": [3.0, 4.0, 5.0], "altitude": [13000, 14000, 15000], "time": [180, 240, 300]}
+            {"latitude": [54.0, 55.0, 56.0], "longitude": [3.0, 4.0, 5.0], "altitude": [13000, 14000, 15000], "time": pd.to_datetime([180, 240, 300], unit="s")}
         )
 
         fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)

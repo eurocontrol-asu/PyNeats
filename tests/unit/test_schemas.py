@@ -26,21 +26,21 @@ class TestFleetSchema:
 
     def test_validate_with_all_required_columns(self) -> None:
         """Test that Fleet with all required columns passes validation."""
-        df = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "time": [0, 60], "a": [1, 2], "b": [3, 4], "c": [5, 6]})
+        df = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "time": pd.to_datetime([0, 60], unit="s"), "a": [1, 2], "b": [3, 4], "c": [5, 6]})
         fleet = Fleet(df)
         schema = FleetSchema(required_columns=frozenset({"a", "b"}))
         schema.validate(fleet)  # Should not raise
 
     def test_validate_with_optional_columns(self) -> None:
         """Test that optional columns are not enforced."""
-        df = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "time": [0, 60], "a": [1, 2], "b": [3, 4]})
+        df = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "time": pd.to_datetime([0, 60], unit="s"), "a": [1, 2], "b": [3, 4]})
         fleet = Fleet(df)
         schema = FleetSchema(required_columns=frozenset({"a"}), optional_columns=frozenset({"c", "d"}))
         schema.validate(fleet)  # Should not raise (optional columns not present is OK)
 
     def test_validate_missing_required_column(self) -> None:
         """Test that missing required column raises ValidationError."""
-        df = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "time": [0, 60], "a": [1, 2]})
+        df = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "time": pd.to_datetime([0, 60], unit="s"), "a": [1, 2]})
         fleet = Fleet(df)
         schema = FleetSchema(required_columns=frozenset({"a", "b"}))
         with pytest.raises(ValidationError, match="Missing required columns: \\['b'\\]"):
@@ -48,7 +48,7 @@ class TestFleetSchema:
 
     def test_validate_empty_required_columns(self) -> None:
         """Test that schema with no required columns passes validation."""
-        df = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "time": [0, 60], "a": [1, 2]})
+        df = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "time": pd.to_datetime([0, 60], unit="s"), "a": [1, 2]})
         fleet = Fleet(df)
         schema = FleetSchema(required_columns=frozenset())
         schema.validate(fleet)  # Should not raise
@@ -69,7 +69,7 @@ class TestPredefinedSchemas:
                 "latitude": [51.0, 52.0],
                 "longitude": [0.0, 1.0],
                 "altitude": [10000, 11000],
-                "time": [100, 200],
+                "time": pd.to_datetime([100, 200], unit="s"),
             }
         )
         fleet = Fleet(df)
@@ -77,7 +77,7 @@ class TestPredefinedSchemas:
 
     def test_schema_flight_4d_missing_column(self) -> None:
         """Test SCHEMA_FLIGHT_4D with missing required column."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "time": [0], "altitude": [10000]})
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "time": pd.to_datetime([0], unit="s"), "altitude": [10000]})
         fleet = Fleet(df)
         # Remove time column after Fleet creation to test schema validation
         fleet.data = fleet.data.drop(columns=["time"])
@@ -90,7 +90,7 @@ class TestPredefinedSchemas:
             {
                 "latitude": [51.0, 52.0],
                 "longitude": [0.0, 1.0],
-                "time": [0, 60],
+                "time": pd.to_datetime([0, 60], unit="s"),
                 "air_temperature": [250.0, 260.0],
                 "specific_humidity": [0.001, 0.002],
                 "eastward_wind": [10.0, 15.0],
@@ -107,7 +107,7 @@ class TestPredefinedSchemas:
             {
                 "latitude": [51.0],
                 "longitude": [0.0],
-                "time": [0],
+                "time": pd.to_datetime([0], unit="s"),
                 "air_temperature": [250.0],
                 "specific_humidity": [0.001],
                 "eastward_wind": [10.0],
@@ -127,7 +127,7 @@ class TestPredefinedSchemas:
             {
                 "latitude": [51.0],
                 "longitude": [0.0],
-                "time": [0],
+                "time": pd.to_datetime([0], unit="s"),
                 "air_temperature": [250.0],
                 "specific_humidity": [0.001],
                 "eastward_wind": [10.0],
@@ -145,7 +145,7 @@ class TestPredefinedSchemas:
             {
                 "latitude": [51.0, 52.0],
                 "longitude": [0.0, 1.0],
-                "time": [0, 60],
+                "time": pd.to_datetime([0, 60], unit="s"),
                 "fuel_flow": [1.0, 1.1],
                 "rocd": [500, 600],
                 "rocd_min": [400, 500],
@@ -162,7 +162,7 @@ class TestPredefinedSchemas:
             {
                 "latitude": [51.0],
                 "longitude": [0.0],
-                "time": [0],
+                "time": pd.to_datetime([0], unit="s"),
                 "fuel_flow": [1.0],
                 "rocd": [500],
                 "rocd_min": [400],
@@ -178,7 +178,7 @@ class TestPredefinedSchemas:
 
     def test_schema_performance_missing_required_column(self) -> None:
         """Test SCHEMA_PERFORMANCE with missing required columns."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "time": [0], "fuel_flow": [1.0], "rocd": [500]})
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "time": pd.to_datetime([0], unit="s"), "fuel_flow": [1.0], "rocd": [500]})
         fleet = Fleet(df)
         with pytest.raises(
             ValidationError, match="Missing required columns: \\['rocd_max', 'rocd_min', 'tas'\\]"
@@ -191,7 +191,7 @@ class TestPredefinedSchemas:
             {
                 "latitude": [51.0, 52.0],
                 "longitude": [0.0, 1.0],
-                "time": [0, 60],
+                "time": pd.to_datetime([0, 60], unit="s"),
                 "nvpm_ei_n": [1e15, 1.1e15],
                 "nvpm_ei_m": [0.01, 0.011],
                 "co2": [3.16, 3.2],
@@ -207,7 +207,7 @@ class TestPredefinedSchemas:
             {
                 "latitude": [51.0],
                 "longitude": [0.0],
-                "time": [0],
+                "time": pd.to_datetime([0], unit="s"),
                 "nvpm_ei_n": [1e15],
                 "nvpm_ei_m": [0.01],
                 "co2": [3.16],
@@ -223,7 +223,7 @@ class TestPredefinedSchemas:
 
     def test_schema_emissions_missing_required_column(self) -> None:
         """Test SCHEMA_EMISSIONS with missing required column."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "time": [0], "nvpm_ei_n": [1e15], "nvpm_ei_m": [0.01], "co2": [3.16]})
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "time": pd.to_datetime([0], unit="s"), "nvpm_ei_n": [1e15], "nvpm_ei_m": [0.01], "co2": [3.16]})
         fleet = Fleet(df)
         with pytest.raises(ValidationError, match="Missing required columns: \\['nox_ei'\\]"):
             SCHEMA_EMISSIONS.validate(fleet)
@@ -234,7 +234,7 @@ class TestPredefinedSchemas:
             {
                 "latitude": [51.0, 52.0],
                 "longitude": [0.0, 1.0],
-                "time": [0, 60],
+                "time": pd.to_datetime([0, 60], unit="s"),
                 "ef": [1.0, 1.1],
                 "contrail_age": [0.0, 3600.0],
                 "width": [100.0, 150.0],
@@ -251,7 +251,7 @@ class TestPredefinedSchemas:
             {
                 "latitude": [51.0],
                 "longitude": [0.0],
-                "time": [0],
+                "time": pd.to_datetime([0], unit="s"),
                 "ef": [1.0],
                 "contrail_age": [0.0],
                 "width": [100.0],
@@ -271,7 +271,7 @@ class TestPredefinedSchemas:
 
     def test_schema_contrails_missing_required_column(self) -> None:
         """Test SCHEMA_CONTRAILS with missing required columns."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "time": [0], "ef": [1.0], "contrail_age": [0.0]})
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "time": pd.to_datetime([0], unit="s"), "ef": [1.0], "contrail_age": [0.0]})
         fleet = Fleet(df)
         with pytest.raises(
             ValidationError, match="Missing required columns: \\['depth', 'n_ice_per_m_1', 'width'\\]"
