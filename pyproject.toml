@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "pyneats"
 description = "NEATS: aviation non-CO₂ climate metrics pipeline (PyNeats)."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 license = { file = "LICENSE" }
 authors = [{ name = "Philippe VERY", email = "philippe.very@eurocontrol.int" }, 
            { name = "Ramon DALMAU", email = "ramon.dalmau-codina@eurocontrol.int" }, 
@@ -28,13 +28,14 @@ dependencies = [
   "xarray==2024.10.0",
   "pycontrails[ecmwf,gcp,gfs,jupyter,pyproj]==0.60.1",
   "dacite>=1.9.2",
-  "zarr>=2.18.3,<3"
+  "zarr>=2.18.3,<3",
+  "scipy>=1.11.0,<1.17.0",
+  "joblib>=1.3.0",
 ]
 
 [project.optional-dependencies]
 # Keep optional-dependencies for backward compatibility
 bada = []  # left empty intentionally; docs explain manual install
-accf = ["climaccf @ git+https://github.com/dlr-pa/climaccf.git@018471922764b649ef23285f64919243b68a19b6"]
 
 [dependency-groups]
 dev = [

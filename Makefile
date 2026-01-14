@@ -10,6 +10,7 @@ help: ## Show this help message
 
 install: ## Install all dependencies with uv
 	uv sync --all-groups
+	uv run pip install pybada --no-deps --ignore-requires-python
 
 format: ## Auto-format code with ruff
 	uv run ruff format src/pyneats tests/
