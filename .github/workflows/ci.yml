@@ -125,5 +125,5 @@ jobs:
         run: uv sync --all-groups
 
       - name: Run pip-audit
-        run: uv run pip-audit --require-hashes --disable-pip
+        run: uv run pip-audit --skip-editable
         continue-on-error: true
