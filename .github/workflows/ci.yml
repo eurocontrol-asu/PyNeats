@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+    paths-ignore:
+      - "**.md"
+      - "**.bib"
+      - "LICENSE"
+      - ".gitignore"
+      - "**.ipynb"
+  pull_request:
+    branches: [main, dev]
+    types: [opened, reopened, synchronize]
+    paths-ignore:
+      - "**.md"
+      - "**.bib"
+      - "LICENSE"
+      - ".gitignore"
+      - "**.ipynb"
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Run ruff format check
+        run: uv run ruff format --check src/pyneats tests/
+
+      - name: Run ruff linter
+        run: uv run ruff check src/pyneats tests/
+
+      - name: Run mypy
+        run: uv run mypy src/pyneats
+
+  test:
+    name: Test Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Install pybada manually
+        run: uv pip install pybada --ignore-requires-python --no-deps
+
+      - name: Checkout BADA data repo
+        uses: actions/checkout@v4
+        with:
+          repository: eurocontrol-asu/bada-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: bada_data
+
+      - name: Set up BADA data directories
+        run: |
+          mkdir -p tests/data/BADA/3.16
+          mkdir -p tests/data/BADA/4.2.1/A320-231
+          mkdir -p tests/data/BADA/4.2.1/B772LR
+          cp bada_data/*.OPF tests/data/BADA/3.16/ 2>/dev/null || true
+          cp bada_data/A320-231.xml tests/data/BADA/4.2.1/A320-231/A320-231.xml 2>/dev/null || true
+          cp bada_data/B772LR.xml tests/data/BADA/4.2.1/B772LR/B772LR.xml 2>/dev/null || true
+          cp bada_data/GPF.xml tests/data/BADA/4.2.1/GPF.xml 2>/dev/null || true
+
+      - name: Set BADA environment variables
+        run: |
+          echo "BADA3_PATH=${{ github.workspace }}/tests/data/BADA/3.16" >> $GITHUB_ENV
+          echo "BADA4_PATH=${{ github.workspace }}/tests/data/BADA/4.2.1" >> $GITHUB_ENV
+
+      - name: Run tests with coverage
+        run: uv run pytest tests/ -v --cov=pyneats --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage to Coveralls
+        if: matrix.python-version == '3.12'
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: coverage.xml
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Run pip-audit
+        run: uv run pip-audit --require-hashes --disable-pip
+        continue-on-error: true
