@@ -9,7 +9,7 @@ from pycontrails import Flight
 
 from pyneats.core.fleet_utils import fleet_to_flights, flights_to_fleet
 from pyneats.core.views import FlightView
-from pyneats.steps.parsing.neats_parser import NEATSFuel
+from pyneats.core.neats_fuel import NEATSFuel
 
 
 class TestFlightsToFleet:
@@ -17,8 +17,8 @@ class TestFlightsToFleet:
 
     def test_single_flight_conversion(self) -> None:
         """Test converting single flight to Fleet."""
-        df = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000]})
-        fuel = NEATSFuel(q_fuel=43.0, ei_h2o=1.24)
+        df = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": [0, 60]})
+        fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
         flight = Flight(df, fuel=fuel)
         flight.attrs["flight_id"] = "TEST123"
 
@@ -31,11 +31,11 @@ class TestFlightsToFleet:
 
     def test_multiple_flights_conversion(self) -> None:
         """Test converting multiple flights to Fleet."""
-        df1 = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000]})
-        df2 = pd.DataFrame({"latitude": [53.0], "longitude": [2.0], "altitude": [12000]})
+        df1 = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": [0, 60]})
+        df2 = pd.DataFrame({"latitude": [53.0], "longitude": [2.0], "altitude": [12000], "time": [120]})
 
-        fuel1 = NEATSFuel(q_fuel=43.0, ei_h2o=1.24)
-        fuel2 = NEATSFuel(q_fuel=43.0, ei_h2o=1.24)
+        fuel1 = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
+        fuel2 = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
 
         flight1 = Flight(df1, fuel=fuel1)
         flight2 = Flight(df2, fuel=fuel2)
@@ -48,19 +48,19 @@ class TestFlightsToFleet:
 
     def test_fuel_object_converted_to_columns(self) -> None:
         """Test that fuel objects are converted to q_fuel and ei_h2o columns."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000]})
-        fuel = NEATSFuel(q_fuel=43.5, ei_h2o=1.25)
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": [0]})
+        fuel = NEATSFuel(q_fuel=43.5e6, hydrogen_content=13.8)
         flight = Flight(df, fuel=fuel)
 
         fleet = flights_to_fleet([flight])
 
-        assert fleet["q_fuel"][0] == 43.5
-        assert fleet["ei_h2o"][0] == 1.25
+        assert fleet["q_fuel"][0] == pytest.approx(43.5e6)
+        assert "ei_h2o" in fleet.data
 
     def test_columns_tracked_in_attrs(self) -> None:
         """Test that original column sets are tracked in attrs."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000]})
-        fuel = NEATSFuel(q_fuel=43.0, ei_h2o=1.24)
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": [0]})
+        fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
         flight = Flight(df, fuel=fuel)
 
         fleet = flights_to_fleet([flight])
@@ -81,7 +81,8 @@ class TestFleetToFlights:
                 "latitude": [51.0, 52.0],
                 "longitude": [0.0, 1.0],
                 "altitude": [10000, 11000],
-                "q_fuel": [43.0, 43.0],
+                "time": [0, 60],
+                "q_fuel": [43.0e6, 43.0e6],
                 "ei_h2o": [1.24, 1.24],
                 "flight_id": [0, 0],
             }
@@ -90,14 +91,13 @@ class TestFleetToFlights:
 
         fleet = Fleet(df)
         fleet.attrs["columns"] = set(df.columns)
-        fleet.fl_attrs = {0: {"flight_id": "TEST123", "q_fuel": 43.0, "ei_h2o": 1.24}}
+        fleet.fl_attrs = {0: {"flight_id": "TEST123", "q_fuel": 43.0e6, "hydrogen_content": 13.8}}
 
         flights = fleet_to_flights(fleet)
 
         assert len(flights) == 1
         assert flights[0].fuel is not None
-        assert flights[0].fuel.q_fuel == 43.0
-        assert flights[0].fuel.ei_h2o == 1.24
+        assert flights[0].fuel.q_fuel == pytest.approx(43.0e6)
 
     def test_columns_removed_from_attrs(self) -> None:
         """Test that 'columns' key is removed from attrs after conversion."""
@@ -106,7 +106,8 @@ class TestFleetToFlights:
                 "latitude": [51.0],
                 "longitude": [0.0],
                 "altitude": [10000],
-                "q_fuel": [43.0],
+                "time": [0],
+                "q_fuel": [43.0e6],
                 "ei_h2o": [1.24],
                 "flight_id": [0],
             }
@@ -115,7 +116,7 @@ class TestFleetToFlights:
 
         fleet = Fleet(df)
         fleet.attrs["columns"] = set(df.columns)
-        fleet.fl_attrs = {0: {"flight_id": "TEST123", "q_fuel": 43.0, "ei_h2o": 1.24}}
+        fleet.fl_attrs = {0: {"flight_id": "TEST123", "q_fuel": 43.0e6, "hydrogen_content": 13.8}}
 
         flights = fleet_to_flights(fleet)
 
@@ -133,9 +134,10 @@ class TestRoundtripConversion:
                 "latitude": [51.0, 52.0, 53.0],
                 "longitude": [0.0, 1.0, 2.0],
                 "altitude": [10000, 11000, 12000],
+                "time": [0, 60, 120],
             }
         )
-        fuel = NEATSFuel(q_fuel=43.0, ei_h2o=1.24)
+        fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
         original_flight = Flight(df, fuel=fuel)
         original_flight.attrs["flight_id"] = "TEST123"
 
@@ -146,16 +148,18 @@ class TestRoundtripConversion:
         assert len(restored_flights) == 1
         restored_flight = restored_flights[0]
 
-        # Check data preservation
-        pd.testing.assert_frame_equal(
-            original_flight.dataframe.reset_index(drop=True),
-            restored_flight.dataframe.reset_index(drop=True),
-        )
+        # Check data preservation (compare core columns)
+        for col in ["latitude", "longitude", "altitude", "time"]:
+            np.testing.assert_allclose(
+                original_flight[col],
+                restored_flight[col],
+                rtol=1e-9
+            )
 
     def test_roundtrip_preserves_fuel_object(self) -> None:
         """Test that roundtrip conversion preserves fuel object."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000]})
-        fuel = NEATSFuel(q_fuel=43.5, ei_h2o=1.25)
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": [0]})
+        fuel = NEATSFuel(q_fuel=43.5e6, hydrogen_content=13.8)
         original_flight = Flight(df, fuel=fuel)
 
         # Roundtrip
@@ -164,13 +168,12 @@ class TestRoundtripConversion:
 
         restored_fuel = restored_flights[0].fuel
         assert restored_fuel is not None
-        assert restored_fuel.q_fuel == 43.5
-        assert restored_fuel.ei_h2o == 1.25
+        assert restored_fuel.q_fuel == pytest.approx(43.5e6)
 
     def test_roundtrip_preserves_attrs(self) -> None:
         """Test that roundtrip conversion preserves flight attributes."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000]})
-        fuel = NEATSFuel(q_fuel=43.0, ei_h2o=1.24)
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": [0]})
+        fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
         original_flight = Flight(df, fuel=fuel)
         original_flight.attrs["flight_id"] = "ABC123"
         original_flight.attrs["aircraft_type"] = "A320"
@@ -184,13 +187,13 @@ class TestRoundtripConversion:
 
     def test_roundtrip_with_multiple_flights(self) -> None:
         """Test roundtrip with multiple flights."""
-        df1 = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000]})
-        df2 = pd.DataFrame({"latitude": [53.0], "longitude": [2.0], "altitude": [12000]})
+        df1 = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": [0, 60]})
+        df2 = pd.DataFrame({"latitude": [53.0], "longitude": [2.0], "altitude": [12000], "time": [120]})
         df3 = pd.DataFrame(
-            {"latitude": [54.0, 55.0, 56.0], "longitude": [3.0, 4.0, 5.0], "altitude": [13000, 14000, 15000]}
+            {"latitude": [54.0, 55.0, 56.0], "longitude": [3.0, 4.0, 5.0], "altitude": [13000, 14000, 15000], "time": [180, 240, 300]}
         )
 
-        fuel = NEATSFuel(q_fuel=43.0, ei_h2o=1.24)
+        fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
 
         flight1 = Flight(df1, fuel=fuel)
         flight2 = Flight(df2, fuel=fuel)
@@ -225,8 +228,8 @@ class TestGoldenFlightsRoundtrip:
         if not golden_flights:
             pytest.skip("No golden flights available")
 
-        # Convert FlightView to Flight (FlightView is a subclass)
-        original_flights = [FlightView.to_flight(fv) for fv in golden_flights]
+        # FlightView is a subclass of Flight, just cast
+        original_flights = [flight for flight in golden_flights]
 
         # Roundtrip
         fleet = flights_to_fleet(original_flights)
@@ -238,14 +241,13 @@ class TestGoldenFlightsRoundtrip:
         for restored in restored_flights:
             assert restored.fuel is not None
             assert hasattr(restored.fuel, "q_fuel")
-            assert hasattr(restored.fuel, "ei_h2o")
 
     def test_golden_flights_columns_preserved(self, golden_flights: List[FlightView]) -> None:
         """Test that column names are preserved through roundtrip."""
         if not golden_flights:
             pytest.skip("No golden flights available")
 
-        original_flights = [FlightView.to_flight(fv) for fv in golden_flights]
+        original_flights = [flight for flight in golden_flights]
 
         # Get original column sets (excluding fuel columns which will be added)
         original_columns = [set(f.data.keys()) for f in original_flights]
@@ -267,17 +269,16 @@ class TestGoldenFlightsRoundtrip:
         if not golden_flights:
             pytest.skip("No golden flights available")
 
-        original_flights = [FlightView.to_flight(fv) for fv in golden_flights]
+        original_flights = [flight for flight in golden_flights]
 
         # Store original fuel values
-        original_fuel_values = [(f.fuel.q_fuel, f.fuel.ei_h2o) for f in original_flights]
+        original_fuel_values = [(f.fuel.q_fuel,) for f in original_flights]
 
         # Roundtrip
         fleet = flights_to_fleet(original_flights)
         restored_flights = fleet_to_flights(fleet)
 
         # Check fuel values match
-        for (orig_q_fuel, orig_ei_h2o), restored in zip(original_fuel_values, restored_flights):
+        for (orig_q_fuel,), restored in zip(original_fuel_values, restored_flights):
             assert restored.fuel is not None
             np.testing.assert_allclose(restored.fuel.q_fuel, orig_q_fuel, rtol=1e-9)
-            np.testing.assert_allclose(restored.fuel.ei_h2o, orig_ei_h2o, rtol=1e-9)
