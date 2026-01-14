@@ -47,6 +47,34 @@ PyNeats currently has two major issues:
 - Conversion logic centralized in `fleet_utils.py`
 - 36% code reduction while maintaining 100% behavioral compatibility
 
+**Three-Layer Validation:**
+```
+Layer 3: Steps (Business Logic)
+   ↓ uses
+Layer 2: Schemas (Declarative Validation)
+   ↓ uses
+Layer 1: Primitive Validators (Low-Level)
+```
+
+Example:
+```python
+# Layer 1: Primitive validators
+validate_columns(df, required={'fuel_flow', 'rocd'}, optional={'thrust'})
+
+# Layer 2: Declarative schemas
+SCHEMA_PERFORMANCE = FleetSchema(
+    required_columns=frozenset({'fuel_flow', 'rocd', 'tas'})
+)
+
+# Layer 3: Steps use schemas
+class PyContrailsEmissionModel:
+    INPUT_SCHEMA = SCHEMA_PERFORMANCE
+
+    def __call__(self, fleet: Fleet) -> Fleet:
+        self.INPUT_SCHEMA.validate(fleet)  # Declarative validation
+        # ... process
+```
+
 **Modern Python Practices (2026 Standards):**
 - Migrate to `uv` for dependency management
 - Migrate to `hatch-vcs` for automatic versioning from git tags (no more manual `__version__` updates!)
@@ -195,51 +223,53 @@ git push -u origin claude/refactor-fleet-only-9triX
 - **Phase branches**: Not needed - all work on single refactoring branch
 
 ### **Commit Message Format**
+
+Use **Conventional Commits** format (for automated changelog generation via cliff):
+
 ```
-<phase>: <short description>
+<type>(<scope>): <short description>
 
 <detailed description>
 - Bullet point changes
 - What was added/modified/deleted
-- Quality checks status
 
-[optional footer: closes #issue, breaking changes, etc.]
+[optional footer: BREAKING CHANGE, closes #issue, etc.]
 ```
 
-**Example:**
+**Types**: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `build`, `ci`
+
+**Examples:**
 ```
-Phase 1: Add core validators and fleet utilities
+feat(validation): add three-layer validation architecture
 
-Add foundational validation and conversion utilities:
-- validators.py: validate_columns, validate_attrs, validate_no_all_nan
-- schemas.py: FlightSchema dataclass for declarative validation
-- fleet_utils.py: flights_to_fleet, fleet_to_flights conversion
-- tests: 15 unit tests with 100% coverage
-
-Quality checks:
-✓ ruff format + check: all pass
-✓ mypy --strict: no errors
-✓ pytest: 15/15 pass
+Add schema-based validation system:
+- validators.py: primitive validators (validate_columns, validate_attrs)
+- schemas.py: FleetSchema for declarative validation
+- Predefined schemas: SCHEMA_PERFORMANCE, SCHEMA_EMISSIONS, etc.
+- 100% test coverage
 ```
 
-### **Testing Requirements**
+```
+refactor(cocip): convert CoCiP to Fleet-only architecture
 
-#### **Before Every Commit:**
+Change CoCiPModel to accept Fleet instead of Flight:
+- Updated __call__ signature: Fleet → Fleet
+- Added INPUT_SCHEMA and OUTPUT_SCHEMA validation
+- All tests pass against golden reference data
+```
+
+### **Quality Checks**
+
+**Pre-commit hooks** (automatic after `uv run pre-commit install`):
+- Runs `ruff format` and `ruff check` on commit
+- Runs `mypy --strict` on commit
+- Blocks commit if checks fail
+
+**Manual checks** (if needed):
 ```bash
-# 1. Run formatting
-ruff format src/pyneats tests/
-
-# 2. Run linting
-ruff check src/pyneats tests/ --fix
-
-# 3. Run type checking
-mypy src/pyneats
-
-# 4. Run relevant tests
-pytest tests/unit/test_<module>.py -v
-
-# 5. Run full test suite (if time permits)
-pytest tests/ -v
+make lint    # Run all checks (ruff + mypy)
+make test    # Run tests
+make check   # Run everything (lint + test)
 ```
 
 #### **After Each Phase:**
@@ -448,128 +478,48 @@ bada_data/
 
 ### **Golden Reference Data**
 
-**Critical**: User will provide golden reference data for validation testing.
-
-**File location**:
-- `tests/data/input_flights_5.json` - Raw NM JSON format (before any processing)
-- `tests/data/output_flights_5.json` - FlightView objects with ALL columns (after full pipeline)
-
-**Data structure**:
-- **Input**: 5 flights in NM JSON format (raw trajectory, aircraft properties, no weather/performance/emissions)
-- **Output**: Same 5 flights as FlightView JSON with ALL columns:
-  - 4D trajectory (lat, lon, altitude, time)
-  - Weather (temperature, humidity, winds, etc.)
-  - Performance (fuel_flow, ROCD, TAS, etc.)
-  - Emissions (nvPM, CO2, NOx, etc.)
-  - Climate metrics (aCCF, contrails, etc.)
+**User provides**:
+- `tests/data/input_flights_5.json` - Raw NM JSON (before processing)
+- `tests/data/output_flights_5.json` - FlightView JSON with ALL columns (after full pipeline)
 
 **Testing Strategy**:
-Following current PyNeats testing patterns, but enhanced with 2026 best practices:
 
-**Tier 1: Unit Tests** (No flight data)
+**Phase 1A: Test Current Implementation**
 ```python
-# tests/unit/test_validators.py
-# tests/unit/test_fleet_utils.py
-# tests/unit/test_schemas.py
-
-@pytest.mark.parametrize("required,optional", [
-    (["lat", "lon"], ["alt"]),
-    (["time"], ["fuel_flow"]),
-])
-def test_validate_columns(required, optional):
-    # Pure unit tests with synthetic data
-    pass
-```
-
-**Tier 2: Step Equivalence Tests** (Use output_flights as golden reference)
-```python
-# tests/integration/test_step_equivalence.py
-
-@pytest.fixture
-def golden_flights():
-    """Load output_flights_5.json as FlightView objects"""
-    return load_output_flights()
-
-@pytest.mark.parametrize("flight_id", ["flight_0", "flight_1", ...])
-def test_emissions_step_equivalence(golden_flights, flight_id):
-    """Test PyContrailsEmissionModel: Old vs New (Fleet)"""
-    flight = get_flight_by_id(golden_flights, flight_id)
-
-    # Create input (strip emissions columns from golden output)
-    input_flight = FlightWithPerformance.from_flight(flight.copy())
-
-    # OLD: Single flight processing
-    old_params = PyContrailsEmissionParams()
-    old_step = PyContrailsEmissionModel(old_params)
-    old_output = old_step(input_flight)
-
-    # NEW: Fleet processing
-    new_params = PyContrailsEmissionParams()
-    new_step = PyContrailsEmissionModel(new_params)
-    fleet_input = flights_to_fleet([input_flight])
-    fleet_output = new_step(fleet_input)
-    new_output = fleet_to_flights(fleet_output)[0]
-
-    # Compare: Both should match golden output
-    check_cols = list(FlightWithEmissions.REQUIRED)
-    assert_frame_equal(
-        old_output.to_dataframe()[check_cols],
-        new_output.to_dataframe()[check_cols],
-        rtol=1e-6, atol=1e-9
-    )
-    assert_frame_equal(
-        new_output.to_dataframe()[check_cols],
-        flight.to_dataframe()[check_cols],
-        rtol=1e-6, atol=1e-9
-    )
-```
-
-**Tier 3: Full Pipeline Test** (Regression test)
-```python
-# tests/integration/test_full_pipeline_regression.py
-
-@pytest.fixture
-def input_flights():
-    """Load raw NM JSON (no weather)"""
-    return load_input_flights()
-
-@pytest.fixture
-def expected_outputs():
-    """Load output_flights_5.json (has all columns)"""
-    return load_output_flights()
-
-def test_full_pipeline_regression(input_flights, expected_outputs):
-    """End-to-end: Ensure refactored pipeline produces identical results"""
-
-    # Run NEW UnifiedRunner
-    runner = UnifiedRunner()
-    runner.set_weather(weather_provider)  # Uses actual weather or mock
+# tests/integration/test_current_fleet_runner.py
+def test_current_implementation_matches_golden(input_flights, golden_outputs):
+    """Validate CURRENT FleetRunner produces golden outputs"""
+    runner = FleetRunner()
+    runner.set_weather(weather)
     results = runner.run(input_flights)
 
-    # Compare with golden outputs
-    for result, expected in zip(results, expected_outputs):
-        assert_frame_equal(
-            result.to_dataframe(),
-            expected.to_dataframe(),
-            rtol=1e-6, atol=1e-9
-        )
+    for result, expected in zip(results, golden_outputs):
+        assert_frame_equal(result.to_dataframe(), expected.to_dataframe(), rtol=1e-6, atol=1e-9)
 ```
 
-**Key Testing Principles** (2026 Best Practices):
-1. ✅ **Fixtures-based**: Use conftest.py for reusable fixtures
-2. ✅ **Parametrized**: Test multiple flights/scenarios efficiently
-3. ✅ **Type-safe**: All fixtures and tests fully type-hinted
-4. ✅ **Isolated**: Each step tested independently
-5. ✅ **Descriptive**: Test names clearly state what's being validated
-6. ✅ **Fast**: Unit tests run in milliseconds
-7. ✅ **Deterministic**: No flaky tests, all comparisons use explicit tolerances
+**Phase 2+: Test Refactored Steps (Fleet-Only)**
+```python
+# tests/integration/test_fleet_steps.py
+def test_emissions_step_fleet(golden_flights):
+    """Test refactored PyContrailsEmissionModel (Fleet → Fleet)"""
 
-**Usage**:
-- Load golden data via fixtures in `conftest.py`
-- Each step test creates proper input type (e.g., `FlightWithPerformance.from_flight()`)
-- Instantiate steps with params (e.g., `step = PyContrailsEmissionModel(params)`)
-- Call step as callable: `output = step(input)`
-- Compare with golden output using `assert_frame_equal(rtol=1e-6, atol=1e-9)`
+    # Create input fleet (strip emissions columns from golden)
+    input_fleet = create_fleet_without_columns(golden_flights, emissions_cols)
+
+    # Run Fleet-only step
+    params = PyContrailsEmissionParams()
+    step = PyContrailsEmissionModel(params)
+    output_fleet = step(input_fleet)  # Fleet → Fleet
+
+    # Compare with golden
+    assert_fleet_matches_golden(output_fleet, golden_flights, rtol=1e-6, atol=1e-9)
+```
+
+**Key Principles**:
+1. ✅ **Fixtures-based**: conftest.py with `input_flights()` and `golden_flights()` fixtures
+2. ✅ **Parametrized**: Test all 5 flights efficiently
+3. ✅ **Simple**: Compare Fleet results vs golden (no old vs new comparison)
+4. ✅ **Type-safe**: All fixtures and tests fully type-hinted
 
 ---
 
@@ -623,16 +573,28 @@ def test_full_pipeline_regression(input_flights, expected_outputs):
   - All fixtures fully type-hinted
   - Quality: ruff format + check, mypy strict
 
-- [ ] **1.2** Create `src/pyneats/core/validators.py`
-  - `validate_columns(df, required, optional)`
-  - `validate_attrs(attrs, required, optional)`
-  - `validate_no_all_nan(df, columns)`
+- [ ] **1.2** Create `src/pyneats/core/validators.py` (Layer 1: Primitives)
+  - `validate_columns(df, required, optional)` - Check DataFrame has required columns
+  - `validate_attrs(attrs, required, optional)` - Check dict has required keys
+  - `validate_no_all_nan(df, columns)` - Check columns aren't all NaN
   - Quality: 100% test coverage
 
-- [ ] **1.3** Create `src/pyneats/core/schemas.py`
-  - `FlightSchema` dataclass
-  - Predefined schemas (SCHEMA_FLIGHT_4D, SCHEMA_WITH_WEATHER, etc.)
-  - `validate_flight()` and `validate_fleet()` methods
+- [ ] **1.3** Create `src/pyneats/core/schemas.py` (Layer 2: Declarative Validation)
+  - `FleetSchema` dataclass:
+    ```python
+    @dataclass(frozen=True)
+    class FleetSchema:
+        required_columns: frozenset[str]
+        optional_columns: frozenset[str] = frozenset()
+
+        def validate(self, fleet: Fleet) -> None:
+            validate_columns(fleet.data, self.required_columns, self.optional_columns)
+    ```
+  - Predefined schemas:
+    - `SCHEMA_PERFORMANCE` - fuel_flow, rocd, tas
+    - `SCHEMA_EMISSIONS` - nvpm_ei_n, co2, nox_ei
+    - `SCHEMA_WEATHER` - air_temperature, specific_humidity, winds
+    - `SCHEMA_CONTRAILS` - contrail columns
   - Quality: 100% test coverage
 
 - [ ] **1.4** Create `src/pyneats/core/fleet_utils.py`
@@ -650,10 +612,10 @@ def test_full_pipeline_regression(input_flights, expected_outputs):
   - Quality: ruff format + check, mypy strict
 
 - [ ] **1.6** Create `tests/unit/test_schemas.py`
-  - Test FlightSchema validation
-  - Test predefined schemas (SCHEMA_FLIGHT_4D, SCHEMA_WITH_WEATHER, etc.)
-  - Parametrized tests for valid/invalid data
-  - Use synthetic data
+  - Test `FleetSchema.validate()` method
+  - Test predefined schemas (SCHEMA_PERFORMANCE, SCHEMA_EMISSIONS, etc.)
+  - Parametrized tests: valid Fleet passes, invalid Fleet raises ValidationError
+  - Use synthetic Fleet data
   - 100% coverage
   - Quality: ruff format + check, mypy strict
 
@@ -843,44 +805,31 @@ Refactor **one step at a time** in order of increasing complexity.
 **Status**: ⏳ Not Started
 
 - [ ] **2.1.1** Modify `src/pyneats/steps/climate_functions/cocip.py`
-  - Change `CoCiPModel.__call__()` to accept Fleet input
-  - Add Fleet validation
-  - Keep single implementation (already works with Fleet)
-  - Maintain backward compatibility temporarily
+  - Change to Fleet-only: `__call__(self, fleet: Fleet) -> Fleet`
+  - Add schema validation: `INPUT_SCHEMA = SCHEMA_EMISSIONS` (needs emissions data)
+  - Add schema validation: `OUTPUT_SCHEMA = SCHEMA_CONTRAILS` (produces contrail data)
 
-- [ ] **2.1.2** Create `tests/integration/test_step_equivalence.py::test_cocip_step_equivalence`
-  - Use golden_flights fixture
-  - Parametrize over all 5 flights
-  - Test pattern:
+- [ ] **2.1.2** Create `tests/integration/test_cocip_fleet.py`
+  - Test refactored CoCiPModel produces golden results:
     ```python
-    # Create input (strip contrail columns from golden)
-    input_flight = FlightWithEmissions.from_flight(flight.copy())
+    def test_cocip_fleet_matches_golden(golden_flights, weather):
+        # Create input (strip contrail columns)
+        input_fleet = create_fleet_without_columns(golden_flights, contrail_cols)
 
-    # OLD: Single flight
-    params = ContrailsParams(met=weather.met(), rad=weather.rad())
-    old_step = CoCiPModel(params)
-    old_output = old_step(input_flight)
+        # Run Fleet-only step
+        params = ContrailsParams(met=weather.met(), rad=weather.rad())
+        step = CoCiPModel(params)
+        output_fleet = step(input_fleet)  # Fleet → Fleet
 
-    # NEW: Fleet
-    fleet_input = flights_to_fleet([input_flight])
-    new_step = CoCiPModel(params)
-    fleet_output = new_step(fleet_input)
-    new_output = fleet_to_flights(fleet_output)[0]
-
-    # Compare both with golden
-    assert_frame_equal(old_output, new_output, rtol=1e-6, atol=1e-9)
-    assert_frame_equal(new_output, golden, rtol=1e-6, atol=1e-9)
+        # Compare with golden
+        assert_fleet_matches_golden(output_fleet, golden_flights, rtol=1e-6)
     ```
 
-- [ ] **2.1.3** Run validation
+- [ ] **2.1.3** Validate and commit
   ```bash
-  pytest tests/integration/test_step_equivalence.py::test_cocip_step_equivalence -v
-  ```
-
-- [ ] **2.1.4** Commit and push
-  ```bash
-  git add src/pyneats/steps/climate_functions/cocip.py tests/integration/test_step_equivalence.py
-  git commit -m "Phase 2.1: Refactor CoCiP to Fleet-only (verified equivalent)"
+  pytest tests/integration/test_cocip_fleet.py -v
+  git add src/pyneats/steps/climate_functions/cocip.py tests/integration/test_cocip_fleet.py
+  git commit -m "refactor: convert CoCiP to Fleet-only architecture"
   git push
   ```
 
