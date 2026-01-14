@@ -17,7 +17,7 @@ def flights_to_fleet(flights: List[Flight]) -> Fleet:
     """Convert list of flights to single Fleet object.
 
     Fuel objects are converted to columns (q_fuel, ei_h2o) and stored in the Fleet.
-    Original column sets are tracked in attrs['columns'] for later restoration.
+    Original column sets are tracked in fl_attrs[flight_id]['columns'] for later restoration.
 
     Args:
         flights: List of Flight objects to combine
@@ -25,8 +25,15 @@ def flights_to_fleet(flights: List[Flight]) -> Fleet:
     Returns:
         Fleet object containing all flights
     """
-    for flight in flights:
+    for i, flight in enumerate(flights):
+        # Store original columns in attrs (will be propagated to fl_attrs by Fleet.from_seq)
         flight.attrs["columns"] = set(flight.data.keys())
+
+        # Store fuel parameters in attrs for later restoration
+        flight.attrs["q_fuel"] = flight.fuel.q_fuel
+        flight.attrs["hydrogen_content"] = flight.fuel.hydrogen_content
+
+        # Convert fuel object to columns
         flight["q_fuel"] = np.full(len(flight), flight.fuel.q_fuel)
         flight["ei_h2o"] = np.full(len(flight), flight.fuel.ei_h2o)
         flight.fuel = None

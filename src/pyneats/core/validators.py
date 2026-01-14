@@ -16,22 +16,29 @@ class ValidationError(Exception):
 
 
 def validate_columns(
-    df: pd.DataFrame,
+    df: pd.DataFrame | dict[str, Any],
     required: Iterable[str],
     optional: Iterable[str] | None = None,
 ) -> None:
-    """Validate that DataFrame has required columns.
+    """Validate that DataFrame or dict has required columns/keys.
 
     Args:
-        df: DataFrame to validate
-        required: Required column names
-        optional: Optional column names (for documentation, not enforced)
+        df: DataFrame or dict-like object (e.g., VectorDataDict) to validate
+        required: Required column/key names
+        optional: Optional column/key names (for documentation, not enforced)
 
     Raises:
         ValidationError: If required columns are missing
     """
     required_set = set(required)
-    actual_cols = set(df.columns)
+
+    # Handle both DataFrame and dict-like objects (VectorDataDict)
+    if hasattr(df, 'columns'):
+        actual_cols = set(df.columns)
+    elif hasattr(df, 'keys'):
+        actual_cols = set(df.keys())
+    else:
+        raise TypeError(f"Expected DataFrame or dict-like object, got {type(df)}")
 
     missing = required_set - actual_cols
 

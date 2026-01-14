@@ -18,7 +18,7 @@ class TestFlightsToFleet:
 
     def test_single_flight_conversion(self) -> None:
         """Test converting single flight to Fleet."""
-        df = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": pd.to_datetime([0, 60], unit="s")})
+        df = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": pd.to_datetime([0, 60], unit="s"), "flight_id": [0, 0]})
         fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
         flight = Flight(df, fuel=fuel)
         flight.attrs["flight_id"] = "TEST123"
@@ -32,8 +32,8 @@ class TestFlightsToFleet:
 
     def test_multiple_flights_conversion(self) -> None:
         """Test converting multiple flights to Fleet."""
-        df1 = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": pd.to_datetime([0, 60], unit="s")})
-        df2 = pd.DataFrame({"latitude": [53.0], "longitude": [2.0], "altitude": [12000], "time": pd.to_datetime([120], unit="s")})
+        df1 = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": pd.to_datetime([0, 60], unit="s"), "flight_id": [0, 0]})
+        df2 = pd.DataFrame({"latitude": [53.0], "longitude": [2.0], "altitude": [12000], "time": pd.to_datetime([120], unit="s"), "flight_id": [1]})
 
         fuel1 = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
         fuel2 = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
@@ -49,7 +49,7 @@ class TestFlightsToFleet:
 
     def test_fuel_object_converted_to_columns(self) -> None:
         """Test that fuel objects are converted to q_fuel and ei_h2o columns."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": pd.to_datetime([0], unit="s")})
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": pd.to_datetime([0], unit="s"), "flight_id": [0]})
         fuel = NEATSFuel(q_fuel=43.5e6, hydrogen_content=13.8)
         flight = Flight(df, fuel=fuel)
 
@@ -60,7 +60,7 @@ class TestFlightsToFleet:
 
     def test_columns_tracked_in_attrs(self) -> None:
         """Test that original column sets are tracked in attrs."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": pd.to_datetime([0], unit="s")})
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": pd.to_datetime([0], unit="s"), "flight_id": [0]})
         fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
         flight = Flight(df, fuel=fuel)
 
@@ -92,7 +92,7 @@ class TestFleetToFlights:
 
         fleet = Fleet(df)
         fleet.attrs["columns"] = set(df.columns)
-        fleet.fl_attrs = {0: {"flight_id": "TEST123", "q_fuel": 43.0e6, "hydrogen_content": 13.8}}
+        fleet.fl_attrs = {0: {"flight_id": "TEST123", "q_fuel": 43.0e6, "hydrogen_content": 13.8, "columns": set(df.columns)}}
 
         flights = fleet_to_flights(fleet)
 
@@ -117,7 +117,7 @@ class TestFleetToFlights:
 
         fleet = Fleet(df)
         fleet.attrs["columns"] = set(df.columns)
-        fleet.fl_attrs = {0: {"flight_id": "TEST123", "q_fuel": 43.0e6, "hydrogen_content": 13.8}}
+        fleet.fl_attrs = {0: {"flight_id": "TEST123", "q_fuel": 43.0e6, "hydrogen_content": 13.8, "columns": set(df.columns)}}
 
         flights = fleet_to_flights(fleet)
 
@@ -136,11 +136,11 @@ class TestRoundtripConversion:
                 "longitude": [0.0, 1.0, 2.0],
                 "altitude": [10000, 11000, 12000],
                 "time": pd.to_datetime([0, 60, 120], unit="s"),
+                "flight_id": [0, 0, 0],
             }
         )
         fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
         original_flight = Flight(df, fuel=fuel)
-        original_flight.attrs["flight_id"] = "TEST123"
 
         # Roundtrip
         fleet = flights_to_fleet([original_flight])
@@ -150,16 +150,22 @@ class TestRoundtripConversion:
         restored_flight = restored_flights[0]
 
         # Check data preservation (compare core columns)
-        for col in ["latitude", "longitude", "altitude", "time"]:
+        for col in ["latitude", "longitude", "altitude"]:
             np.testing.assert_allclose(
                 original_flight[col],
                 restored_flight[col],
                 rtol=1e-9
             )
 
+        # Compare time column separately (datetime type)
+        np.testing.assert_array_equal(
+            original_flight["time"],
+            restored_flight["time"]
+        )
+
     def test_roundtrip_preserves_fuel_object(self) -> None:
         """Test that roundtrip conversion preserves fuel object."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": pd.to_datetime([0], unit="s")})
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": pd.to_datetime([0], unit="s"), "flight_id": [0]})
         fuel = NEATSFuel(q_fuel=43.5e6, hydrogen_content=13.8)
         original_flight = Flight(df, fuel=fuel)
 
@@ -173,25 +179,26 @@ class TestRoundtripConversion:
 
     def test_roundtrip_preserves_attrs(self) -> None:
         """Test that roundtrip conversion preserves flight attributes."""
-        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": pd.to_datetime([0], unit="s")})
+        df = pd.DataFrame({"latitude": [51.0], "longitude": [0.0], "altitude": [10000], "time": pd.to_datetime([0], unit="s"), "flight_id": [0]})
         fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
         original_flight = Flight(df, fuel=fuel)
-        original_flight.attrs["flight_id"] = "ABC123"
         original_flight.attrs["aircraft_type"] = "A320"
+        original_flight.attrs["tail_number"] = "N12345"
 
         # Roundtrip
         fleet = flights_to_fleet([original_flight])
         restored_flights = fleet_to_flights(fleet)
 
-        assert restored_flights[0].attrs["flight_id"] == "ABC123"
         assert restored_flights[0].attrs["aircraft_type"] == "A320"
+        assert restored_flights[0].attrs["tail_number"] == "N12345"
 
     def test_roundtrip_with_multiple_flights(self) -> None:
         """Test roundtrip with multiple flights."""
-        df1 = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": pd.to_datetime([0, 60], unit="s")})
-        df2 = pd.DataFrame({"latitude": [53.0], "longitude": [2.0], "altitude": [12000], "time": pd.to_datetime([120], unit="s")})
+        df1 = pd.DataFrame({"latitude": [51.0, 52.0], "longitude": [0.0, 1.0], "altitude": [10000, 11000], "time": pd.to_datetime([0, 60], unit="s"), "flight_id": [0, 0]})
+        df2 = pd.DataFrame({"latitude": [53.0], "longitude": [2.0], "altitude": [12000], "time": pd.to_datetime([120], unit="s"), "flight_id": [1]})
         df3 = pd.DataFrame(
-            {"latitude": [54.0, 55.0, 56.0], "longitude": [3.0, 4.0, 5.0], "altitude": [13000, 14000, 15000], "time": pd.to_datetime([180, 240, 300], unit="s")}
+            {"latitude": [54.0, 55.0, 56.0], "longitude": [3.0, 4.0, 5.0], "altitude": [13000, 14000, 15000], "time": pd.to_datetime([180, 240, 300], unit="s"),
+                "flight_id": [2, 2, 2]}
         )
 
         fuel = NEATSFuel(q_fuel=43.0e6, hydrogen_content=13.8)
@@ -200,9 +207,9 @@ class TestRoundtripConversion:
         flight2 = Flight(df2, fuel=fuel)
         flight3 = Flight(df3, fuel=fuel)
 
-        flight1.attrs["flight_id"] = "FLIGHT1"
-        flight2.attrs["flight_id"] = "FLIGHT2"
-        flight3.attrs["flight_id"] = "FLIGHT3"
+        flight1.attrs["callsign"] = "FLIGHT1"
+        flight2.attrs["callsign"] = "FLIGHT2"
+        flight3.attrs["callsign"] = "FLIGHT3"
 
         original_flights = [flight1, flight2, flight3]
 
@@ -211,9 +218,9 @@ class TestRoundtripConversion:
         restored_flights = fleet_to_flights(fleet)
 
         assert len(restored_flights) == 3
-        assert restored_flights[0].attrs["flight_id"] == "FLIGHT1"
-        assert restored_flights[1].attrs["flight_id"] == "FLIGHT2"
-        assert restored_flights[2].attrs["flight_id"] == "FLIGHT3"
+        assert restored_flights[0].attrs["callsign"] == "FLIGHT1"
+        assert restored_flights[1].attrs["callsign"] == "FLIGHT2"
+        assert restored_flights[2].attrs["callsign"] == "FLIGHT3"
 
         # Check waypoint counts
         assert len(restored_flights[0]) == 2
