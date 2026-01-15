@@ -55,11 +55,8 @@ class TestFlightRunnerGoldenReference:
             rad_store=str(rad_store),
         )
 
-        # Load weather data
-        met, rad = get_weather_from_zarr(zarr_paths)
-
-        # Create weather provider
-        weather = WeatherProvider(met=met, rad=rad)
+        # Load weather data (returns WeatherProvider directly)
+        weather = get_weather_from_zarr(zarr_paths)
 
         return weather
 
