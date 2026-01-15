@@ -3,29 +3,33 @@ import pytest
 from pyneats.steps.performance.bada_model import BADAPerformanceModel, BADAPerformanceModelParams
 from pyneats.steps.performance.views import FlightWithWeather, FlightWithPerformance
 from pandas.testing import assert_frame_equal
-from .fixtures.nm_traffic import nm_output
 from tqdm import tqdm
 from pathlib import Path
+from typing import List
+from pyneats.core.views import FlightView
 
 
-def test_mass_decision_tree(nm_output):  # noqa: F811
-    data_path = Path(__file__).parent / "data"
-    bada_path = data_path / "BADA"
+def test_mass_decision_tree(golden_flights: List[FlightView], bada3_path, bada4_path):
+    """Test BADA mass decision tree logic with different input configurations.
 
-    if not bada_path.exists():
-        pytest.skip("BADA data not available, skipping test.")
+    This test validates that the BADA performance model correctly handles different
+    scenarios for aircraft mass calculation based on available data.
+    """
+    if bada3_path is None and bada4_path is None:
+        pytest.skip("BADA data not available")
 
     rtol = 1e-3
     atol = 1e-8
     check_cols = list(FlightWithPerformance.REQUIRED)
 
     # Setup BADA parameters
+    bada_root = str(bada4_path.parent) if bada4_path else str(bada3_path.parent)
     params = BADAPerformanceModelParams(
-        bada4_root_path=str(bada_path),
-        bada3_root_path=str(bada_path),
+        bada4_root_path=bada_root,
+        bada3_root_path=bada_root,
     )
 
-    for flight in tqdm(nm_output, desc="processing test flight ..."):
+    for flight in tqdm(golden_flights, desc="processing test flight ..."):
         # Create expected output for the mass decision tree check
         expected_output = FlightWithPerformance.from_flight(flight.copy()).to_dataframe()
 

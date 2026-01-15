@@ -20,6 +20,12 @@ def pytest_addoption(parser):
         default=None,  # will be filled from pyproject.toml
         help="Path to test met cache data folder",
     )
+    parser.addoption(
+        "--bada-root-path",
+        action="store",
+        default=None,
+        help="Path to BADA root directory (containing BADA3 and BADA4 subdirectories)",
+    )
 
 
 @pytest.fixture
@@ -46,31 +52,86 @@ def weather_path(pytestconfig) -> Path:
 
 
 @pytest.fixture
-def bada3_path() -> Path | None:
-    """Get path to BADA3 data directory.
+def bada_root_path(pytestconfig) -> Path | None:
+    """Get path to BADA root directory.
+
+    Priority:
+    1. --bada-root-path command line option
+    2. BADA_ROOT_PATH environment variable
+    3. tests/data/BADA directory (default)
 
     Returns None if not available (tests will skip).
     """
+    # Command line option
+    path = pytestconfig.getoption("bada_root_path")
+    if path:
+        return Path(path).resolve()
+
+    # Environment variable
+    env_path = os.environ.get("BADA_ROOT_PATH")
+    if env_path:
+        path = Path(env_path)
+        if path.is_dir():
+            return path.resolve()
+
+    # Default path (for local development)
+    default_path = Path(__file__).parent / "data" / "BADA"
+    if default_path.is_dir():
+        return default_path.resolve()
+
+    return None
+
+
+@pytest.fixture
+def bada3_path(bada_root_path) -> Path | None:
+    """Get path to BADA3 data directory.
+
+    Priority:
+    1. BADA3_PATH environment variable (CI workflows)
+    2. bada_root_path/BADA3 (if bada_root_path exists)
+
+    Returns None if not available (tests will skip).
+    """
+    # Environment variable (for CI workflows)
     env_path = os.environ.get("BADA3_PATH")
     if env_path:
         path = Path(env_path)
         if path.is_dir():
             return path.resolve()
+
+    # Derive from bada_root_path
+    if bada_root_path:
+        bada3 = bada_root_path / "BADA3"
+        if bada3.is_dir():
+            return bada3.resolve()
+
     return None
 
 
 @pytest.fixture
-def bada4_path() -> Path | None:
+def bada4_path(bada_root_path) -> Path | None:
     """Get path to BADA4 data directory.
+
+    Priority:
+    1. BADA4_PATH environment variable (CI workflows)
+    2. bada_root_path/BADA4 (if bada_root_path exists)
 
     Returns None if not available (tests will skip).
     Default to BADA4 for tests.
     """
+    # Environment variable (for CI workflows)
     env_path = os.environ.get("BADA4_PATH")
     if env_path:
         path = Path(env_path)
         if path.is_dir():
             return path.resolve()
+
+    # Derive from bada_root_path
+    if bada_root_path:
+        bada4 = bada_root_path / "BADA4"
+        if bada4.is_dir():
+            return bada4.resolve()
+
     return None
 
 
