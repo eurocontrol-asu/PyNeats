@@ -167,7 +167,8 @@ class TestWeatherIntersection:
         )
 
         # Create input (Flight4D without weather columns)
-        input_flight = Flight4D.from_flight(expected_output)
+        # Make a copy to avoid mutating the golden flight
+        input_flight = Flight4D.from_flight(expected_output.copy())
 
         # Remove weather columns from input
         weather_cols = set(FlightWithWeather.REQUIRED)
@@ -264,7 +265,8 @@ class TestPerformance:
         )
 
         # Create input (FlightWithWeather without performance columns)
-        input_flight = FlightWithWeather.from_flight(expected_output)
+        # Make a copy to avoid mutating the golden flight
+        input_flight = FlightWithWeather.from_flight(expected_output.copy())
 
         # Remove performance columns from input
         perf_cols = set(FlightWithPerformance.REQUIRED)
@@ -342,7 +344,8 @@ class TestEmissions:
         )
 
         # Create input (FlightWithPerformance without emissions columns)
-        input_flight = FlightWithPerformance.from_flight(expected_output)
+        # Make a copy to avoid mutating the golden flight
+        input_flight = FlightWithPerformance.from_flight(expected_output.copy())
 
         # Remove emissions columns from input
         emissions_cols = set(FlightWithEmissions.REQUIRED)
@@ -446,7 +449,8 @@ class TestContrails:
         )
 
         # Create input (FlightWithEmissions without contrail columns)
-        input_flight = FlightWithEmissions.from_flight(expected_output)
+        # Make a copy to avoid mutating the golden flight
+        input_flight = FlightWithEmissions.from_flight(expected_output.copy())
 
         # Remove contrail columns from input
         contrail_cols = [
@@ -538,7 +542,8 @@ class TestClimateMetrics:
         )
 
         # Create input (FlightWithNonCO2Impact without climate impact attrs)
-        input_flight = FlightWithNonCO2Impact.from_flight(expected_output)
+        # Make a copy to avoid mutating the golden flight
+        input_flight = FlightWithNonCO2Impact.from_flight(expected_output.copy())
 
         # Remove climate_impact from attrs if present
         if "climate_impact" in input_flight.attrs:
