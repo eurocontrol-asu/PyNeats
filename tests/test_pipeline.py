@@ -4,6 +4,7 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 from pyneats.runners.flight import FlightRunner, RunnerConfig
+from pyneats.steps.parsing.neats_io import neats_json_to_flights
 
 from .fixtures.nm_traffic import nm_input, nm_output
 from .fixtures.weather import weather
@@ -30,8 +31,8 @@ def test_pipeline(nm_input, nm_output, weather, bada_root_path, flight_idx):  # 
     if bada_root_path is None or not bada_root_path.exists():
         pytest.skip("BADA data not available")
 
-    rtol = 0.05  # 5% relative tolerance
-    atol = 1e-3  # Absolute tolerance
+    rtol = 1e-3  # 0.1% relative tolerance (same as main branch)
+    atol = 1e-8  # Absolute tolerance (same as main branch)
     check_cols = list(FlightWithClimateImpact.REQUIRED)
 
     # Setup BADA parameters
@@ -46,10 +47,14 @@ def test_pipeline(nm_input, nm_output, weather, bada_root_path, flight_idx):  # 
     expected_flight = nm_output[flight_idx]
     expected_output = FlightWithClimateImpact.from_flight(expected_flight.copy()).to_dataframe()
 
-    # Parse raw flight
-    parsed_flights = neats_json_to_flights([raw_flight])
-    assert len(parsed_flights) == 1, f"Parser should return exactly 1 flight"
-    flight = parsed_flights[0]
+    # Convert JSON to DataFrame, then parse to Flight
+    from pyneats.steps.parsing.neats_parser import NeatsTrajectoryParser
+
+    dataframes = neats_json_to_flights([raw_flight])
+    assert len(dataframes) == 1, f"neats_json_to_flights should return 1 DataFrame"
+
+    parser = NeatsTrajectoryParser()
+    flight = parser(dataframes[0])
 
     # Run full pipeline
     pipeline = FlightRunner(weather, flight, cfg=cfg)

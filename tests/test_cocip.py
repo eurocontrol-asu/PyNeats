@@ -27,8 +27,8 @@ def test_cocip(nm_output, weather, flight_idx):  # noqa: F811
             "Weather data not available. Use pytest --met-cache-dir=/path/to/data or set MET_CACHE_DIR"
         )
 
-    rtol = 0.05  # 5% relative tolerance
-    atol = 1e10  # Large absolute tolerance for ef values in trillions
+    rtol = 1e-3  # 0.1% relative tolerance (same as main branch)
+    atol = 1e-8  # Absolute tolerance (same as main branch)
     check_cols = list(FlightWithContrailsImpact.REQUIRED)
 
     # Columns produced by CoCiP (remove from input)

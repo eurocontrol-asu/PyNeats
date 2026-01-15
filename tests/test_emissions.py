@@ -20,8 +20,8 @@ def test_emissions(nm_output, flight_idx):  # noqa: F811
     Uses golden output as input (has performance data), runs emissions
     step, and compares with expected emissions columns.
     """
-    rtol = 0.05  # 5% relative tolerance
-    atol = 1e-3  # Absolute tolerance
+    rtol = 1e-3  # 0.1% relative tolerance (same as main branch)
+    atol = 1e-8  # Absolute tolerance (same as main branch)
     check_cols = list(FlightWithEmissions.REQUIRED)
 
     # Get expected flight

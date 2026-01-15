@@ -4,6 +4,7 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
+from pyneats.steps.parsing.neats_parser import NeatsTrajectoryParser
 from pyneats.steps.interpolation import PyContrailsInterpolator
 from pyneats.steps.parsing.views import Flight4D
 
@@ -17,8 +18,11 @@ def test_parsing_and_interpolation(nm_input, nm_output, flight_idx):  # noqa: F8
     Takes raw NM JSON input, parses it, interpolates, and compares
     with expected Flight4D columns from golden output.
     """
-    rtol = 0.05  # 5% relative tolerance
-    atol = 1e-3  # Absolute tolerance
+    parser = NeatsTrajectoryParser()
+    interpolator = PyContrailsInterpolator()
+
+    rtol = 1e-3  # 0.1% relative tolerance (same as main branch)
+    atol = 1e-8  # Absolute tolerance (same as main branch)
     check_cols = list(Flight4D.REQUIRED)
 
     # Get input and expected output for this flight
@@ -26,13 +30,16 @@ def test_parsing_and_interpolation(nm_input, nm_output, flight_idx):  # noqa: F8
     expected_flight = nm_output[flight_idx]
     expected_output = Flight4D.from_flight(expected_flight.copy()).to_dataframe()
 
-    # Parse raw JSON to Flight
-    parsed_flights = neats_json_to_flights([raw_flight])
-    assert len(parsed_flights) == 1, f"Parser should return exactly 1 flight, got {len(parsed_flights)}"
+    # Convert JSON to DataFrame
+    dataframes = neats_json_to_flights([raw_flight])
+    assert len(dataframes) == 1, f"neats_json_to_flights should return 1 DataFrame"
+    df = dataframes[0]
+
+    # Parse DataFrame to Flight4D
+    parsed_flight_4d = parser(df)
 
     # Interpolate
-    interpolator = PyContrailsInterpolator()
-    interpolated_flight = interpolator(parsed_flights[0]).to_dataframe()
+    interpolated_flight = interpolator(parsed_flight_4d).to_dataframe()
 
     # Assert that output matches expected
     assert_frame_equal(

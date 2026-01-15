@@ -14,7 +14,7 @@ def nm_input() -> List[dict]:
     """Load raw NM input flights (5 flights) from JSON.
 
     Returns:
-        List of raw flight dictionaries (NM JSON format)
+        List of raw flight dictionaries (NM JSON format), sorted by flight_id
     """
     traffic_path = Path(__file__).parent.parent / "data"
 
@@ -29,7 +29,10 @@ def nm_input() -> List[dict]:
     with open(filepath, "r", encoding="utf-8") as fh:
         data = json.load(fh)
 
-    return data
+    # Sort by flight_id to match nm_output order
+    sorted_data = sorted(data, key=lambda x: x.get("flight_id", ""))
+
+    return sorted_data
 
 
 @pytest.fixture
@@ -37,7 +40,7 @@ def nm_output() -> List[FlightView]:
     """Load expected NM output flights (5 flights with full pipeline results) from JSON.
 
     Returns:
-        List of FlightView objects (fully processed with all columns)
+        List of FlightView objects (fully processed with all columns), sorted by flight_id
     """
     traffic_path = Path(__file__).parent.parent / "data"
 
