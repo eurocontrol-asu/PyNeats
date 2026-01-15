@@ -52,6 +52,10 @@ class TestParsingInterpolation:
             input_flights: Raw input flights (NM JSON format)
             golden_flights: Expected outputs (processed FlightView)
         """
+        # Skip if golden data doesn't have this flight
+        if flight_index >= len(golden_flights):
+            pytest.skip(f"Golden data only has {len(golden_flights)} flights, skipping flight {flight_index}")
+
         input_flight_data = input_flights[flight_index]
         expected_output = golden_flights[flight_index]
 
@@ -60,13 +64,13 @@ class TestParsingInterpolation:
             f"{expected_output.attrs.get('flight_id', 'unknown')}"
         )
 
-        # Parse the raw JSON input
+        # Parse the raw JSON input (returns List[DataFrame])
         parsed_flights = neats_json_to_flights([input_flight_data])
 
         if not parsed_flights:
             pytest.fail(f"Failed to parse flight {flight_index}")
 
-        source_df = parsed_flights[0].to_dataframe()
+        source_df = parsed_flights[0]  # Already a DataFrame!
 
         # Run parsing and interpolation
         parser = NeatsTrajectoryParser()
@@ -121,9 +125,15 @@ class TestWeatherIntersection:
 
         from pyneats.steps.weather.weather_provider import WeatherProvider
 
+        met_store = weather_path / "icon_met.zarr"
+        rad_store = weather_path / "icon_rad.zarr"
+
+        if not met_store.is_dir() or not rad_store.is_dir():
+            pytest.skip("Weather zarr stores not available")
+
         zarr_paths = ZarrPaths(
-            era5_path=str(weather_path / "era5.zarr"),
-            cams_path=str(weather_path / "cams.zarr"),
+            met_store=str(met_store),
+            rad_store=str(rad_store),
         )
 
         met, rad = get_weather_from_zarr(zarr_paths)
@@ -145,6 +155,10 @@ class TestWeatherIntersection:
             golden_flights: Expected outputs (processed FlightView)
             weather_provider: Weather data provider
         """
+        # Skip if golden data doesn't have this flight
+        if flight_index >= len(golden_flights):
+            pytest.skip(f"Golden data only has {len(golden_flights)} flights, skipping flight {flight_index}")
+
         from pyneats.steps.weather.weather_provider import FlightWithWeather
 
         expected_output = golden_flights[flight_index]
@@ -237,6 +251,10 @@ class TestPerformance:
             golden_flights: Expected outputs (processed FlightView)
             performance_model: Performance model instance
         """
+        # Skip if golden data doesn't have this flight
+        if flight_index >= len(golden_flights):
+            pytest.skip(f"Golden data only has {len(golden_flights)} flights, skipping flight {flight_index}")
+
         from pyneats.steps.performance.views import FlightWithPerformance
         from pyneats.steps.weather.weather_provider import FlightWithWeather
 
@@ -307,6 +325,10 @@ class TestEmissions:
             flight_index: Index of flight to test (0-4)
             golden_flights: Expected outputs (processed FlightView)
         """
+        # Skip if golden data doesn't have this flight
+        if flight_index >= len(golden_flights):
+            pytest.skip(f"Golden data only has {len(golden_flights)} flights, skipping flight {flight_index}")
+
         from pyneats.steps.emissions.pycontrails_emissions import (
             FlightWithEmissions,
             PyContrailsEmissionModel,
@@ -379,9 +401,15 @@ class TestContrails:
 
         from pyneats.steps.weather.weather_provider import WeatherProvider
 
+        met_store = weather_path / "icon_met.zarr"
+        rad_store = weather_path / "icon_rad.zarr"
+
+        if not met_store.is_dir() or not rad_store.is_dir():
+            pytest.skip("Weather zarr stores not available")
+
         zarr_paths = ZarrPaths(
-            era5_path=str(weather_path / "era5.zarr"),
-            cams_path=str(weather_path / "cams.zarr"),
+            met_store=str(met_store),
+            rad_store=str(rad_store),
         )
 
         met, rad = get_weather_from_zarr(zarr_paths)
@@ -403,6 +431,10 @@ class TestContrails:
             golden_flights: Expected outputs (processed FlightView)
             weather_provider: Weather data provider
         """
+        # Skip if golden data doesn't have this flight
+        if flight_index >= len(golden_flights):
+            pytest.skip(f"Golden data only has {len(golden_flights)} flights, skipping flight {flight_index}")
+
         from pyneats.steps.climate_functions.cocip import (
             CoCiPModel,
             ContrailsParams,
@@ -492,10 +524,14 @@ class TestClimateMetrics:
             flight_index: Index of flight to test (0-4)
             golden_flights: Expected outputs (processed FlightView)
         """
+        # Skip if golden data doesn't have this flight
+        if flight_index >= len(golden_flights):
+            pytest.skip(f"Golden data only has {len(golden_flights)} flights, skipping flight {flight_index}")
+
         from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
-        from pyneats.steps.climate_metrics.climate_impact import (
+        from pyneats.steps.climate_metrics.gwp import (
             ClimateImpactModel,
-            ClimateImpactParams,
+            GWPParams,
         )
 
         expected_output = golden_flights[flight_index]
@@ -513,7 +549,7 @@ class TestClimateMetrics:
             input_flight.attrs.pop("climate_impact")
 
         # Run climate metrics computation
-        params = ClimateImpactParams()
+        params = GWPParams()
         step = ClimateImpactModel(params)
         output_flight = step(input_flight)
 
