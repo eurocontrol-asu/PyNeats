@@ -13,13 +13,14 @@ Key Components:
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
-from typing import Final, Mapping, Protocol, runtime_checkable, Any
+from typing import Dict, Final, List, Mapping, Protocol, runtime_checkable, Any
 
 import numpy as np
 from numpy.typing import NDArray
 import pandas as pd
-from pycontrails import Flight
+from pycontrails import Flight, Fleet
 from pycontrails.core.met import MetDataset
 from pycontrails.models.humidity_scaling import HumidityScaling
 
@@ -37,6 +38,7 @@ from pyneats.core.neats_default_parameters import (
 from pyneats.core.steps import BaseStep, Step, StepError, BaseParams
 from pyneats.core.views import ValidationError
 from pyneats.steps.parsing import Flight4D
+from pyneats.steps.parsing.neats_parser import NEATSFuel
 
 __all__ = [
     "DEFAULT_REQUIRED_WEATHER_COLS",
@@ -348,3 +350,168 @@ class WeatherProvider(
             raise WeatherStepError(
                 type(self).__name__, f"validation failed: {e}"
             ) from e
+
+    def run_fleet(self, flights: List[Flight4D]) -> List[FlightWithWeather]:
+        """
+        Fleet-level vectorized weather intersection.
+
+        Converts List[Flight] → Fleet, downselects weather datasets to fleet envelope,
+        intersects weather variables, optionally applies humidity scaling,
+        then converts Fleet → List[Flight].
+
+        Args:
+            flights: List of interpolated flights (Flight4D)
+
+        Returns:
+            List of flights with weather data (FlightWithWeather)
+
+        Raises:
+            WeatherStepError: If weather intersection or humidity scaling fails
+        """
+        t0 = time.time()
+        logger.info("Fleet-level weather intersection for %d flights...", len(flights))
+
+        # Convert to Fleet
+        pyc_fleet = self._seq_to_fleet(flights)
+
+        # Downselect meteorological datasets to fleet envelope
+        ds_met = pyc_fleet.downselect_met(
+            self._met,
+            longitude_buffer=self.params.lon_buf,
+            latitude_buffer=self.params.lat_buf,
+            time_buffer=self.params.time_buf,
+            level_buffer=self.params.level_buf,
+        )
+
+        ds_wind = None
+        if self._wind is not None:
+            ds_wind = pyc_fleet.downselect_met(
+                self._wind,
+                longitude_buffer=self.params.lon_buf,
+                latitude_buffer=self.params.lat_buf,
+                time_buffer=self.params.time_buf,
+                level_buffer=self.params.level_buf,
+            )
+
+        # Intersect weather variables
+        new_cols = self._intersect_weather_variables(pyc_fleet, ds_met, ds_wind)
+
+        # Add weather columns to fleet dataframe
+        df = pyc_fleet.dataframe.reset_index(drop=True)
+        for k, v in new_cols.items():
+            df[k] = v
+
+        fleet_with_weather = Fleet(data=df, attrs=pyc_fleet.attrs, fl_attrs=pyc_fleet.fl_attrs)
+
+        logger.info("Weather intersection complete in %.2fs", time.time() - t0)
+
+        # Convert back to List[Flight]
+        flights_with_weather = self._fleet_to_seq(fleet_with_weather)
+
+        # Optional humidity scaling
+        if self.params.humidity_scaling is not None:
+            flights_with_weather = self._apply_humidity_scaling_fleet(flights_with_weather)
+
+        # Type narrowing
+        typed = [FlightWithWeather.from_flight(f) for f in flights_with_weather]
+
+        return typed
+
+    def _intersect_weather_variables(
+        self, fleet: Fleet, ds_met: MetDataset, ds_wind: MetDataset | None
+    ) -> Dict[str, np.ndarray]:
+        """Intersect weather variables for a fleet."""
+        new_cols: Dict[str, np.ndarray] = {}
+
+        for met_var, out_col in self.params.var_map.items():
+            src_ds = None
+
+            if met_var in WIND_VARS:
+                # Prefer wind dataset
+                if ds_wind is not None and met_var in ds_wind:
+                    src_ds = ds_wind
+                # Fallback to MET
+                elif met_var in ds_met:
+                    src_ds = ds_met
+            else:
+                # Non-wind → MET only
+                if met_var in ds_met:
+                    src_ds = ds_met
+
+            if src_ds is None:
+                # Missing in both places (or MET missing for non-wind)
+                if out_col in DEFAULT_REQUIRED_WEATHER_COLS:
+                    if met_var in WIND_VARS:
+                        raise KeyError(
+                            f"required wind var '{met_var}' missing (looked in WIND then MET)"
+                        )
+                    raise KeyError(f"required met var '{met_var}' missing in MET")
+                # Optional → skip
+                continue
+
+            src = src_ds[met_var]
+            vals = fleet.intersect_met(src, method=self.params.method, use_indices=self.params.use_indices)
+
+            if met_var in WIND_VARS:
+                vals = np.nan_to_num(vals, nan=0.0)
+
+            new_cols[out_col] = vals
+
+        return new_cols
+
+    def _apply_humidity_scaling_fleet(self, flights: List[FlightWithWeather]) -> List[FlightWithWeather]:
+        """Apply humidity scaling to a fleet."""
+        if self.params.humidity_scaling is None:
+            return flights
+
+        t0 = time.time()
+        logger.info("Applying humidity scaling...")
+
+        fleet = self._seq_to_fleet(flights)
+
+        # Call humidity scaling eval() which should return a Flight/Fleet
+        scaled = self.params.humidity_scaling.eval(fleet)
+
+        # Handle different return types
+        if isinstance(scaled, Fleet):
+            fleet = scaled
+        elif isinstance(scaled, Flight):
+            # Convert single Flight back to Fleet (shouldn't happen but handle it)
+            fleet = Fleet.from_seq([scaled])
+        else:
+            raise WeatherStepError(
+                type(self).__name__,
+                f"humidity_scaling returned unexpected type: {type(scaled)}"
+            )
+
+        logger.info("Humidity scaling complete in %.2fs", time.time() - t0)
+        return self._fleet_to_seq(fleet)
+
+    @staticmethod
+    def _seq_to_fleet(seq: List[Flight]) -> Fleet:
+        """Convert List[Flight] to Fleet, preserving fuel information."""
+        for s in seq:
+            s.attrs['columns'] = set(s.data.keys())
+            s["q_fuel"] = np.full(len(s), s.fuel.q_fuel)
+            s["ei_h2o"] = np.full(len(s), s.fuel.ei_h2o)
+            s.fuel = None
+
+        fleet: Fleet = Fleet.from_seq(seq)
+        fleet.attrs['columns'] = set(fleet.data.keys())
+        return fleet
+
+    @staticmethod
+    def _fleet_to_seq(fleet: Fleet) -> List[Flight]:
+        """Convert Fleet back to List[Flight], restoring fuel information."""
+        fleet_columns = fleet.attrs.pop('columns')
+        seq = fleet.to_flight_list()
+
+        for s in seq:
+            flight_columns = s.attrs.pop('columns')
+            columns_to_delete = fleet_columns.difference(flight_columns)
+
+            for c in columns_to_delete:
+                s.data.pop(c)
+            s.fuel = NEATSFuel.from_attrs(s.attrs)
+
+        return seq
