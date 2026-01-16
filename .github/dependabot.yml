@@ -9,39 +9,27 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-      time: "03:00"
+      time: "09:00"
     open-pull-requests-limit: 10
     groups:
-      # Group all dev dependencies together
-      dev-dependencies:
-        patterns:
-          - "pytest*"
-          - "mypy*"
-          - "ruff*"
-          - "pre-commit*"
-          - "pip-audit*"
-          - "mkdocs*"
-          - "mkdocstrings*"
+      # Group all patch and minor updates together
+      development-dependencies:
+        dependency-type: "development"
         update-types:
           - "minor"
           - "patch"
-      # Group all production dependencies
       production-dependencies:
-        patterns:
-          - "*"
-        exclude-patterns:
-          - "pytest*"
-          - "mypy*"
-          - "ruff*"
-          - "pre-commit*"
-          - "pip-audit*"
-          - "mkdocs*"
-          - "mkdocstrings*"
+        dependency-type: "production"
         update-types:
           - "patch"
     labels:
       - "dependencies"
       - "python"
+    reviewers:
+      - "eurocontrol-asu"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
@@ -49,8 +37,11 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-      time: "03:00"
+      time: "09:00"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "github-actions"
+    commit-message:
+      prefix: "ci(deps)"
+      include: "scope"
