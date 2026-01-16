@@ -6,6 +6,7 @@ from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
 
 __all__ = ["FlightWithClimateImpact"]
 
+
 class FlightWithClimateImpact(FlightWithNonCO2Impact):
     """
     Zero-copy view guaranteeing that attrs['climate_impact'] exists.

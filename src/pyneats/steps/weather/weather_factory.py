@@ -35,7 +35,8 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import ClassVar, Mapping, Optional
+from typing import ClassVar, Optional
+from collections.abc import Mapping
 import zarr
 import xarray as xr
 from pycontrails import DiskCacheStore, MetDataset
@@ -112,7 +113,7 @@ class ERA5DiskCacheSpec:
     consolidated: bool = True
     read_only: bool = False
     allow_clear: bool = False
-    compressor: Optional[str] = None
+    compressor: str | None = None
 
 
 @dataclass(frozen=True)
@@ -121,15 +122,15 @@ class DWDZarrCacheSpec:
 
     met_store: str
     rad_store: str
-    wind_store: Optional[str] = None  # make optional
+    wind_store: str | None = None  # make optional
     build_if_missing: bool = True
     consolidated: bool = True  # kept for backward compat; not used on read anymore
     # xarray chunk hints for writing (ignored for read)
-    met_chunks: Optional[Mapping[str, int]] = None
-    rad_chunks: Optional[Mapping[str, int]] = None
-    wind_chunks: Optional[Mapping[str, int]] = None
+    met_chunks: Mapping[str, int] | None = None
+    rad_chunks: Mapping[str, int] | None = None
+    wind_chunks: Mapping[str, int] | None = None
     # Unit fix: convert SDR [W m-2] to [J m-2] by multiplying by dt (seconds)
-    sdr_accumulate_dt_s: Optional[int] = (
+    sdr_accumulate_dt_s: int | None = (
         DEFAULT_SDR_ACCUMULATE_DT_S  # 1 hour by default; None to skip
     )
 
@@ -140,8 +141,8 @@ class DWDZarrCacheSpec:
 class WeatherCacheConfig:
     """Unified cache config; pick the one relevant for the backend."""
 
-    disk: Optional[ERA5DiskCacheSpec] = None  # ERA5
-    zarr: Optional[DWDZarrCacheSpec] = None  # DWD
+    disk: ERA5DiskCacheSpec | None = None  # ERA5
+    zarr: DWDZarrCacheSpec | None = None  # DWD
 
 
 # ---------------- params ----------------
@@ -156,10 +157,10 @@ class WeatherFactoryParams:
     weather_offset_hours: int = DEFAULT_WEATHER_OFFSET_H
 
     # unified optional cache config
-    cache: Optional[WeatherCacheConfig] = None
+    cache: WeatherCacheConfig | None = None
 
     # optional xarray chunks (read-time hints)
-    chunks: Optional[Mapping[str, int]] = None
+    chunks: Mapping[str, int] | None = None
 
     def time_bounds(self, dt: datetime) -> tuple[str, str]:
         later = dt + timedelta(hours=self.weather_offset_hours)
@@ -172,7 +173,7 @@ class WeatherFactoryProtocol:
     """Protocol for weather factory implementations."""
 
     def __call__(
-        self, asofdate: datetime, hour: Optional[int] = None
+        self, asofdate: datetime, hour: int | None = None
     ) -> WeatherProviderProtocol:  # pragma: no cover
         raise NotImplementedError
 
@@ -188,7 +189,7 @@ class ERA5Factory(WeatherFactoryProtocol):
         self.params = params
 
     def __call__(
-        self, asofdate: datetime, hour: Optional[int] = None
+        self, asofdate: datetime, hour: int | None = None
     ) -> WeatherProviderProtocol:
         disk = self.params.cache.disk if self.params.cache else None
         cachestore = (
@@ -273,7 +274,7 @@ class DWDFactory(WeatherFactoryProtocol):
 
     # ---------- public API ----------
     def __call__(
-        self, asofdate: datetime, hour: Optional[int] = None
+        self, asofdate: datetime, hour: int | None = None
     ) -> WeatherProviderProtocol:
         zc = self.params.cache.zarr if self.params.cache else None
         run_hour = asofdate.hour if hour is None else hour
@@ -357,7 +358,7 @@ class DWDFactory(WeatherFactoryProtocol):
 
     # ---------- cache builder ----------
     def build_cache(
-        self, asofdate: datetime, *, hour: Optional[int] = None, overwrite: bool = False
+        self, asofdate: datetime, *, hour: int | None = None, overwrite: bool = False
     ) -> tuple[str, str]:
         """
         Build (or rebuild) the DWD zarr cache. Returns (met_store, rad_store) paths.
@@ -579,7 +580,7 @@ class DWDFactory(WeatherFactoryProtocol):
         return ds
 
     @staticmethod
-    def _norm_units(u: Optional[str]) -> str:
+    def _norm_units(u: str | None) -> str:
         if not u:
             return ""
         # light normalization: remove spaces/asterisks; fold "**" → "^"
@@ -597,7 +598,7 @@ class DWDFactory(WeatherFactoryProtocol):
             src_da = ds[raw]
 
             src_units: str = str(src_da.attrs.get("units", "") or "")
-            tgt_units_raw: Optional[str] = getattr(mv, "units", None)
+            tgt_units_raw: str | None = getattr(mv, "units", None)
             tgt_units: str = self._norm_units(tgt_units_raw)
             src_units_n: str = self._norm_units(src_units)
 

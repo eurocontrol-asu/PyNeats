@@ -34,7 +34,7 @@ Aircraft Data (BADA) models. It provides:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal, TypedDict, Optional, Tuple
+from typing import Any, Literal, TypedDict
 from dataclasses import dataclass
 from importlib.resources import files
 import numpy as np
@@ -109,7 +109,7 @@ def _as_float(x: Any) -> float:
     return float(np.asarray(x, dtype=float))
 
 
-def _normalize_code_or_none(code: Optional[str]) -> Optional[str]:
+def _normalize_code_or_none(code: str | None) -> str | None:
     if code is None:
         return None
     s = str(code).strip()
@@ -133,8 +133,12 @@ class BADAPerformanceModelParams(PerformanceModelParams):
     true_air_speed_smoothing_window: int = DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW
     reference_q_fuel: float = REFERENCE_Q_FUEL
 
-    delta_tau_compute_method: Literal["point", "zero"] = DEFAULT_DELTA_TAU_COMPUTE_METHOD
-    delta_tau_fill_method: Literal["bffill", "none", "zero"] = DEFAULT_DELTA_TAU_FILL_METHOD
+    delta_tau_compute_method: Literal["point", "zero"] = (
+        DEFAULT_DELTA_TAU_COMPUTE_METHOD
+    )
+    delta_tau_fill_method: Literal["bffill", "none", "zero"] = (
+        DEFAULT_DELTA_TAU_FILL_METHOD
+    )
 
     # BADA mapping paths (to packaged resources)
     icao_series_engine_path = Path(
@@ -145,15 +149,25 @@ class BADAPerformanceModelParams(PerformanceModelParams):
         )
     )
     icao_series_path = Path(
-        str(files("pyneats.resources").joinpath("ECTL_mapping_by_ICAO_and_ACFT_SERIES.csv"))
+        str(
+            files("pyneats.resources").joinpath(
+                "ECTL_mapping_by_ICAO_and_ACFT_SERIES.csv"
+            )
+        )
     )
     icao_engine_path = Path(
-        str(files("pyneats.resources").joinpath("ECTL_mapping_by_ICAO_and_ENGINE_ID.csv"))
+        str(
+            files("pyneats.resources").joinpath(
+                "ECTL_mapping_by_ICAO_and_ENGINE_ID.csv"
+            )
+        )
     )
     default_engine_by_icao_path = Path(
         str(files("pyneats.resources").joinpath("MRR_conservative_mapping.csv"))
     )
-    icao_only_path = Path(str(files("pyneats.resources").joinpath("ECTL_mapping_by_ICAO.csv")))
+    icao_only_path = Path(
+        str(files("pyneats.resources").joinpath("ECTL_mapping_by_ICAO.csv"))
+    )
 
     paths = BadaMappingPaths(
         icao_series_engine=icao_series_engine_path,
@@ -207,8 +221,12 @@ class BADAPerformanceModel(
     def _post_init(self):
         super()._post_init()  # pyright: ignore[reportPrivateUsage]
 
-        self.bada4_path = Path(self.params.bada4_root_path).joinpath(self.params.bada4_version)
-        self.bada3_path = Path(self.params.bada3_root_path).joinpath(self.params.bada3_version)
+        self.bada4_path = Path(self.params.bada4_root_path).joinpath(
+            self.params.bada4_version
+        )
+        self.bada3_path = Path(self.params.bada3_root_path).joinpath(
+            self.params.bada3_version
+        )
 
         if not self.bada4_path.exists() or not self.bada4_path.is_dir():
             raise PerformanceStepError(
@@ -227,7 +245,9 @@ class BADAPerformanceModel(
         # --- Preprocessing + aircraft data extraction ---
         try:
             df = self._preprocess(flight)
-            icao, series, engine_id_attr, q_fuel_attr = self._extract_aircraft_attrs(flight)
+            icao, series, engine_id_attr, q_fuel_attr = self._extract_aircraft_attrs(
+                flight
+            )
 
         except Exception as e:
             self.logger.info(
@@ -240,7 +260,9 @@ class BADAPerformanceModel(
 
         # --- First attempt: normal BADA (3 or 4) execution ---
         try:
-            return self.run_by_bada_version(flight, df, icao, series, engine_id_attr, q_fuel_attr)
+            return self.run_by_bada_version(
+                flight, df, icao, series, engine_id_attr, q_fuel_attr
+            )
 
         except PerformanceStepError as exc:
             self.logger.info(
@@ -258,7 +280,11 @@ class BADAPerformanceModel(
                 if bada4_code is None:
                     self.logger.info(
                         "BADA performance evaluation already performed with BADA3, no need to retry with BADA3 again",
-                        extra={"icao": icao, "series": series, "engine_id": engine_id_attr},
+                        extra={
+                            "icao": icao,
+                            "series": series,
+                            "engine_id": engine_id_attr,
+                        },
                     )
                     raise PerformanceStepError(
                         "BADA performance evaluation already performed with BADA3, no need to retry with BADA3 again"
@@ -299,7 +325,9 @@ class BADAPerformanceModel(
             )
 
             # 2) early exit if AO provided fuel_flow & engine_efficiency
-            early = self._early_exit_if_fuel_and_efficiency(df, adapter, engine_id, flight)
+            early = self._early_exit_if_fuel_and_efficiency(
+                df, adapter, engine_id, flight
+            )
             if early is not None:
                 return early
 
@@ -333,30 +361,30 @@ class BADAPerformanceModel(
     # ---------- adapter & attrs ----------
     def _extract_aircraft_attrs(
         self, flight: Flight
-    ) -> Tuple[str, Optional[str], Optional[str], Optional[float]]:
+    ) -> tuple[str, str | None, str | None, float | None]:
         """Extract required aircraft attributes from flight.attrs."""
-        icao: Optional[str] = (
+        icao: str | None = (
             flight.attrs.get("aircraft_type") if hasattr(flight, "attrs") else None
         )
         if not icao:
             raise KeyError("Flight attrs missing 'aircraft_type'")
 
-        series: Optional[str] = (
+        series: str | None = (
             flight.attrs.get("aircraft_series") if hasattr(flight, "attrs") else None
         )
 
-        engine_id: Optional[str] = (
+        engine_id: str | None = (
             flight.attrs.get("engine_uid") if hasattr(flight, "attrs") else None
         )
-        q_fuel: Optional[float] = flight.fuel.q_fuel
+        q_fuel: float | None = flight.fuel.q_fuel
 
         return icao, series, engine_id, q_fuel
 
     def _resolve_bada_adapter(
         self,
         icao: str,
-        series: Optional[str],
-        engine_id: Optional[str],
+        series: str | None,
+        engine_id: str | None,
         force_bada3: bool = False,
     ) -> tuple[BaseBADAAdapter, str, int, str]:
         """Resolve BADA adapter based on aircraft type and available info."""
@@ -395,7 +423,9 @@ class BADAPerformanceModel(
         )
         return df
 
-    def _compute_ground_and_true_airspeed(self, flight: Flight, window: int) -> pd.DataFrame:
+    def _compute_ground_and_true_airspeed(
+        self, flight: Flight, window: int
+    ) -> pd.DataFrame:
         """Compute ground speed and true airspeed columns."""
         df = flight.dataframe.copy(deep=False)
         df["ground_speed"] = flight.segment_groundspeed()
@@ -421,8 +451,12 @@ class BADAPerformanceModel(
         df["rocd"] = flight.segment_rocd()
         df["segment_duration"] = pd.to_numeric(df["segment_duration"], errors="coerce")
 
-        tas: NDArray[np.floating] = df["true_airspeed"].to_numpy(dtype=float, copy=False)
-        dt: NDArray[np.floating] = df["segment_duration"].to_numpy(dtype=float, copy=False)
+        tas: NDArray[np.floating] = df["true_airspeed"].to_numpy(
+            dtype=float, copy=False
+        )
+        dt: NDArray[np.floating] = df["segment_duration"].to_numpy(
+            dtype=float, copy=False
+        )
         df["acceleration"] = pc_acceleration(tas, dt)
 
     def _compute_delta_tau(
@@ -453,7 +487,7 @@ class BADAPerformanceModel(
         adapter: BaseBADAAdapter,
         engine_id: str,
         flight: Flight,
-    ) -> Optional[FlightWithPerformance]:
+    ) -> FlightWithPerformance | None:
         """If AO provided fuel_flow and engine_efficiency, skip BADA model."""
         if "fuel_flow" in df.columns and "engine_efficiency" in df.columns:
             self.logger.debug(
@@ -479,9 +513,9 @@ class BADAPerformanceModel(
         df: pd.DataFrame,
         flight: Flight,
         icao: str,
-        q_fuel_attr: Optional[float],
+        q_fuel_attr: float | None,
         reference_q_fuel: float,
-    ) -> Tuple[PerfOutput, float]:
+    ) -> tuple[PerfOutput, float]:
         """Choose mass estimation strategy and use iterative estimation with the performance
         model if needed. Returns both perf output and q_fuel_used."""
 
@@ -518,7 +552,7 @@ class BADAPerformanceModel(
             )
             return perf, q_fuel_used
 
-        initial_mass: Optional[float] = flight.attrs.get("takeoff_weight")
+        initial_mass: float | None = flight.attrs.get("takeoff_weight")
         if initial_mass is not None:
             self.logger.debug("'takeoff_weight' attribute provided, using it")
             perf = self._single_pass_performance(
@@ -540,7 +574,7 @@ class BADAPerformanceModel(
         self,
         adapter: BaseBADAAdapter,
         df: pd.DataFrame,
-        initial_mass: Optional[float],
+        initial_mass: float | None,
         q_fuel_used: float,
         default_q_fuel: float,
     ) -> PerfOutput:
@@ -569,13 +603,16 @@ class BADAPerformanceModel(
         mass_curr = initial_mass
 
         for pt in df.itertuples(index=False, name="FlightPt"):
-            pt_mass = mass_curr if mass_curr is not None else _as_float(pt.aircraft_mass)
+            pt_mass = (
+                mass_curr if mass_curr is not None else _as_float(pt.aircraft_mass)
+            )
 
             ff, thrust, phase, thrust_seg = adapter.thrust_fuel_segment(
                 pt_mass,
                 _as_float(pt.altitude),
                 _as_float(pt.true_airspeed),
-                ft_to_m(_as_float(pt.rocd)) / 60,  # Convert ft/min to m/s. The adapter requires SI
+                ft_to_m(_as_float(pt.rocd))
+                / 60,  # Convert ft/min to m/s. The adapter requires SI
                 _as_float(pt.acceleration),
                 _as_float(pt.delta_tau),
             )
@@ -611,7 +648,7 @@ class BADAPerformanceModel(
     ) -> PerfOutput:
         """Iterative initial mass estimation using BADA performance model."""
 
-        payload_factor: Optional[float] = flight.attrs.get("payload_factor")
+        payload_factor: float | None = flight.attrs.get("payload_factor")
 
         if payload_factor is None:
             payload_factor = self.params.payload_factor
@@ -634,7 +671,9 @@ class BADAPerformanceModel(
         else:
             maximum_payload = adapter.MPL
 
-        zero_fuel_weight: float = operating_empty_weight + payload_factor * maximum_payload
+        zero_fuel_weight: float = (
+            operating_empty_weight + payload_factor * maximum_payload
+        )
         fuel_factor: float = 1.0 + self.params.fuel_reserve_fraction
 
         # Conservative initial mass guess (between OEW and MTOW weighted by payload factor)
@@ -650,7 +689,9 @@ class BADAPerformanceModel(
             q_fuel_used=q_fuel_used,
             default_q_fuel=default_q_fuel,
         )
-        fuel_consumed = float((np.asarray(perf["fuel_flow"]) * df["segment_duration"]).sum())
+        fuel_consumed = float(
+            (np.asarray(perf["fuel_flow"]) * df["segment_duration"]).sum()
+        )
         fuel_onboard = fuel_consumed * fuel_factor
         initial_mass = min(maximum_takeoff_weight, zero_fuel_weight + fuel_onboard)
 
@@ -676,7 +717,9 @@ class BADAPerformanceModel(
                 q_fuel_used=q_fuel_used,
                 default_q_fuel=default_q_fuel,
             )
-            fuel_consumed = float((np.asarray(perf["fuel_flow"]) * df["segment_duration"]).sum())
+            fuel_consumed = float(
+                (np.asarray(perf["fuel_flow"]) * df["segment_duration"]).sum()
+            )
             fuel_onboard = fuel_consumed * fuel_factor
             initial_mass = min(maximum_takeoff_weight, zero_fuel_weight + fuel_onboard)
 
@@ -706,7 +749,9 @@ class BADAPerformanceModel(
             self.logger.debug("'engine_efficiency' column already provided, keeping it")
             return
 
-        tas: NDArray[np.floating] = df["true_airspeed"].to_numpy(dtype=float, copy=False)
+        tas: NDArray[np.floating] = df["true_airspeed"].to_numpy(
+            dtype=float, copy=False
+        )
         thrust: NDArray[np.floating] = np.asarray(perf["thrust"], dtype=float)
         ff: NDArray[np.floating] = np.asarray(perf["fuel_flow"], dtype=float)
 

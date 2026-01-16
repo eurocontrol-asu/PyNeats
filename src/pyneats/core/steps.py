@@ -10,12 +10,12 @@ Key Components:
    - InFlight/OutFlight: Type variables for flight data I/O
 """
 
-
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 from time import perf_counter
-from typing import Generic, Protocol, TypeVar, runtime_checkable, Type, Any, Mapping
+from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
+from collections.abc import Mapping
 import logging
 
 from dacite import from_dict
@@ -56,14 +56,14 @@ class StepError(RuntimeError):
 @runtime_checkable
 class Step(Protocol[InFlight, OutFlight]):
     """Protocol defining the core interface for NEATS processing steps."""
+
     def __call__(self, flight: InFlight) -> OutFlight: ...
 
 
 def update_param_dict(
-        param_dict: dict[str, Any],
-        new_params: dict[str, Any],
-        ) -> None:
-    
+    param_dict: dict[str, Any],
+    new_params: dict[str, Any],
+) -> None:
     """Helper to update parameter dict with new values."""
 
     for param, value in new_params.items():
@@ -87,7 +87,7 @@ class BaseStep(Generic[InFlight, OutFlight, Params]):
     """
 
     # Subclasses must define a concrete dataclass type
-    default_params: Type[Params]
+    default_params: type[Params]
 
     def _load_params(
         self,

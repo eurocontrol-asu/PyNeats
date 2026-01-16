@@ -8,7 +8,8 @@ from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
 __all__ = [
     "ClimateImpactModel",
     "ClimateImpactStepError",
-    ]
+]
+
 
 @runtime_checkable
 class ClimateImpactModel(
@@ -18,6 +19,7 @@ class ClimateImpactModel(
     Cilmate Impatct Model steps consume a FlightWithNonCO2Impact and produce
     an climate-metrics-enriched flight (zero-copy typed view).
     """
+
 
 class ClimateImpactStepError(StepError):
     """Raised when the climate impact step fails to evaluate or validate outputs."""

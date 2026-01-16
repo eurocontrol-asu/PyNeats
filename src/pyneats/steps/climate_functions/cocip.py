@@ -1,5 +1,5 @@
 """
-This module builds a wrapper around PyContrail's CoCip to allow for the computation 
+This module builds a wrapper around PyContrail's CoCip to allow for the computation
 of contrail climate functions on a flight, adding the results as new columns to the flight data.
 
 Key components:
@@ -7,10 +7,12 @@ Key components:
 - `CoCiPModel`: A class that implements the CoCiP model.
 
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, List, Mapping
+from typing import Any
+from collections.abc import Mapping
 
 from pycontrails import Flight
 from pycontrails.core.met import MetDataset
@@ -34,6 +36,7 @@ __all__ = [
 @dataclass(frozen=True)
 class ContrailsParams(ClimateParams):
     """Parameters for the CoCiP model."""
+
     met: MetDataset | None = None
     rad: MetDataset | None = None
 
@@ -79,7 +82,9 @@ class CoCiPModel(
         self.logger.info("COCIP step completed successfully")
         return FlightWithContrailsImpact.from_flight(out)
 
-    def run_fleet(self, flights: List[FlightWithEmissions]) -> List[FlightWithContrailsImpact]:
+    def run_fleet(
+        self, flights: list[FlightWithEmissions]
+    ) -> list[FlightWithContrailsImpact]:
         """
         Fleet-level vectorized CoCiP evaluation.
 

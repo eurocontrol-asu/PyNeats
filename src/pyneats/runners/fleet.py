@@ -17,13 +17,14 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, TypeVar, cast
+from typing import Any, TypeVar, cast
+from collections.abc import Callable, Mapping
 
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 from joblib.externals.loky import get_reusable_executor
-from typing_extensions import Self
+from typing import Self
 
 from pycontrails import Flight, Fleet
 from pycontrails.models.humidity_scaling import HumidityScaling
@@ -142,14 +143,14 @@ class FleetRunnerParams(RunnerConfig):
     )
 
     # Critical columns for vectorized-step failure detection
-    weather_critical_columns: Tuple[str, ...] = (
+    weather_critical_columns: tuple[str, ...] = (
         "air_temperature",
         "specific_humidity",
         "geopotential",
         "potential_vorticity",
     )
-    humidity_scaling_critical_columns: Tuple[str, ...] = ()
-    cocip_critical_columns: Tuple[str, ...] = ()
+    humidity_scaling_critical_columns: tuple[str, ...] = ()
+    cocip_critical_columns: tuple[str, ...] = ()
 
     def validate(self) -> None:
         if self.zarr_paths is None:
@@ -214,7 +215,7 @@ def _process_one(
     item: T,
     processor_func: ProcessorFunc[T, U],
     flight_id_extractor: Callable[[T], str],
-) -> Tuple[bool, int, Optional[U], Optional[str], str]:
+) -> tuple[bool, int, U | None, str | None, str]:
     flight_id = flight_id_extractor(item)
     try:
         out = processor_func(item)
@@ -227,8 +228,8 @@ def _create_error_record(
     original_flight: Any,
     flight_id: str,
     step_name: str,
-    error_msg: Optional[str],
-) -> Dict[str, Any]:
+    error_msg: str | None,
+) -> dict[str, Any]:
     attrs = original_flight.attrs if hasattr(original_flight, "attrs") else {}
     return {
         "flight_information": {
@@ -244,12 +245,12 @@ def _create_error_record(
 
 
 def _process_parallel_results(
-    results: List[Tuple[bool, int, Any, Optional[str], str]],
-    original_seq: List[Any],
+    results: list[tuple[bool, int, Any, str | None, str]],
+    original_seq: list[Any],
     step_name: str,
-) -> Tuple[List[Any], List[Dict[str, Any]]]:
-    successful: List[Any] = []
-    errors: List[Dict[str, Any]] = []
+) -> tuple[list[Any], list[dict[str, Any]]]:
+    successful: list[Any] = []
+    errors: list[dict[str, Any]] = []
 
     for ok, i, out, err, flight_id in sorted(results, key=lambda x: x[1]):
         if ok:
@@ -307,21 +308,21 @@ class FleetRunner:
         self.wind: MetDataset | None = None
 
         # ---- Pipeline elements’ outputs -----------------
-        self.source_fleet: List[pd.DataFrame] | None = None
-        self.parsed_fleet: List[Flight4D] | None = None
-        self.interpolated_fleet: List[Flight4D] | None = None
-        self.fleet_with_weather: List[FlightWithWeather] | None = None
-        self.fleet_with_performance: List[FlightWithPerformance] | None = None
-        self.fleet_with_emissions: List[FlightWithEmissions] | None = None
-        self.fleet_with_contrails: List[FlightWithContrailsImpact] | None = None
-        self.fleet_with_nonco2: List[FlightWithNonCO2Impact] | None = None
-        self.fleet_with_climate_impact: List[FlightWithClimateImpact] | None = None
+        self.source_fleet: list[pd.DataFrame] | None = None
+        self.parsed_fleet: list[Flight4D] | None = None
+        self.interpolated_fleet: list[Flight4D] | None = None
+        self.fleet_with_weather: list[FlightWithWeather] | None = None
+        self.fleet_with_performance: list[FlightWithPerformance] | None = None
+        self.fleet_with_emissions: list[FlightWithEmissions] | None = None
+        self.fleet_with_contrails: list[FlightWithContrailsImpact] | None = None
+        self.fleet_with_nonco2: list[FlightWithNonCO2Impact] | None = None
+        self.fleet_with_climate_impact: list[FlightWithClimateImpact] | None = None
 
         # Error aggregation (continue-on-error)
-        self.error_records: List[Dict[str, Any]] = []
+        self.error_records: list[dict[str, Any]] = []
 
         # Final output
-        self.results: Dict[str, Any] | None = None
+        self.results: dict[str, Any] | None = None
 
         # ---- Step callables (registry-based, process-cached) -----------------
         self.parser = make_step_func(
@@ -371,14 +372,14 @@ class FleetRunner:
 
     def _params(
         self, key: str, *, extra: Mapping[str, Any] | None = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Return a defensive copy of cfg.params[key] merged with optional extra params."""
         base = dict(self.cfg.params.get(key, {}))
         if extra:
             base.update(dict(extra))
         return base
 
-    def _bada_params(self) -> Dict[str, Any]:
+    def _bada_params(self) -> dict[str, Any]:
         if self.cfg.bada_path is None:
             return {}
         return {
@@ -395,7 +396,7 @@ class FleetRunner:
             path = Path(self.cfg.trajectory_json_filepath)
             logger.info("Loading trajectories from %s", path)
             with path.open("r", encoding="utf-8") as f:
-                json_flights: List[Dict[str, Any]] = json.load(f)
+                json_flights: list[dict[str, Any]] = json.load(f)
             self.source_fleet = neats_json_to_flights(json_flights)
             logger.info("Loaded %d flights from JSON", len(self.source_fleet))
             return self
@@ -499,7 +500,7 @@ class FleetRunner:
         )
         self.error_records.extend(errs)
 
-        self.fleet_with_weather = cast(List[FlightWithWeather], flights)
+        self.fleet_with_weather = cast(list[FlightWithWeather], flights)
         self.interpolated_fleet = None  # free memory
 
         end = time.time()
@@ -702,11 +703,11 @@ class FleetRunner:
 
     def _run_vectorized_step(
         self,
-        flights: List[T],
+        flights: list[T],
         step_name: str,
         step: Any,  # Step with run_fleet() method
-        critical_columns: Tuple[str, ...],
-    ) -> List[U]:
+        critical_columns: tuple[str, ...],
+    ) -> list[U]:
         """
         Run a vectorized step with error handling.
 
@@ -730,14 +731,14 @@ class FleetRunner:
         )
         self.error_records.extend(errs)
 
-        return cast(List[U], successful)
+        return cast(list[U], successful)
 
     def _run_parallel_step(
         self,
-        seq: List[T],
+        seq: list[T],
         step_name: str,
         processor_func: Callable[[T], U],
-    ) -> Tuple[List[U], List[Dict[str, Any]]]:
+    ) -> tuple[list[U], list[dict[str, Any]]]:
         t0 = time.time()
         logger.info(
             "%s %d flights (n_jobs=%s)...",
@@ -764,7 +765,7 @@ class FleetRunner:
             gc.collect()
 
         logger.info("%s complete in %.2fs", step_name.capitalize(), time.time() - t0)
-        return cast(List[U], good_seq), error_records
+        return cast(list[U], good_seq), error_records
 
     # -------------------------------------------------------------------------
     # Vectorized fleet operations
@@ -776,15 +777,15 @@ class FleetRunner:
 
     def _check_and_filter_failed_flights(
         self,
-        seq: List[Flight],
-        critical_columns: Tuple[str, ...],
+        seq: list[Flight],
+        critical_columns: tuple[str, ...],
         step_name: str,
-    ) -> Tuple[List[Flight], List[Dict[str, Any]]]:
+    ) -> tuple[list[Flight], list[dict[str, Any]]]:
         if not critical_columns:
             return seq, []
 
-        successful: List[Flight] = []
-        errors: List[Dict[str, Any]] = []
+        successful: list[Flight] = []
+        errors: list[dict[str, Any]] = []
 
         for flight in seq:
             df = flight.dataframe
@@ -806,8 +807,8 @@ class FleetRunner:
 
     @staticmethod
     def _check_critical_columns(
-        df: pd.DataFrame, critical_columns: Tuple[str, ...]
-    ) -> Optional[str]:
+        df: pd.DataFrame, critical_columns: tuple[str, ...]
+    ) -> str | None:
         for col in critical_columns:
             if col not in df.columns:
                 return f"{col} (missing)"

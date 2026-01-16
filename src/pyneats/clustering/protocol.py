@@ -13,11 +13,11 @@ class ClusteringProtocol(Protocol):
 
     def __call__(
         self,
-        list_of_df: List[pd.DataFrame],
+        list_of_df: list[pd.DataFrame],
         # Optional parameters for resolution, binning, etc., can be added here
         # to ensure all implementations support the same configuration arguments.
         **kwargs: Any,
-    ) -> List[List[pd.DataFrame]]:
+    ) -> list[list[pd.DataFrame]]:
         """
         The main method to execute the clustering logic.
 

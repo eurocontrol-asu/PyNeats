@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import ClassVar, Final, Tuple, Any
+from typing import Any, ClassVar, Final
 from pyneats.steps.emissions.views import FlightWithEmissions
 
 __all__ = [
@@ -10,20 +10,24 @@ __all__ = [
     "FlightWithClimateImpact",
 ]
 
-REQUIRED_CLIMATE_COLS: Final[Tuple[str, ...]] = ("ATR_20_CH4","ATR_20_O3","ATR_20_H2O")
-REQUIRED_CONTRAIL_COLS: Final[Tuple[str, ...]] = ("ef",)
+REQUIRED_CLIMATE_COLS: Final[tuple[str, ...]] = (
+    "ATR_20_CH4",
+    "ATR_20_O3",
+    "ATR_20_H2O",
+)
+REQUIRED_CONTRAIL_COLS: Final[tuple[str, ...]] = ("ef",)
 
 
 class FlightWithContrailsImpact(FlightWithEmissions):
     """Zero-copy typed view for emissions-enriched flights."""
 
-    REQUIRED: ClassVar[Tuple[str, ...]] = REQUIRED_CONTRAIL_COLS
+    REQUIRED: ClassVar[tuple[str, ...]] = REQUIRED_CONTRAIL_COLS
 
 
 class FlightWithNonCO2Impact(FlightWithEmissions):
     """Zero-copy typed view for emissions-enriched flights."""
 
-    REQUIRED: ClassVar[Tuple[str, ...]] = REQUIRED_CLIMATE_COLS
+    REQUIRED: ClassVar[tuple[str, ...]] = REQUIRED_CLIMATE_COLS
 
 
 class FlightWithClimateImpact(FlightWithNonCO2Impact):

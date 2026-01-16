@@ -4,7 +4,8 @@ This module provides low-level validation functions for DataFrames and dictionar
 These primitives are used by FleetSchema (Layer 2) for declarative validation.
 """
 
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 import pandas as pd
 
@@ -33,9 +34,9 @@ def validate_columns(
     required_set = set(required)
 
     # Handle both DataFrame and dict-like objects (VectorDataDict)
-    if hasattr(df, 'columns'):
+    if hasattr(df, "columns"):
         actual_cols = set(df.columns)
-    elif hasattr(df, 'keys'):
+    elif hasattr(df, "keys"):
         actual_cols = set(df.keys())
     else:
         raise TypeError(f"Expected DataFrame or dict-like object, got {type(df)}")
@@ -94,6 +95,4 @@ def validate_no_all_nan(df: pd.DataFrame, columns: Iterable[str]) -> None:
                 all_nan_cols.append(col)
 
     if all_nan_cols:
-        raise ValidationError(
-            f"Columns with all NaN values: {sorted(all_nan_cols)}"
-        )
+        raise ValidationError(f"Columns with all NaN values: {sorted(all_nan_cols)}")

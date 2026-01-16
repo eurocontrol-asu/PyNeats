@@ -1,7 +1,7 @@
 """
 
 This module defines WeatherProvider that integrates meteorological data into flight trajectories.
-It allows downselecting meteorological datasets to the flight envelope, interpolating required 
+It allows downselecting meteorological datasets to the flight envelope, interpolating required
 weather variables, and optionally applying humidity scaling.
 
 Key Components:
@@ -9,13 +9,13 @@ Key Components:
 - `WeatherProvider`: The main class that processes flight data and integrates weather information.
 """
 
-
 from __future__ import annotations
 
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Final, List, Mapping, Protocol, runtime_checkable, Any
+from typing import Any, Final, Protocol, runtime_checkable
+from collections.abc import Mapping
 
 import numpy as np
 from numpy.typing import NDArray
@@ -63,9 +63,11 @@ DEFAULT_REQUIRED_WEATHER_COLS: Final[tuple[str, ...]] = (
 )
 DEFAULT_OPTIONAL_WEATHER_COLS: Final[tuple[str, ...]] = (
     "geopotential",
-    "potential_vorticity",)
+    "potential_vorticity",
+)
 
 WIND_VARS: Final[tuple[str, ...]] = ("eastward_wind", "northward_wind")
+
 
 class FlightWithWeather(Flight4D):
     """Typed, zero-copy view asserting required weather columns exist."""
@@ -101,9 +103,7 @@ class PcHumidityScalingAdapter(HumidityScalingModel):
         self.humidity_scaling = humidity_scaling
 
     def eval(self, source: Flight) -> Flight:
-        
         result = self.humidity_scaling.eval(source=source)
-
 
         if isinstance(result, Flight):
             return result
@@ -128,11 +128,12 @@ class PcHumidityScalingAdapter(HumidityScalingModel):
 @dataclass(frozen=True)
 class WeatherProviderParams(BaseParams):
     """Parameters for WeatherProvider step."""
+
     # Downselect buffers (lon, lat in deg; time as np.timedelta64; level in model coords)
     lon_buf: tuple[float, float] = DEFAULT_LON_BUF
     lat_buf: tuple[float, float] = DEFAULT_LAT_BUF
     time_buf: tuple[np.timedelta64, np.timedelta64] = DEFAULT_TIME_BUF
-    level_buf: tuple[float, float] =  DEFAULT_LEVEL_BUF
+    level_buf: tuple[float, float] = DEFAULT_LEVEL_BUF
 
     method: InterpolationMethod = DEFAULT_WEATHER_INTEPOLATION_METHOD
     use_indices: bool = DEFAULT_WEATHER_USE_INDICES
@@ -163,6 +164,7 @@ class WeatherProviderParams(BaseParams):
 @runtime_checkable
 class WeatherProviderProtocol(Step[Flight4D, FlightWithWeather], Protocol):
     """Structural contract for WeatherProvider implementations."""
+
     def met(self) -> MetDataset: ...
     def rad(self) -> MetDataset: ...
     def ds_met(self) -> MetDataset | None: ...
@@ -216,7 +218,7 @@ class WeatherProvider(
 
     def rad(self) -> MetDataset:
         return self._rad
-    
+
     def wind(self) -> MetDataset | None:
         return self._wind
 
@@ -225,7 +227,7 @@ class WeatherProvider(
 
     def ds_rad(self) -> MetDataset | None:
         return self._ds_rad
-    
+
     def ds_wind(self) -> MetDataset | None:
         return self._ds_wind
 
@@ -276,9 +278,8 @@ class WeatherProvider(
         if self._wind is not None:
             self._ds_wind = self.downselect(flight, self._wind)
 
-        # Intersect MET variables and build a new Flight 
+        # Intersect MET variables and build a new Flight
         try:
-            
             new_cols: dict[str, NDArray[np.floating[Any]]] = {}
 
             for met_var, out_col in self.params.var_map.items():
@@ -293,7 +294,7 @@ class WeatherProvider(
                         src_ds = self._ds_met
                 else:
                     # non-wind → MET only
-                    if  met_var in self._ds_met:
+                    if met_var in self._ds_met:
                         src_ds = self._ds_met
 
                 if src_ds is None:
@@ -328,13 +329,15 @@ class WeatherProvider(
                         f"Length mismatch for column {k}: {v.shape[0]} vs {len(df)}"
                     )
                 df[k] = v
-            
-            base = Flight(data=df, attrs=getattr(flight, "attrs", None), fuel=flight.fuel)
+
+            base = Flight(
+                data=df, attrs=getattr(flight, "attrs", None), fuel=flight.fuel
+            )
 
         except Exception as e:
             raise WeatherStepError(type(self).__name__, f"intersect failed: {e}") from e
 
-        # Optional humidity scaling 
+        # Optional humidity scaling
         if self.params.humidity_scaling is not None:
             try:
                 base = self.params.humidity_scaling.eval(base)
@@ -351,7 +354,7 @@ class WeatherProvider(
                 type(self).__name__, f"validation failed: {e}"
             ) from e
 
-    def run_fleet(self, flights: List[Flight4D]) -> List[FlightWithWeather]:
+    def run_fleet(self, flights: list[Flight4D]) -> list[FlightWithWeather]:
         """
         Fleet-level vectorized weather intersection.
 
@@ -401,7 +404,9 @@ class WeatherProvider(
         for k, v in new_cols.items():
             df[k] = v
 
-        fleet_with_weather = Fleet(data=df, attrs=pyc_fleet.attrs, fl_attrs=pyc_fleet.fl_attrs)
+        fleet_with_weather = Fleet(
+            data=df, attrs=pyc_fleet.attrs, fl_attrs=pyc_fleet.fl_attrs
+        )
 
         logger.info("Weather intersection complete in %.2fs", time.time() - t0)
 
@@ -410,7 +415,9 @@ class WeatherProvider(
 
         # Optional humidity scaling
         if self.params.humidity_scaling is not None:
-            flights_with_weather = self._apply_humidity_scaling_fleet(flights_with_weather)
+            flights_with_weather = self._apply_humidity_scaling_fleet(
+                flights_with_weather
+            )
 
         # Type narrowing
         typed = [FlightWithWeather.from_flight(f) for f in flights_with_weather]
@@ -419,9 +426,9 @@ class WeatherProvider(
 
     def _intersect_weather_variables(
         self, fleet: Fleet, ds_met: MetDataset, ds_wind: MetDataset | None
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Intersect weather variables for a fleet."""
-        new_cols: Dict[str, np.ndarray] = {}
+        new_cols: dict[str, np.ndarray] = {}
 
         for met_var, out_col in self.params.var_map.items():
             src_ds = None
@@ -450,7 +457,9 @@ class WeatherProvider(
                 continue
 
             src = src_ds[met_var]
-            vals = fleet.intersect_met(src, method=self.params.method, use_indices=self.params.use_indices)
+            vals = fleet.intersect_met(
+                src, method=self.params.method, use_indices=self.params.use_indices
+            )
 
             if met_var in WIND_VARS:
                 vals = np.nan_to_num(vals, nan=0.0)
@@ -459,7 +468,9 @@ class WeatherProvider(
 
         return new_cols
 
-    def _apply_humidity_scaling_fleet(self, flights: List[FlightWithWeather]) -> List[FlightWithWeather]:
+    def _apply_humidity_scaling_fleet(
+        self, flights: list[FlightWithWeather]
+    ) -> list[FlightWithWeather]:
         """Apply humidity scaling to a fleet."""
         if self.params.humidity_scaling is None:
             return flights
@@ -481,7 +492,7 @@ class WeatherProvider(
         else:
             raise WeatherStepError(
                 type(self).__name__,
-                f"humidity_scaling returned unexpected type: {type(scaled)}"
+                f"humidity_scaling returned unexpected type: {type(scaled)}",
             )
 
         logger.info("Humidity scaling complete in %.2fs", time.time() - t0)

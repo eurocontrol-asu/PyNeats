@@ -1,13 +1,14 @@
-""" NEATS Steps Registry Module
+"""NEATS Steps Registry Module
 
 This module provides a registry system for NEATS processing steps. It implements
 a factory pattern that allows dynamic registration and instantiation of processing components
-based on their interface types. 
+based on their interface types.
 """
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Mapping, TypeVar, cast
+from typing import Any, TypeVar, cast
+from collections.abc import Callable, Mapping
 from threading import RLock
 import warnings
 
@@ -22,6 +23,7 @@ __all__ = [
 
 class RegistryError(ValueError):
     """Exception raised for errors in the NEATS registry operations."""
+
     pass
 
 
@@ -44,14 +46,14 @@ class _BigRegistry:
     """
 
     def __init__(self) -> None:
-        self._items: Dict[type[Any], Dict[str, Callable[..., Any]]] = {}
+        self._items: dict[type[Any], dict[str, Callable[..., Any]]] = {}
         self._lock = RLock()
 
     def register(self, t: type[T], name: str) -> Callable[[Ctor[T]], Ctor[T]]:
         """Register a constructor or class under an interface type and name.
-    
+
         This method implements a decorator pattern for registering implementations.
-        Names are case-insensitive and whitespace is stripped. Thread-safety is 
+        Names are case-insensitive and whitespace is stripped. Thread-safety is
         ensured
         """
         key = name.lower().strip()
@@ -73,9 +75,9 @@ class _BigRegistry:
 
     def build(self, t: type[T], name: str, **params: Any) -> T:
         """Build an instance of a registered implementation.
-    
+
         This method instantiates a registered constructor/class with the given parameters.
-        Names are case-insensitive and whitespace is stripped. 
+        Names are case-insensitive and whitespace is stripped.
         """
         key = name.lower().strip()
 
@@ -92,7 +94,7 @@ class _BigRegistry:
         return ctor(**params)
 
     def known(self, t: type[T]) -> Mapping[str, Ctor[T]]:
-        """ Return a shallow copy, cast back to the precise ctor type """
+        """Return a shallow copy, cast back to the precise ctor type"""
         with self._lock:
             bucket = self._items.get(t, {})
             return {k: cast(Ctor[T], v) for k, v in bucket.items()}

@@ -4,7 +4,8 @@ from dataclasses import dataclass, fields
 from functools import lru_cache
 from importlib import import_module
 from importlib.metadata import version as pkg_version, PackageNotFoundError
-from typing import Any, Mapping, Dict
+from typing import Any
+from collections.abc import Mapping
 
 from pycontrails.core.flight import Flight
 
@@ -44,7 +45,7 @@ def dist_version(
     Notes:
       - For pyBADA, only (1) is reliable; it does NOT expose __version__.
     """
-    # 1) Canonical 
+    # 1) Canonical
     try:
         return pkg_version(dist_name)
     except PackageNotFoundError:
@@ -69,12 +70,14 @@ def dist_version(
 # Flight-scoped report
 # -----------------------------------------------------------------------------
 
+
 @dataclass(frozen=True, slots=True)
 class FlightReport:
     """
     Subset of PyContrails Flight.attrs relevant for *per-flight* reporting.
     This class defines the keys you care about; extraction returns a dict.
     """
+
     flight_id: str | None = None
     registration: str | None = None
     departure_airport: str | None = None
@@ -89,8 +92,9 @@ class FlightReport:
     bada_code: str | None = None
 
     @classmethod
-    def extract(cls, flight: Flight,
-                include_fleet_metadata: bool = False) -> dict[str, Any]:
+    def extract(
+        cls, flight: Flight, include_fleet_metadata: bool = False
+    ) -> dict[str, Any]:
         """
         Extract *only* flight-level fields from Flight.attrs (ignoring missing keys).
 
@@ -114,7 +118,7 @@ class FlightReport:
                 v = attrs[k]
                 if v is not None:
                     out[k] = v
-        
+
         if include_fleet_metadata:
             out = {**out, **FleetReport.collect()}
 
@@ -125,12 +129,14 @@ class FlightReport:
 # Fleet/run-scoped report (environment/tool versions)
 # -----------------------------------------------------------------------------
 
+
 @dataclass(frozen=True, slots=True)
 class FleetReport:
     """
     Environment/tool versions that are constant for a whole fleet run.
     Returned as a dict via collect().
     """
+
     pyneats_version: str | None = None
     pycontrails_version: str | None = None
     climaccf_version: str | None = None
@@ -140,7 +146,7 @@ class FleetReport:
 
     @classmethod
     @lru_cache(maxsize=1)
-    def collect(cls) -> Dict[str, str]:
+    def collect(cls) -> dict[str, str]:
         """
         Collect environment versions once (cached).
 
@@ -149,24 +155,17 @@ class FleetReport:
         dict[str, str]
         """
         return {
-            "pyneats_version":pyneats.__version__,
-
+            "pyneats_version": pyneats.__version__,
             "pycontrails_version": dist_version(
-                "pycontrails", module_name="pycontrails",
+                "pycontrails",
+                module_name="pycontrails",
             ),
-
-
-            "climaccf_version":  dist_version(
-                "climaccf", module_name="climaccf",
+            "climaccf_version": dist_version(
+                "climaccf",
+                module_name="climaccf",
             ),
-
             "bada4_version": DEFAULT_BADA4_VERSION,
             "bada3_version": DEFAULT_BADA3_VERSION,
-
             # pyBADA exposes no __version__; importlib.metadata is the reliable path
-            "pybada_version": dist_version(
-                "pyBADA", module_name="pyBADA"
-            ),
+            "pybada_version": dist_version("pyBADA", module_name="pyBADA"),
         }
-
-

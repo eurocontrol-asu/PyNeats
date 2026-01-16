@@ -6,11 +6,11 @@ using the Global Warming Potential (GWP) approach. It calculates:
 1. Climate Metrics:
    - Absolute Global Warming Potential (AGWP) in J·m⁻²
    - CO₂-equivalent emissions in kg for multiple time horizons
-   
+
 2. Species Covered:
    - CO₂ baseline using AirClim computations
    - Contrails using energy forcing and efficacy factors
-   - Non-CO₂ effects (CH4, O3, H2O) using ATR scaling and conversion factors 
+   - Non-CO₂ effects (CH4, O3, H2O) using ATR scaling and conversion factors
 
 The calculations follow the methodologies outlined in  Dahlmann et al. (2025),
 """
@@ -18,7 +18,8 @@ The calculations follow the methodologies outlined in  Dahlmann et al. (2025),
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Final, Mapping, Dict, List, Any
+from typing import Any, Final
+from collections.abc import Mapping
 import pandas as pd
 
 from pyneats.core.steps import BaseStep, BaseParams
@@ -60,9 +61,11 @@ ATR_COL_TEMPLATE: Final[str] = "ATR_20_{spec}"  # J·m⁻² (per CLIMaCCF output
 # Parameters
 # ---------------------------
 
+
 @dataclass(frozen=True)
 class GWPParams(BaseParams):
     """Parameters for GWP climate metrics computation."""
+
     horizons: tuple[int, ...] = METRICS_HORIZONS
     surface_earth: float = SURFACE_EARTH
     seconds_per_year: int = SECONDS_PER_YEAR
@@ -83,18 +86,19 @@ class GWPParams(BaseParams):
     )
 
     # Efficacies
-    efficacy: Mapping[str, float] = field(
-        default_factory=lambda: EFFICACY
-    )
+    efficacy: Mapping[str, float] = field(default_factory=lambda: EFFICACY)
     # Reference horizon H0 for ATR (fixed at 20 per spec)
     atr_ref_horizon: int = DEFAULT_CLIMACCF_KWARGS.get("time_horizon", 20)
 
     rf_backward_factor: Mapping[str, float] = field(
         default_factory=lambda: RF_BACKWARD_FACTOR
     )
+
+
 # ---------------------------
 # Model
 # ---------------------------
+
 
 @register(ClimateImpactModel, "gwp")
 class GWPMetrics(
@@ -117,20 +121,25 @@ class GWPMetrics(
     # ---------- Helpers ----------
 
     def _agwp_co2_J_per_m2(self, m_co2: float) -> dict[int, float]:
-        """ AGWP_CO2(H) = C(H) * m_CO2 * s_yr    (units: J·m⁻²)"""
-        
+        """AGWP_CO2(H) = C(H) * m_CO2 * s_yr    (units: J·m⁻²)"""
+
         s_yr = self.params.seconds_per_year
-        return {h: self.params.agwp_coeff_wm2yr_per_kg[h] * m_co2 * s_yr for h in self.params.horizons}
+        return {
+            h: self.params.agwp_coeff_wm2yr_per_kg[h] * m_co2 * s_yr
+            for h in self.params.horizons
+        }
 
     def _eagwp_contrails_J_per_m2(self, total_ef_J: float) -> dict[int, float]:
-        """ EAGWP_Con(H) = EF * ε_Con / S_Earth    (units: J·m⁻²) """
+        """EAGWP_Con(H) = EF * ε_Con / S_Earth    (units: J·m⁻²)"""
 
         eps = float(self.params.efficacy.get("Contrails", 1.0))
         s = self.params.surface_earth
         return {h: (total_ef_J * eps) / s for h in self.params.horizons}
 
-    def _co2eq_from_eagwp_J_per_m2(self, agwp_J_per_m2: dict[int, float]) -> dict[int, float]:
-        """ CO2eq(H) = EAGWP(H) / ( C(H) * s_yr )  (units: kg) """
+    def _co2eq_from_eagwp_J_per_m2(
+        self, agwp_J_per_m2: dict[int, float]
+    ) -> dict[int, float]:
+        """CO2eq(H) = EAGWP(H) / ( C(H) * s_yr )  (units: kg)"""
 
         s_yr = self.params.seconds_per_year
         return {
@@ -149,7 +158,7 @@ class GWPMetrics(
         * ε_Spec
         * ATR^{Spec}(H0)
 
-        Expected input: ATR^{Spec}(H0) in **K** 
+        Expected input: ATR^{Spec}(H0) in **K**
         Output: AGWP_Spec(H) in **J·m⁻²**.
         """
         eps_spec = float(self.params.efficacy.get(species, 1.0))
@@ -160,17 +169,17 @@ class GWPMetrics(
         # Guard against zero division in C_ATR(H0)
         k_atr_h_0 = float(self.params.k_atr_from_rf.get(h_0, {}).get(species, 1.0))
         if k_atr_h_0 == 0.0:
-            raise ClimateImpactStepError(f"k_ATR←E[{species}][H0={h_0}] is zero; cannot scale.")
+            raise ClimateImpactStepError(
+                f"k_ATR←E[{species}][H0={h_0}] is zero; cannot scale."
+            )
 
         out: dict[int, float] = {}
         for h in self.params.horizons:
-
             k_agwp = float(self.params.k_agwp_from_rf.get(h, {}).get(species, 1.0))
-            scale = (k_agwp / k_atr_h_0) / rf_backward * eps_spec * s_yr #  J·m⁻²·K⁻¹ 
+            scale = (k_agwp / k_atr_h_0) / rf_backward * eps_spec * s_yr  #  J·m⁻²·K⁻¹
             out[h] = scale * atr_H0_K  # J·m⁻²
 
         return out
-    
 
     # ---------- Main ----------
 
@@ -180,7 +189,9 @@ class GWPMetrics(
             _ = FlightWithContrailsImpact.from_flight(flight)
         except KeyError as e:
             self.logger.error("Input missing required contrail columns: %s", e)
-            raise ClimateImpactStepError(f"Missing required contrail columns: {e}") from e
+            raise ClimateImpactStepError(
+                f"Missing required contrail columns: {e}"
+            ) from e
 
         df: pd.DataFrame = flight.to_dataframe()
 
@@ -190,10 +201,12 @@ class GWPMetrics(
         except Exception as e:
             self.logger.exception("Failed to sum contrail EF")
             raise ClimateImpactStepError(f"Failed to aggregate contrail EF: {e}") from e
-        
-         # Aggregate fuel burn (kg)
+
+        # Aggregate fuel burn (kg)
         try:
-            total_fuel_burn = float(pd.to_numeric(df["fuel_burn"], errors="coerce").sum())
+            total_fuel_burn = float(
+                pd.to_numeric(df["fuel_burn"], errors="coerce").sum()
+            )
         except Exception as e:
             self.logger.exception("Failed to sum fuel_burn")
             raise ClimateImpactStepError(f"Failed to aggregate fuel_burn: {e}") from e
@@ -205,7 +218,7 @@ class GWPMetrics(
             self.logger.error("Flight attrs missing 'total_co2'")
             raise ClimateImpactStepError("Missing required attr 'total_co2'")
 
-        # Timings and ancillary metadata 
+        # Timings and ancillary metadata
         flight_information = {
             **FlightReport.extract(flight),
             "contrails_ef_J": total_ef_J,
@@ -220,32 +233,40 @@ class GWPMetrics(
 
         # ---- CO₂: EAGWP (J·m⁻²) and CO₂eq = m_CO2 (kg) ----
         agwp_co2 = self._agwp_co2_J_per_m2(total_co2_kg)  # J·m⁻²
-        co2eq_co2 = {h: total_co2_kg for h in horizons}    # kg
+        co2eq_co2 = {h: total_co2_kg for h in horizons}  # kg
 
         # ---- Contrails: EAGWP (J·m⁻²) and CO₂eq via Joos ----
-        eagwp_con = self._eagwp_contrails_J_per_m2(total_ef_J)            # J·m⁻²
-        co2eq_con = self._co2eq_from_eagwp_J_per_m2(eagwp_con)            # kg
+        eagwp_con = self._eagwp_contrails_J_per_m2(total_ef_J)  # J·m⁻²
+        co2eq_con = self._co2eq_from_eagwp_J_per_m2(eagwp_con)  # kg
 
-        results: List[Mapping[str,Any]] = [
+        results: list[Mapping[str, Any]] = [
             {
                 "species": "CO2",
                 "value": [
-                    {"horizon": h, "EAGWP_J_per_m2": agwp_co2[h], "CO2eq_kg": co2eq_co2[h]}
+                    {
+                        "horizon": h,
+                        "EAGWP_J_per_m2": agwp_co2[h],
+                        "CO2eq_kg": co2eq_co2[h],
+                    }
                     for h in horizons
                 ],
             },
             {
                 "species": "Contrails",
                 "value": [
-                    {"horizon": h, "EAGWP_J_per_m2": eagwp_con[h], "CO2eq_kg": co2eq_con[h]}
+                    {
+                        "horizon": h,
+                        "EAGWP_J_per_m2": eagwp_con[h],
+                        "CO2eq_kg": co2eq_con[h],
+                    }
                     for h in horizons
                 ],
             },
         ]
 
         # ---- Other species via ATR(H0=20) scaling ----
-        skipped_species: Dict[str, str] = {}
-        added_species: List[str] = []
+        skipped_species: dict[str, str] = {}
+        added_species: list[str] = []
 
         for sp in SPECIES:
             atr_col = ATR_COL_TEMPLATE.format(spec=sp)
@@ -292,5 +313,7 @@ class GWPMetrics(
         }
 
         flight.attrs["climate_impact"] = climate_impact
-        self.logger.info("Climate impact (EAGWP) computed with Dahlmann(2025) conversion factors")
+        self.logger.info(
+            "Climate impact (EAGWP) computed with Dahlmann(2025) conversion factors"
+        )
         return FlightWithClimateImpact.from_flight(flight)

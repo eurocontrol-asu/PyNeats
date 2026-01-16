@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
+from collections.abc import Mapping
 from pycontrails import Flight
 from pycontrails.models.emissions import Emissions
 
@@ -21,7 +22,6 @@ __all__ = [
 
 @dataclass(frozen=True)
 class PyContrailsEmissionParams(EmissionParams):
-
     """Parameters for the PyContrails emission model calculation."""
 
     emissions_kwargs: Mapping[str, Any] = field(
@@ -38,13 +38,13 @@ class PyContrailsEmissionModel(
     ]
 ):
     """Calculates aircraft emissions using the pycontrails emissions model.
-    
+
     This class wraps the pycontrails.Emissions calculator to compute
     aircraft emissions based on performance data. It handles:
     - Execution of emissions calculations
-    - Error handling 
+    - Error handling
     - Output validation
-    
+
     Attributes:
         default_params: Default parameters for emissions calculations
         _impl: The underlying pycontrails.Emissions calculator instance
@@ -54,11 +54,9 @@ class PyContrailsEmissionModel(
     _impl: Emissions
 
     def _post_init(self) -> None:
- 
         self._impl = Emissions(**self.params.emissions_kwargs)
 
     def run(self, flight: FlightWithPerformance) -> FlightWithEmissions:
-
         """Calculate emissions for a flight using pycontrails."""
         try:
             out: Flight = self._impl.eval(flight)

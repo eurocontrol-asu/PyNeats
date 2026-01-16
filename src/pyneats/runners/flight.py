@@ -1,6 +1,6 @@
-""" NEATS Flight Runner Module
+"""NEATS Flight Runner Module
 
-This module implements the main execution pipeline for NEATS. 
+This module implements the main execution pipeline for NEATS.
 It orchestrates the sequential processing of flight data through multiple analysis stages:
 
 Pipeline Stages:
@@ -18,7 +18,7 @@ import logging
 import time
 from typing import Any
 from dataclasses import dataclass, field
-from typing_extensions import Self
+from typing import Self
 import pandas as pd
 
 from pycontrails.core.met import MetDataset
@@ -29,14 +29,13 @@ from pyneats.steps.climate_functions import (
     FlightWithNonCO2Impact,
     NonCO2Model,
     ContrailsStepError,
-    ClimateStepError
+    ClimateStepError,
 )
 
 from pyneats.steps.climate_metrics import (
     FlightWithClimateImpact,
     ClimateImpactModel,
     ClimateImpactStepError,
-
 )
 
 from pyneats.steps.interpolation import (
@@ -114,7 +113,6 @@ class FlightRunner:
         cfg: RunnerConfig | None = None,
         bada_path: str | None = None,
     ) -> None:
-
         self.cfg = cfg or RunnerConfig()
 
         self._source = None  # initialize backing field before using the property
@@ -136,12 +134,13 @@ class FlightRunner:
 
         performance_params = self.cfg.params.get("performance", {})
         if self.bada_path is not None:
-            performance_params.update({
+            performance_params.update(
+                {
                     "bada4_root_path": self.bada_path,
                     "bada3_root_path": self.bada_path,
                 },
             )
-            
+
         self.performance: PerformanceModel = build(
             PerformanceModel,
             self.cfg.performance,
@@ -236,7 +235,6 @@ class FlightRunner:
 
     # Step 2: Interpolate/reconstruct trajectory
     def _interpolate(self) -> Self:
-
         if self.parsed_flight is None:
             logger.error("Missing parsed_flight; did you call _parse_flight() first?")
             raise RuntimeError("_parse_flight() must be called before _interpolate().")
@@ -262,7 +260,6 @@ class FlightRunner:
 
     # Step 3: Intersect with weather data
     def _intersect_weather(self) -> Self:
-
         if self.interpolated_flight is None:
             logger.error(
                 "Missing interpolated_flight; did you call _interpolate() first?"
@@ -296,7 +293,6 @@ class FlightRunner:
 
     # Step 4: Run Performance model
     def _performance(self) -> Self:
-
         if self.flight_with_weather is None:
             logger.error(
                 "Missing flight_with_weather; did you call _intersect_weather() first?"
@@ -321,7 +317,6 @@ class FlightRunner:
 
     # Step 5: Run Emission model
     def _emissions(self) -> Self:
-
         if self.flight_with_performance is None:
             logger.error(
                 "Missing flight_with_performance; did you call performance() first?"
@@ -345,7 +340,6 @@ class FlightRunner:
 
     # Step 6: Compute Contrails EF
     def _contrails(self) -> Self:
-
         start = time.time()
         if self.flight_with_emissions is None:
             logger.error(
@@ -378,7 +372,6 @@ class FlightRunner:
 
     # Step 7: Compute other non-CO₂ effects (aCCF)
     def _nonco2(self) -> Self:
-
         start = time.time()
         if self.flight_with_contrails is None:
             logger.error(
@@ -420,9 +413,7 @@ class FlightRunner:
     # Step 8: Compute Climate Impact (GWP in the default case)
     def _gwp(self) -> Self:
         if self.flight_with_nonco2 is None:
-            logger.error(
-                "Missing flight_with_nonco2; did you call _nonco2() first?"
-            )
+            logger.error("Missing flight_with_nonco2; did you call _nonco2() first?")
             raise RuntimeError("_nonco2() must be called before _gwp().")
 
         try:

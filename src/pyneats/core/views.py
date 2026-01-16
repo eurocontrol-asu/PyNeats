@@ -28,7 +28,8 @@ Key Components:
 
 from __future__ import annotations
 import warnings
-from typing import ClassVar, Iterable, TypeVar, Tuple, cast, Any
+from typing import Any, ClassVar, TypeVar, cast
+from collections.abc import Iterable
 from pycontrails import Flight
 from pycontrails.utils import json as json_utils
 from pyneats.core.steps import StepError
@@ -52,17 +53,17 @@ class FlightView(Flight):
     """Zero-copy, typed *view* over a Flight with declarative column requirements."""
 
     # Column requirements
-    REQUIRED: ClassVar[Tuple[str, ...]] = ()
-    OPTIONAL: ClassVar[Tuple[str, ...]] = ()
+    REQUIRED: ClassVar[tuple[str, ...]] = ()
+    OPTIONAL: ClassVar[tuple[str, ...]] = ()
 
     # Attribute (Flight.attrs) requirements
-    ATTRS_REQUIRED: ClassVar[Tuple[str, ...]] = ()
-    ATTRS_OPTIONAL: ClassVar[Tuple[str, ...]] = ()
+    ATTRS_REQUIRED: ClassVar[tuple[str, ...]] = ()
+    ATTRS_OPTIONAL: ClassVar[tuple[str, ...]] = ()
 
     # --- helpers ------------------------------------------------------
 
     @classmethod
-    def _all_required(cls, extra: Iterable[str] | None = None) -> Tuple[str, ...]:
+    def _all_required(cls, extra: Iterable[str] | None = None) -> tuple[str, ...]:
         # Merge REQUIRED across the whole MRO, dedup while preserving order
         seen: set[str] = set()
         out: list[str] = []
@@ -94,7 +95,7 @@ class FlightView(Flight):
         return tuple(out)
 
     @classmethod
-    def _all_attrs_required(cls) -> Tuple[str, ...]:
+    def _all_attrs_required(cls) -> tuple[str, ...]:
         seen: set[str] = set()
         out: list[str] = []
         for base in reversed(cls.__mro__):
@@ -106,7 +107,7 @@ class FlightView(Flight):
         return tuple(out)
 
     @classmethod
-    def _all_attrs_optional(cls) -> Tuple[str, ...]:
+    def _all_attrs_optional(cls) -> tuple[str, ...]:
         seen: set[str] = set()
         out: list[str] = []
         for base in reversed(cls.__mro__):
@@ -214,7 +215,7 @@ class FlightView(Flight):
     @classmethod
     def from_dict(cls, d: dict) -> FlightView:
         # Build the fuel object first
-        
+
         fuel_obj: NEATSFuel = NEATSFuel.from_attrs(d)
 
         # Call the pycontrails from dict

@@ -1,18 +1,19 @@
-""" 
+"""
 Custom Fuel Class for inheriting from PyContrail's Fuel classes
 that implement requirements defined for NEATS
 """
 
 from __future__ import annotations
 
-from typing import Optional, Mapping, Any
+from typing import Optional, Any
+from collections.abc import Mapping
 
 from pycontrails.core.fuel import Fuel, JetA, SAFBlend
 from pyneats.core.neats_default_parameters import (
     DEFAULT_AROMATICS_CONTENT,
     DEFAULT_NAPHTHALEN_CONTENT,
     DEFAULT_SULPHUR_CONTENT,
-    DEFAULT_HYDROGEN_CONTENT, 
+    DEFAULT_HYDROGEN_CONTENT,
     DEFAULT_Q_FUEL,
 )
 
@@ -21,26 +22,33 @@ __all__ = [
     "NEATSFuel",
 ]
 
+
 class NEATSFuel(SAFBlend):
     """
     SAF-like type (passes isinstance(..., SAFBlend) and truthy pct_blend) with
     configurable hydrogen content and/or q_fuel. Independent of pct_blend physics.
     """
-    
-    aromatics_content : float = DEFAULT_AROMATICS_CONTENT  # default value - Not used in calculations
-    sulphur_content : float = DEFAULT_SULPHUR_CONTENT   # default value - Not used in calculations
-    naphthalene : float = DEFAULT_NAPHTHALEN_CONTENT    # default value - Not used in calculations
+
+    aromatics_content: float = (
+        DEFAULT_AROMATICS_CONTENT  # default value - Not used in calculations
+    )
+    sulphur_content: float = (
+        DEFAULT_SULPHUR_CONTENT  # default value - Not used in calculations
+    )
+    naphthalene: float = (
+        DEFAULT_NAPHTHALEN_CONTENT  # default value - Not used in calculations
+    )
 
     def __init__(
         self,
         *,
-        hydrogen_content: Optional[float] = None,  # wt.% H (e.g., 13.8 for Jet-A)
-        h_c_ratio: Optional[float] = None,         # atomic H/C ratio r
-        q_fuel: Optional[float] = None,            # J/kg (LHV)
-        pct_blend_gate: float = 1e-12,             # tiny, but needed for PyContrails gate
-        sulphur_content: Optional[float] = None,            
-        aromatics_content: Optional[float] = None,
-        naphthalene: Optional[float] = None,
+        hydrogen_content: float | None = None,  # wt.% H (e.g., 13.8 for Jet-A)
+        h_c_ratio: float | None = None,  # atomic H/C ratio r
+        q_fuel: float | None = None,  # J/kg (LHV)
+        pct_blend_gate: float = 1e-12,  # tiny, but needed for PyContrails gate
+        sulphur_content: float | None = None,
+        aromatics_content: float | None = None,
+        naphthalene: float | None = None,
         name: str = "NEATS Fuel (custom)",
     ) -> None:
         # pylint: disable=super-init-not-called
@@ -67,10 +75,9 @@ class NEATSFuel(SAFBlend):
         if sulphur_content is not None:
             object.__setattr__(self, "sulphur_content", sulphur_content)
 
-        if naphthalene is not None:  
+        if naphthalene is not None:
             object.__setattr__(self, "naphthalene", naphthalene)
 
-            
         # --- Derive dependent indices consistently
         ei_co2 = base.ei_co2
         ei_h2o = base.ei_h2o * (h_wt_pct / base.hydrogen_content)
@@ -78,7 +85,7 @@ class NEATSFuel(SAFBlend):
         ei_sulphates = ei_so2 / 0.98 * 0.02
         ei_oc = base.ei_oc
 
-        # --- Initialize frozen base dataclass in one shot 
+        # --- Initialize frozen base dataclass in one shot
         # pylint: disable=non-parent-init-called
         Fuel.__init__(
             self,
@@ -93,7 +100,9 @@ class NEATSFuel(SAFBlend):
         )
 
         # set the blend gate so that downstream code treats as SAFBlend
-        object.__setattr__(self, "pct_blend", pct_blend_gate if pct_blend_gate > 0.0 else 1e-12)
+        object.__setattr__(
+            self, "pct_blend", pct_blend_gate if pct_blend_gate > 0.0 else 1e-12
+        )
 
     @classmethod
     def from_attrs(cls, attrs: Mapping[str, Any]) -> NEATSFuel:
@@ -106,7 +115,7 @@ class NEATSFuel(SAFBlend):
             hydrogen_content=attrs.get("hydrogen_content"),
             h_c_ratio=attrs.get("h_c_ratio"),
             sulphur_content=attrs.get("sulphur_content") or attrs.get("sulfur_content"),
-            aromatics_content=attrs.get("aromatics_content") or attrs.get("aromatic_content"),
+            aromatics_content=attrs.get("aromatics_content")
+            or attrs.get("aromatic_content"),
             naphthalene=attrs.get("naphthalene"),
         )
-

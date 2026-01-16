@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
+from collections.abc import Mapping
 import pandas as pd
 
 from pycontrails import Flight
@@ -79,9 +80,7 @@ class NeatsTrajectoryParser(
             # 1) Check presence of required columns
             missing = [c for c in Flight4D.REQUIRED if c not in flight.columns]
             if missing:
-                raise TrajectoryParserStepError(
-                    f"missing required columns: {missing}"
-                )
+                raise TrajectoryParserStepError(f"missing required columns: {missing}")
 
             # 2) FL → meters
             try:
@@ -98,7 +97,6 @@ class NeatsTrajectoryParser(
                     f"altitude conversion failed: {e}"
                 ) from e
 
-
             # 3) Parse time (tz-aware)
             try:
                 ts = pd.to_datetime(
@@ -111,11 +109,9 @@ class NeatsTrajectoryParser(
                     ts = ts.dt.tz_convert(self.params.timezone)
                 df["time"] = ts
             except Exception as e:
-                raise TrajectoryParserStepError(
-                    f"timestamp parsing failed: {e}"
-                ) from e
+                raise TrajectoryParserStepError(f"timestamp parsing failed: {e}") from e
 
-             # 4) Clean, sort, dedup
+            # 4) Clean, sort, dedup
             mask = df[list(REQUIRED_4D_COLS)].notna().all(axis=1)
             df = (
                 df.loc[mask]
@@ -128,8 +124,8 @@ class NeatsTrajectoryParser(
                 raise TrajectoryParserStepError(
                     "no valid trajectory points after cleaning"
                 )
-            
-             # 5) Build flight attributes from df.attrs (canonical keys)
+
+            # 5) Build flight attributes from df.attrs (canonical keys)
             attrs_input: Mapping[str, Any] = getattr(df, "attrs", {}) or {}
             attrs: dict[str, Any] = {}
 
@@ -143,17 +139,14 @@ class NeatsTrajectoryParser(
                 if k in attrs_input and attrs_input[k] is not None:
                     attrs[k] = attrs_input[k]
 
-
             # 6) Construct Custom Fuel Object based on available attributes
             fuel_obj: NEATSFuel = NEATSFuel.from_attrs(attrs)
 
-            
             # 7) Construct base Flight with required + optional columns only
             optional_columns = [c for c in df.columns if c in Flight4D.OPTIONAL]
             data_req = df[list(Flight4D.REQUIRED) + list(optional_columns)]
 
             base = Flight(data=data_req, attrs=attrs, fuel=fuel_obj)
-
 
             # 8) Validate & return typed zero-copy view
             return Flight4D.from_flight(base)

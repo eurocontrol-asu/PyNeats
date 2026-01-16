@@ -9,8 +9,8 @@ def create_st_traffic_graph(
     df: pd.DataFrame,
     dlon: float = 0.25,
     dlat: float = 0.25,
-    dz: Optional[float] = None,
-    dt: Optional[float] = None,
+    dz: float | None = None,
+    dt: float | None = None,
 ) -> nx.Graph:
     """Internal helper function for efficient graph construction using self-merge.
 
@@ -25,7 +25,7 @@ def create_st_traffic_graph(
         nx.Graph: Graph with edges representing shared spatiotemporal cells.
     """
 
-    required_cols: Final[List[str]] = ["uid", "longitude", "latitude"]
+    required_cols: Final[list[str]] = ["uid", "longitude", "latitude"]
 
     if not all(col in df.columns for col in required_cols):
         raise ValueError(f"DataFrame missing required columns: {required_cols}")
@@ -36,7 +36,7 @@ def create_st_traffic_graph(
     if df_temp.empty:
         return nx.Graph()
 
-    grouping_cols: List[str] = []
+    grouping_cols: list[str] = []
 
     # Binning Logic
     df_temp.dropna(subset=required_cols, inplace=True)
@@ -58,12 +58,15 @@ def create_st_traffic_graph(
             dt_ns: int = int(dt * 1e9)
 
             temp_df = pd.DataFrame(
-                {"time_numeric": time_numeric, "uid": df_temp["uid"]}, index=df_temp.index
+                {"time_numeric": time_numeric, "uid": df_temp["uid"]},
+                index=df_temp.index,
             ).dropna()
 
             if not temp_df.empty:
                 df_temp = df_temp.loc[temp_df.index].copy()
-                df_temp["it"] = np.floor(temp_df["time_numeric"] / dt_ns).astype(np.int32)
+                df_temp["it"] = np.floor(temp_df["time_numeric"] / dt_ns).astype(
+                    np.int32
+                )
                 grouping_cols.append("it")
         except Exception:
             warnings.warn("Temporal dimension skipped due to error.")
@@ -93,10 +96,12 @@ def create_st_traffic_graph(
     G: nx.Graph = nx.Graph()
     G.add_nodes_from(df["uid"].unique())
 
-    edge_list: List[Tuple[Any, Any, Dict[str, Any]]] = [
+    edge_list: list[tuple[Any, Any, dict[str, Any]]] = [
         (uid_a, uid_b, {"weight": weight})
         for uid_a, uid_b, weight in zip(
-            edge_weights_df["uid_A"], edge_weights_df["uid_B"], edge_weights_df["weight"]
+            edge_weights_df["uid_A"],
+            edge_weights_df["uid_B"],
+            edge_weights_df["weight"],
         )
     ]
     G.add_edges_from(edge_list)
@@ -104,14 +109,14 @@ def create_st_traffic_graph(
 
 
 def cluster_st_traffic_louvain(
-    list_of_df: List[pd.DataFrame],
+    list_of_df: list[pd.DataFrame],
     dlon: float = 0.25,
     dlat: float = 0.25,
-    dz: Optional[float] = None,
-    dt: Optional[float] = None,
+    dz: float | None = None,
+    dt: float | None = None,
     resolution: float = 1.0,
     min_community_size: int = 1,
-) -> List[List[pd.DataFrame]]:
+) -> list[list[pd.DataFrame]]:
     """Cluster traffic trajectories using Louvain community detection.
 
     Args:
@@ -129,13 +134,18 @@ def cluster_st_traffic_louvain(
     if not list_of_df:
         return []
 
-    uid_attr_cols: Final[List[str]] = ["departure_airport", "arrival_airport", "flight_id", "aobt"]
-    traj_cols: Final[List[str]] = ["latitude", "longitude", "time", "altitude"]
+    uid_attr_cols: Final[list[str]] = [
+        "departure_airport",
+        "arrival_airport",
+        "flight_id",
+        "aobt",
+    ]
+    traj_cols: Final[list[str]] = ["latitude", "longitude", "time", "altitude"]
 
-    data_for_concat: List[pd.DataFrame] = []
+    data_for_concat: list[pd.DataFrame] = []
 
     # Map UID -> original list index (i).
-    uid_to_original_idx: Dict[Any, int] = {}
+    uid_to_original_idx: dict[Any, int] = {}
 
     # 1. Trajectory Data Preparation and Central Mapping (O(N) single pass)
     for i, df_segment in enumerate(list_of_df):
@@ -166,12 +176,14 @@ def cluster_st_traffic_louvain(
     G: nx.Graph = create_st_traffic_graph(full_df, dlon, dlat, dz, dt)
 
     if not G.nodes:
-        warnings.warn("Graph has no nodes/edges after processing. Returning unclustered data.")
+        warnings.warn(
+            "Graph has no nodes/edges after processing. Returning unclustered data."
+        )
         return [list_of_df]
 
     # 3. Cluster using Louvain Community Detection
     try:
-        partition: List[set[Any]] = nx.community.louvain_communities(  # type: ignore
+        partition: list[set[Any]] = nx.community.louvain_communities(  # type: ignore
             G,
             weight="weight",
             resolution=resolution,
@@ -181,7 +193,7 @@ def cluster_st_traffic_louvain(
         return [list_of_df]
 
     # --- 3.5. Post-Processing: Filter and Merge Small Communities ---
-    major_communities: List[set[Any]] = []
+    major_communities: list[set[Any]] = []
     minor_community_uids: set[Any] = set()
 
     for community_set in partition:
@@ -201,11 +213,11 @@ def cluster_st_traffic_louvain(
 
     # 4. Segment and Reconstruct DataFrames (Partition-Driven)
 
-    clustered_data: List[List[pd.DataFrame]] = []
+    clustered_data: list[list[pd.DataFrame]] = []
 
     for community_set in final_partition:
         # Store the DataFrames belonging to the current community
-        cluster_list_of_df: List[pd.DataFrame] = []
+        cluster_list_of_df: list[pd.DataFrame] = []
 
         for uid in community_set:
             original_idx = uid_to_original_idx[uid]
@@ -226,8 +238,8 @@ class LouvainTrafficClusterer:
         self,
         dlon: float = 0.25,
         dlat: float = 0.25,
-        dz: Optional[float] = None,
-        dt: Optional[float] = None,
+        dz: float | None = None,
+        dt: float | None = None,
         resolution: float = 1.0,
         min_community_size: int = 1,
     ):
@@ -241,9 +253,9 @@ class LouvainTrafficClusterer:
 
     def __call__(
         self,
-        list_of_df: List[pd.DataFrame],
+        list_of_df: list[pd.DataFrame],
         **kwargs: Any,  # Accepts arbitrary kwargs for flexibility
-    ) -> List[List[pd.DataFrame]]:
+    ) -> list[list[pd.DataFrame]]:
         """Executes the clustering process, conforming to the Protocol."""
 
         # Merge instance attributes with any passed kwargs, giving priority to kwargs
@@ -253,7 +265,9 @@ class LouvainTrafficClusterer:
             "dz": kwargs.get("dz", self.dz),
             "dt": kwargs.get("dt", self.dt),
             "resolution": kwargs.get("resolution", self.resolution),
-            "min_community_size": kwargs.get("min_community_size", self.min_community_size),
+            "min_community_size": kwargs.get(
+                "min_community_size", self.min_community_size
+            ),
         }
 
         # Call the core logic (your highly efficient function)

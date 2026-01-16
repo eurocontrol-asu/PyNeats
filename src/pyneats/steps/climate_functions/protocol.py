@@ -26,12 +26,9 @@ class NonCO2Model(Step[FlightWithEmissions, FlightWithNonCO2Impact], Protocol):
     """A climate step that enriches a Flight with non-CO₂ impact columns."""
 
 
-
 class ContrailsStepError(StepError):
     """Raised when contrail impact evaluation fails or yields invalid output."""
 
 
 class ClimateStepError(StepError):
     """Raised when ACCF evaluation fails or yields invalid output."""
-
-
