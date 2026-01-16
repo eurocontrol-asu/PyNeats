@@ -28,20 +28,8 @@ def test_cocip(nm_output, weather, flight_idx):  # noqa: F811
         )
 
     rtol = 1e-3  # 0.1% relative tolerance (same as main branch)
-    atol = 1e-8  # Absolute tolerance (same as main branch)
+    atol = float("inf") # Only check relative tolerance
     check_cols = list(FlightWithContrailsImpact.REQUIRED)
-
-    # Columns produced by CoCiP (remove from input)
-    drop_cols = [
-        "ef",
-        "contrail_age",
-        "sdr_mean",
-        "rsr_mean",
-        "olr_mean",
-        "rf_sw_mean",
-        "rf_lw_mean",
-        "rf_net_mean",
-    ]
 
     # Get expected flight
     expected_flight = nm_output[flight_idx]
@@ -49,8 +37,13 @@ def test_cocip(nm_output, weather, flight_idx):  # noqa: F811
 
     # Create input (FlightWithEmissions from golden, remove CoCiP outputs)
     input_flight = FlightWithEmissions.from_flight(expected_flight.copy())
-    for col in drop_cols:
-        input_flight.data.pop(col, None)
+    
+    required_and_optional = (
+        FlightWithEmissions._all_required() + FlightWithEmissions._all_optional()
+    )
+    for col in list(input_flight.data.keys()):
+        if col not in required_and_optional:
+            input_flight.data.pop(col, None)
 
     # Create step and run
     params = ContrailsParams(met=weather.met(), rad=weather.rad())

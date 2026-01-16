@@ -86,14 +86,12 @@ jobs:
 
       - name: Set up BADA data directories
         run: |
-          mkdir -p tests/data/BADA
-          cp -r bada_data/BADA3 tests/data/BADA/ 2>/dev/null || true
-          cp -r bada_data/BADA4 tests/data/BADA/ 2>/dev/null || true
+          mkdir -p ${{ github.workspace }}/tests/data/BADA
+          cp -r bada_data/* ${{ github.workspace }}/tests/data/BADA/
 
       - name: Set BADA environment variables
         run: |
-          echo "BADA3_PATH=${{ github.workspace }}/tests/data/BADA/BADA3" >> $GITHUB_ENV
-          echo "BADA4_PATH=${{ github.workspace }}/tests/data/BADA/BADA4" >> $GITHUB_ENV
+          echo "BADA_ROOT_PATH=${{ github.workspace }}/tests/data/BADA" >> $GITHUB_ENV
 
       - name: Run tests with coverage
         run: uv run pytest tests/ -v --cov=pyneats --cov-report=xml --cov-report=term-missing

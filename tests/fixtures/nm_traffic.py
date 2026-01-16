@@ -29,10 +29,7 @@ def nm_input() -> List[dict]:
     with open(filepath, "r", encoding="utf-8") as fh:
         data = json.load(fh)
 
-    # Sort by flight_id to match nm_output order
-    sorted_data = sorted(data, key=lambda x: x.get("flight_id", ""))
-
-    return sorted_data
+    return data
 
 
 @pytest.fixture
@@ -61,7 +58,4 @@ def nm_output() -> List[FlightView]:
         f = FlightView.from_dict(d)
         flights.append(f)
 
-    # Sort flights by flight_id for consistent ordering
-    flights_sorted = sorted(flights, key=lambda f: f.attrs["flight_id"])
-
-    return flights_sorted
+    return flights

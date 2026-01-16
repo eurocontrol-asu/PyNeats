@@ -126,24 +126,24 @@
         "humidity_scaling_rhi_boost_exponent": 1.635,
         "humidity_scaling_clip_upper": 1.65,
         "pycontrails_version": "0.60.1",
-        "contrails_computation_time": 2.2677299976348877,
-        "non_co2_computation_time": 0.0005030632019042969,
+        "contrails_computation_time": 2.746004819869995,
+        "non_co2_computation_time": 0.0005054473876953125,
         "climate_impact": {
             "flight_information": {
-                "model_type": "NM",
-                "flight_id": "EAF2143",
-                "departure_airport": "LZIB",
                 "arrival_airport": "LBBG",
-                "engine_uid": "1IA001",
-                "bada_version": "BADA4",
                 "aobt": "2025-07-09T18:07:00+0000",
+                "bada_version": "BADA4",
                 "bada_code": "A320-231",
                 "aircraft_type": "A320",
+                "departure_airport": "LZIB",
+                "engine_uid": "1IA001",
+                "model_type": "NM",
+                "flight_id": "EAF2143",
                 "contrails_ef_J": 908220719488.4762,
                 "co2_baseline_kg": 11510.577445965007,
                 "fuel_burn_kg": 3643.7408819135826,
-                "non_co2_computation_time": 0.0005030632019042969,
-                "contrails_computation_time": 2.2677299976348877
+                "non_co2_computation_time": 0.0005054473876953125,
+                "contrails_computation_time": 2.746004819869995
             },
             "climate_metrics": [
                 {
@@ -8072,24 +8072,24 @@
         "humidity_scaling_rhi_boost_exponent": 1.635,
         "humidity_scaling_clip_upper": 1.65,
         "pycontrails_version": "0.60.1",
-        "contrails_computation_time": 9.575379610061646,
-        "non_co2_computation_time": 0.0005476474761962891,
+        "contrails_computation_time": 9.793570041656494,
+        "non_co2_computation_time": 0.0005779266357421875,
         "climate_impact": {
             "flight_information": {
-                "model_type": "NM",
-                "flight_id": "FDX5067",
-                "departure_airport": "KMEM",
                 "arrival_airport": "EBLG",
-                "engine_uid": "01P21GE217",
-                "bada_version": "BADA4",
                 "aobt": "2025-07-09T20:47:00+0000",
+                "bada_version": "BADA4",
                 "bada_code": "B772LR",
                 "aircraft_type": "B77L",
+                "departure_airport": "KMEM",
+                "engine_uid": "01P21GE217",
+                "model_type": "NM",
+                "flight_id": "FDX5067",
                 "contrails_ef_J": -340241174142074.5,
                 "co2_baseline_kg": 177312.18532924794,
                 "fuel_burn_kg": 56129.213462883185,
-                "non_co2_computation_time": 0.0005476474761962891,
-                "contrails_computation_time": 9.575379610061646
+                "non_co2_computation_time": 0.0005779266357421875,
+                "contrails_computation_time": 9.793570041656494
             },
             "climate_metrics": [
                 {
@@ -45021,24 +45021,24 @@
         "humidity_scaling_rhi_boost_exponent": 1.635,
         "humidity_scaling_clip_upper": 1.65,
         "pycontrails_version": "0.60.1",
-        "contrails_computation_time": 1.5463271141052246,
-        "non_co2_computation_time": 0.0004794597625732422,
+        "contrails_computation_time": 1.5714647769927979,
+        "non_co2_computation_time": 0.0004951953887939453,
         "climate_impact": {
             "flight_information": {
-                "model_type": "NM",
-                "flight_id": "RYR46YN",
-                "departure_airport": "LIRF",
                 "arrival_airport": "LEZL",
-                "engine_uid": "2CM015",
-                "bada_version": "BADA4",
                 "aobt": "2025-07-09T03:44:00+0000",
+                "bada_version": "BADA4",
                 "bada_code": "B738W26",
                 "aircraft_type": "B738",
+                "departure_airport": "LIRF",
+                "engine_uid": "2CM015",
+                "model_type": "NM",
+                "flight_id": "RYR46YN",
                 "contrails_ef_J": -19041967676.093533,
                 "co2_baseline_kg": 19187.652379996558,
                 "fuel_burn_kg": 6073.964032920721,
-                "non_co2_computation_time": 0.0004794597625732422,
-                "contrails_computation_time": 1.5463271141052246
+                "non_co2_computation_time": 0.0004951953887939453,
+                "contrails_computation_time": 1.5714647769927979
             },
             "climate_metrics": [
                 {
@@ -56475,24 +56475,24 @@
         "humidity_scaling_rhi_boost_exponent": 1.635,
         "humidity_scaling_clip_upper": 1.65,
         "pycontrails_version": "0.60.1",
-        "contrails_computation_time": 6.435742616653442,
-        "non_co2_computation_time": 0.0005590915679931641,
+        "contrails_computation_time": 6.903434991836548,
+        "non_co2_computation_time": 0.0005500316619873047,
         "climate_impact": {
             "flight_information": {
-                "model_type": "NM",
-                "flight_id": "ACA812",
-                "departure_airport": "CYUL",
                 "arrival_airport": "LPPT",
-                "engine_uid": "4PW067",
-                "bada_version": "BADA4",
                 "aobt": "2025-07-09T01:40:48+0000",
+                "bada_version": "BADA4",
                 "bada_code": "A330-341",
                 "aircraft_type": "A333",
+                "departure_airport": "CYUL",
+                "engine_uid": "4PW067",
+                "model_type": "NM",
+                "flight_id": "ACA812",
                 "contrails_ef_J": 2729527848401738.5,
                 "co2_baseline_kg": 107846.33662910243,
                 "fuel_burn_kg": 34139.39114564813,
-                "non_co2_computation_time": 0.0005590915679931641,
-                "contrails_computation_time": 6.435742616653442
+                "non_co2_computation_time": 0.0005500316619873047,
+                "contrails_computation_time": 6.903434991836548
             },
             "climate_metrics": [
                 {
@@ -85517,24 +85517,24 @@
         "humidity_scaling_rhi_boost_exponent": 1.635,
         "humidity_scaling_clip_upper": 1.65,
         "pycontrails_version": "0.60.1",
-        "contrails_computation_time": 6.587339401245117,
-        "non_co2_computation_time": 0.0005776882171630859,
+        "contrails_computation_time": 7.082608938217163,
+        "non_co2_computation_time": 0.0005898475646972656,
         "climate_impact": {
             "flight_information": {
-                "model_type": "NM",
-                "flight_id": "UAE62Y",
-                "departure_airport": "OMDB",
                 "arrival_airport": "KBOS",
-                "engine_uid": "01P21GE217",
-                "bada_version": "BADA4",
                 "aobt": "2025-07-09T04:35:00+0000",
+                "bada_version": "BADA4",
                 "bada_code": "B773ERGE115B",
                 "aircraft_type": "B77W",
+                "departure_airport": "OMDB",
+                "engine_uid": "01P21GE217",
+                "model_type": "NM",
+                "flight_id": "UAE62Y",
                 "contrails_ef_J": 48542546708838.91,
                 "co2_baseline_kg": 357296.57850059523,
                 "fuel_burn_kg": 113104.33000968513,
-                "non_co2_computation_time": 0.0005776882171630859,
-                "contrails_computation_time": 6.587339401245117
+                "non_co2_computation_time": 0.0005898475646972656,
+                "contrails_computation_time": 7.082608938217163
             },
             "climate_metrics": [
                 {
