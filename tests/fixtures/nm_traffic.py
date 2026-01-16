@@ -9,12 +9,15 @@ import pytest
 from pyneats.core.views import FlightView
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def nm_input() -> List[dict]:
     """Load raw NM input flights (5 flights) from JSON.
 
     Returns:
-        List of raw flight dictionaries (NM JSON format), sorted by flight_id
+        List of raw flight dictionaries (NM JSON format)
+
+    Note:
+        Session-scoped for performance - loaded once per test session.
     """
     traffic_path = Path(__file__).parent.parent / "data"
 
@@ -32,12 +35,16 @@ def nm_input() -> List[dict]:
     return data
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def nm_output() -> List[FlightView]:
     """Load expected NM output flights (5 flights with full pipeline results) from JSON.
 
     Returns:
-        List of FlightView objects (fully processed with all columns), sorted by flight_id
+        List of FlightView objects (fully processed with all columns)
+
+    Note:
+        Session-scoped for performance - loaded once per test session.
+        Tests should use .copy() when modifying flight data to avoid side effects.
     """
     traffic_path = Path(__file__).parent.parent / "data"
 
@@ -59,3 +66,4 @@ def nm_output() -> List[FlightView]:
         flights.append(f)
 
     return flights
+

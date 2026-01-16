@@ -11,7 +11,7 @@ from pyneats.steps.parsing.views import Flight4D
 from .fixtures.nm_traffic import nm_input, nm_output
 
 
-@pytest.mark.parametrize("flight_idx", range(5))
+@pytest.mark.integration
 def test_interpolation(nm_input, nm_output, flight_idx):  # noqa: F811
     """Test parsing and interpolation for individual flights.
 
@@ -21,14 +21,15 @@ def test_interpolation(nm_input, nm_output, flight_idx):  # noqa: F811
     parser = NeatsTrajectoryParser()
     interpolator = PyContrailsInterpolator()
 
-    rtol = 1e-3  # 0.1% relative tolerance 
-    atol = 1e-2  # Absolute tolerance 
+    rtol = 1e-3  # 0.1% relative tolerance
+    atol = 1e-2  # Absolute tolerance
     check_cols = list(Flight4D.REQUIRED)
 
     # Get input and expected output for this flight
     raw_flight = nm_input[flight_idx]
-    
+
     expected_flight = nm_output[flight_idx]
+    flight_id = expected_flight.attrs.get("flight_id", f"flight_{flight_idx}")
     expected_output = Flight4D.from_flight(expected_flight.copy()).to_dataframe()
 
     # Convert JSON to DataFrame
@@ -49,5 +50,6 @@ def test_interpolation(nm_input, nm_output, flight_idx):  # noqa: F811
         rtol=rtol,
         atol=atol,
         check_dtype=False,
-        obj=f"Flight {flight_idx}",
+        obj=f"Flight {flight_idx} [{flight_id}] (interpolation)",
     )
+

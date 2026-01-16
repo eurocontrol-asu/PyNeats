@@ -14,7 +14,8 @@ from .fixtures.nm_traffic import nm_output
 from .fixtures.weather import weather
 
 
-@pytest.mark.parametrize("flight_idx", range(5))
+@pytest.mark.integration
+@pytest.mark.requires_weather
 def test_cocip(nm_output, weather, flight_idx):  # noqa: F811
     """Test CoCiP (contrails) computation for individual flights.
 
@@ -27,17 +28,18 @@ def test_cocip(nm_output, weather, flight_idx):  # noqa: F811
             "Weather data not available. Use pytest --met-cache-dir=/path/to/data or set MET_CACHE_DIR"
         )
 
-    rtol = 1e-3  # 0.1% relative tolerance (same as main branch)
-    atol = float("inf") # Only check relative tolerance
+    rtol = 1e-3  # 0.1% relative tolerance
+    atol = float("inf")  # Only check relative tolerance
     check_cols = list(FlightWithContrailsImpact.REQUIRED)
 
     # Get expected flight
     expected_flight = nm_output[flight_idx]
+    flight_id = expected_flight.attrs.get("flight_id", f"flight_{flight_idx}")
     expected_output = FlightWithContrailsImpact.from_flight(expected_flight.copy()).to_dataframe()
 
     # Create input (FlightWithEmissions from golden, remove CoCiP outputs)
     input_flight = FlightWithEmissions.from_flight(expected_flight.copy())
-    
+
     required_and_optional = (
         FlightWithEmissions._all_required() + FlightWithEmissions._all_optional()
     )
@@ -57,5 +59,6 @@ def test_cocip(nm_output, weather, flight_idx):  # noqa: F811
         rtol=rtol,
         atol=atol,
         check_dtype=False,
-        obj=f"Flight {flight_idx}",
+        obj=f"Flight {flight_idx} [{flight_id}] (contrails)",
     )
+

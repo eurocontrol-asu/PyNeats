@@ -13,6 +13,35 @@ _log = logging.getLogger(__name__)
 _log.setLevel(logging.INFO)
 
 
+def pytest_configure(config):
+    """Register custom pytest markers."""
+    config.addinivalue_line("markers", "slow: marks tests as slow (>10s)")
+    config.addinivalue_line("markers", "requires_bada: marks tests requiring BADA data")
+    config.addinivalue_line("markers", "requires_weather: marks tests requiring weather data")
+    config.addinivalue_line("markers", "integration: marks tests as integration tests")
+
+
+def pytest_generate_tests(metafunc):
+    """Generate test parameters with flight IDs for better error reporting."""
+    if "flight_idx" in metafunc.fixturenames:
+        # Load flight IDs from golden output for test identification
+        try:
+            traffic_path = Path(__file__).parent / "data"
+            filepath = traffic_path / "output_flights_5.json"
+
+            if filepath.exists():
+                with open(filepath, "r", encoding="utf-8") as fh:
+                    data = json.load(fh)
+                    flight_ids = [d.get("flight_id", f"flight_{i}") for i, d in enumerate(data)]
+            else:
+                flight_ids = [f"flight_{i}" for i in range(5)]
+        except Exception:
+            flight_ids = [f"flight_{i}" for i in range(5)]
+
+        # Parametrize with indices, but use flight_ids for test identification
+        metafunc.parametrize("flight_idx", range(len(flight_ids)), ids=flight_ids)
+
+
 def pytest_addoption(parser):
     parser.addoption(
         "--met-cache-dir",
@@ -28,7 +57,7 @@ def pytest_addoption(parser):
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def weather_path(pytestconfig) -> Path | None:
     """Get path to weather data directory.
 
@@ -47,10 +76,10 @@ def weather_path(pytestconfig) -> Path | None:
     if env_path:
         return Path(env_path).resolve()
 
-    return None 
+    return None
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def bada_root_path(pytestconfig) -> Path | None:
     """Get path to BADA root directory.
 
@@ -63,21 +92,22 @@ def bada_root_path(pytestconfig) -> Path | None:
     """
     # Command line option
     path = pytestconfig.getoption("bada_root_path")
-    
+
     if path:
         return Path(path).resolve()
 
     # Environment variable
     env_path = os.environ.get("BADA_ROOT_PATH")
-    
+
     if env_path:
         return Path(env_path).resolve()
 
     # Default path
     default_path = Path(__file__).parent.parent / "data" / "BADA"
-    
+
     if default_path.is_dir() and default_path.exists():
         return default_path.resolve()
-    
-    return None 
+
+    return None
+ 
 

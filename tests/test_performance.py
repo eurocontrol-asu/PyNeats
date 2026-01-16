@@ -8,9 +8,20 @@ from tqdm import tqdm
 from pathlib import Path
 
 
-@pytest.mark.parametrize("flight_idx", range(5))
+@pytest.mark.integration
+@pytest.mark.requires_bada
+@pytest.mark.slow
 def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
+    """Test BADA performance model with various configuration options.
 
+    Tests performance computation with:
+    - No initial information (baseline)
+    - With payload factor
+    - With takeoff weight
+    - With aircraft mass trajectory
+    - With fuel flow
+    - With engine efficiency
+    """
     if bada_root_path is None or not bada_root_path.exists():
         pytest.skip("BADA data not available, skipping test.")
 
@@ -26,7 +37,9 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
 
     # Get expected flight
     expected_flight = nm_output[flight_idx]
+    flight_id = expected_flight.attrs.get("flight_id", f"flight_{flight_idx}")
     expected_output = FlightWithPerformance.from_flight(expected_flight.copy()).to_dataframe()
+
 
     # Create input
     input = FlightWithWeather.from_flight(expected_flight.copy())
@@ -47,7 +60,7 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
         expected_output[check_cols],
         rtol=rtol,
         atol=atol,
-        obj="Original",
+        obj=f"Flight {flight_idx} [{flight_id}] (performance - baseline)",
     )
 
     # Set payload factor
@@ -60,7 +73,7 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
         rtol=rtol,
         atol=atol,
         check_dtype=False,
-        obj=f"Flight {flight_idx}",
+        obj=f"Flight {flight_idx} [{flight_id}] (performance - with payload_factor)",
     )
 
     # Set takeoff weight
@@ -72,7 +85,7 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
         rtol=rtol,
         atol=atol,
         check_dtype=False,
-        obj=f"Flight {flight_idx}",
+        obj=f"Flight {flight_idx} [{flight_id}] (performance - with takeoff_weight)",
     )
 
     # Set aircraft mass along the trajectory
@@ -84,7 +97,7 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
         rtol=rtol,
         atol=atol,
         check_dtype=False,
-        obj=f"Flight {flight_idx}",
+        obj=f"Flight {flight_idx} [{flight_id}] (performance - with aircraft_mass)",
     )
 
     # Set fuel flow
@@ -96,7 +109,7 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
         rtol=rtol,
         atol=atol,
         check_dtype=False,
-        obj=f"Flight {flight_idx}",
+        obj=f"Flight {flight_idx} [{flight_id}] (performance - with fuel_flow)",
     )
 
     # Set engine efficiency
@@ -108,5 +121,5 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
         rtol=rtol,
         atol=atol,
         check_dtype=False,
-        obj=f"Flight {flight_idx}",
+        obj=f"Flight {flight_idx} [{flight_id}] (performance - with engine_efficiency)",
     )
