@@ -189,7 +189,7 @@ class _PyBADAAdapterBase(Generic[TObj]):
         )
 
         # delta temperature constant used by BADA 4
-        tau_const: float = theta * const.temp_0 / (theta * const.temp_0 - delta_tau)  # type: ignore
+        tau_const: float = theta * const.temp_0 / (theta * const.temp_0 - delta_tau)
 
         # Get phase
         phase = self._phase_from_rocd(rocd_mps)
@@ -206,30 +206,30 @@ class _PyBADAAdapterBase(Generic[TObj]):
 
         # Define TEM state and atmosphere
         state = State(
-            v=TAS,  # type: ignore
+            v=TAS,
             h=altitude_m,
             m=mass,
-            M=M,  # type: ignore
+            M=M,
             config=cfg,
             phase=phase,
         )
 
         atmosphere = Atmosphere(
             delta_tau=delta_tau,
-            delta=delta,  # type: ignore
-            theta=theta,  # type: ignore
-            sigma=sigma,  # type: ignore
+            delta=delta,
+            theta=theta,
+            sigma=sigma,
         )
 
         # Compute drag from state and atmosphere
-        drag = self.drag(state, atmosphere)  # type: ignore
+        drag = self.drag(state, atmosphere)
 
         # Compute thrust
         thrust = self.required_thrust(
             rocd_mps=rocd_mps,
             mass=mass,
             tau_const=tau_const,
-            TAS=TAS,  # type: ignore
+            TAS=TAS,
             accel_mps2=accel_mps2,
             drag=drag,
         )

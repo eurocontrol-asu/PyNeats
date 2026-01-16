@@ -26,7 +26,7 @@ class OpenSkyParserParams(TrajectoryParserParams):
     pass
 
 
-@register(TrajectoryParser, "adsb")
+@register(TrajectoryParser, "adsb")  # type: ignore[type-abstract]
 class OpenSkyParser(
     BaseStep[
         pd.DataFrame,

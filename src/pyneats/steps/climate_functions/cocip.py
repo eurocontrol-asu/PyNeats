@@ -47,7 +47,7 @@ class ContrailsParams(ClimateParams):
 
 
 # ---- PyContrails COCIP wrapper ------------------------------------
-@register(ContrailsModel, "cocip")
+@register(ContrailsModel, "cocip")  # type: ignore[type-abstract]
 class CoCiPModel(
     BaseStep[
         FlightWithEmissions,

@@ -33,7 +33,7 @@ class NeatsTrajectoryParserParams(TrajectoryParserParams):
     timezone: str = "UTC"  # output tz; parsing is done as UTC then converted
 
 
-@register(TrajectoryParser, "neats")
+@register(TrajectoryParser, "neats")  # type: ignore[type-abstract]
 class NeatsTrajectoryParser(
     BaseStep[
         pd.DataFrame,

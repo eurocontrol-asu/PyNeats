@@ -200,7 +200,7 @@ class BADAPerformanceModelParams(PerformanceModelParams):
         return self.mapper.bada_type(icao, series, engine_id)
 
 
-@register(PerformanceModel, "bada")
+@register(PerformanceModel, "bada")  # type: ignore[type-abstract]
 class BADAPerformanceModel(
     BaseStep[
         FlightWithWeather,

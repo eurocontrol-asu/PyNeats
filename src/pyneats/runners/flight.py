@@ -133,13 +133,13 @@ class FlightRunner:
             )
 
         self.performance: PerformanceModel = build(
-            PerformanceModel,
+            PerformanceModel,  # type: ignore[type-abstract]
             self.cfg.performance,
             **performance_params,
         )
 
         self.emission: EmissionModel = build(
-            EmissionModel,
+            EmissionModel,  # type: ignore[type-abstract]
             self.cfg.emissions,
             **self.cfg.params.get("emissions", {}),
         )
@@ -152,13 +152,13 @@ class FlightRunner:
             },
         )
         self.contrails_model: ContrailsModel = build(
-            ContrailsModel,
+            ContrailsModel,  # type: ignore[type-abstract]
             self.cfg.contrails_model,
             **contrail_params,
         )
 
         self.climate_impact: ClimateImpactModel = build(
-            ClimateImpactModel,
+            ClimateImpactModel,  # type: ignore[type-abstract]
             self.cfg.climate_impact,
             **self.cfg.params.get("climate_impact", {}),
         )
@@ -195,7 +195,7 @@ class FlightRunner:
             self._source = None
             return
 
-        if not isinstance(value, pd.DataFrame):  # type: ignore[unnecessary-isinstance]
+        if not isinstance(value, pd.DataFrame):
             raise TypeError(f"source must be a pandas DataFrame, got {type(value)}")
 
         self._source = value.copy(deep=False)
@@ -379,7 +379,7 @@ class FlightRunner:
             }
         )
         self.non_co2_model = build(
-            NonCO2Model,
+            NonCO2Model,  # type: ignore[type-abstract]
             self.cfg.non_co2_model,
             **accf_params,
         )

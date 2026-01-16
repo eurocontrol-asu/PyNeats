@@ -312,38 +312,38 @@ class FleetRunner:
 
         # ---- Step callables (registry-based, process-cached) -----------------
         self.parser = make_step_func(
-            TrajectoryParser,
+            TrajectoryParser,  # type: ignore[type-abstract]
             self.cfg.trajectory_parser,
             self._params("trajectory_parser"),
             copy_input=True,  # DataFrame safety
         )
 
         self.interpolator = make_step_func(
-            TrajectoryInterpolator,
+            TrajectoryInterpolator,  # type: ignore[type-abstract]
             self.cfg.interpolator,
             self._params("interpolator"),
         )
 
         self.performance = make_step_func(
-            PerformanceModel,
+            PerformanceModel,  # type: ignore[type-abstract]
             self.cfg.performance,
             self._params("performance", extra=self._bada_params()),
         )
 
         self.emission = make_step_func(
-            EmissionModel,
+            EmissionModel,  # type: ignore[type-abstract]
             self.cfg.emissions,
             self._params("emissions"),
         )
 
         self.non_co2_model = make_step_func(
-            NonCO2Model,
+            NonCO2Model,  # type: ignore[type-abstract]
             self.cfg.non_co2_model,
             self._params("non_co2_model"),
         )
 
         self.climate_impact = make_step_func(
-            ClimateImpactModel,
+            ClimateImpactModel,  # type: ignore[type-abstract]
             self.cfg.climate_impact,
             self._params("climate_impact"),
         )

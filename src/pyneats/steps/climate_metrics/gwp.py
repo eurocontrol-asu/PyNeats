@@ -100,7 +100,7 @@ class GWPParams(BaseParams):
 # ---------------------------
 
 
-@register(ClimateImpactModel, "gwp")
+@register(ClimateImpactModel, "gwp")  # type: ignore[type-abstract]
 class GWPMetrics(
     BaseStep[
         FlightWithNonCO2Impact,

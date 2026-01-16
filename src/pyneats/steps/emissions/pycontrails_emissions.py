@@ -30,7 +30,7 @@ class PyContrailsEmissionParams(EmissionParams):
     )
 
 
-@register(EmissionModel, "pycontrails")
+@register(EmissionModel, "pycontrails")  # type: ignore[type-abstract]
 class PyContrailsEmissionModel(
     BaseStep[
         FlightWithPerformance,

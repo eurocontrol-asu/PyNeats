@@ -26,7 +26,7 @@ class PyContrailsInterpolationParams(TrajectoryInterpolationParams):
     """Parameters for trajectory interpolation/resampling."""
 
 
-@register(TrajectoryInterpolator, "pycontrails")
+@register(TrajectoryInterpolator, "pycontrails")  # type: ignore[type-abstract]
 class PyContrailsInterpolator(
     BaseStep[
         Flight4D,

@@ -190,7 +190,7 @@ def cluster_st_traffic_louvain(
 
     # 3. Cluster using Louvain Community Detection
     try:
-        partition: list[set[Any]] = nx.community.louvain_communities(  # type: ignore
+        partition: list[set[Any]] = nx.community.louvain_communities(
             G,
             weight="weight",
             resolution=resolution,

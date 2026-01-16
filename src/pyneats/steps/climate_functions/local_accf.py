@@ -108,7 +108,7 @@ def _fin_rowwise(
 # ----------------------------- Model ---------------------------------- #
 
 
-@register(NonCO2Model, "local_accf")  #  replaces the ClimAccf backend
+@register(NonCO2Model, "local_accf")  # type: ignore[type-abstract]  #  replaces the ClimAccf backend
 class LocalACCFModel(
     BaseStep[
         FlightWithEmissions,
