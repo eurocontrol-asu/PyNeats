@@ -90,9 +90,7 @@ class GWPParams(BaseParams):
     # Reference horizon H0 for ATR (fixed at 20 per spec)
     atr_ref_horizon: int = DEFAULT_CLIMACCF_KWARGS.get("time_horizon", 20)
 
-    rf_backward_factor: Mapping[str, float] = field(
-        default_factory=lambda: RF_BACKWARD_FACTOR
-    )
+    rf_backward_factor: Mapping[str, float] = field(default_factory=lambda: RF_BACKWARD_FACTOR)
 
 
 # ---------------------------
@@ -125,8 +123,7 @@ class GWPMetrics(
 
         s_yr = self.params.seconds_per_year
         return {
-            h: self.params.agwp_coeff_wm2yr_per_kg[h] * m_co2 * s_yr
-            for h in self.params.horizons
+            h: self.params.agwp_coeff_wm2yr_per_kg[h] * m_co2 * s_yr for h in self.params.horizons
         }
 
     def _eagwp_contrails_J_per_m2(self, total_ef_J: float) -> dict[int, float]:
@@ -136,9 +133,7 @@ class GWPMetrics(
         s = self.params.surface_earth
         return dict.fromkeys(self.params.horizons, total_ef_J * eps / s)
 
-    def _co2eq_from_eagwp_J_per_m2(
-        self, agwp_J_per_m2: dict[int, float]
-    ) -> dict[int, float]:
+    def _co2eq_from_eagwp_J_per_m2(self, agwp_J_per_m2: dict[int, float]) -> dict[int, float]:
         """CO2eq(H) = EAGWP(H) / ( C(H) * s_yr )  (units: kg)"""
 
         s_yr = self.params.seconds_per_year
@@ -169,9 +164,7 @@ class GWPMetrics(
         # Guard against zero division in C_ATR(H0)
         k_atr_h_0 = float(self.params.k_atr_from_rf.get(h_0, {}).get(species, 1.0))
         if k_atr_h_0 == 0.0:
-            raise ClimateImpactStepError(
-                f"k_ATR←E[{species}][H0={h_0}] is zero; cannot scale."
-            )
+            raise ClimateImpactStepError(f"k_ATR←E[{species}][H0={h_0}] is zero; cannot scale.")
 
         out: dict[int, float] = {}
         for h in self.params.horizons:
@@ -189,9 +182,7 @@ class GWPMetrics(
             _ = FlightWithContrailsImpact.from_flight(flight)
         except KeyError as e:
             self.logger.error("Input missing required contrail columns: %s", e)
-            raise ClimateImpactStepError(
-                f"Missing required contrail columns: {e}"
-            ) from e
+            raise ClimateImpactStepError(f"Missing required contrail columns: {e}") from e
 
         df: pd.DataFrame = flight.to_dataframe()
 
@@ -204,9 +195,7 @@ class GWPMetrics(
 
         # Aggregate fuel burn (kg)
         try:
-            total_fuel_burn = float(
-                pd.to_numeric(df["fuel_burn"], errors="coerce").sum()
-            )
+            total_fuel_burn = float(pd.to_numeric(df["fuel_burn"], errors="coerce").sum())
         except Exception as e:
             self.logger.exception("Failed to sum fuel_burn")
             raise ClimateImpactStepError(f"Failed to aggregate fuel_burn: {e}") from e
@@ -216,9 +205,7 @@ class GWPMetrics(
             total_co2_kg = float(flight.attrs["total_co2"])
         except Exception:
             self.logger.error("Flight attrs missing 'total_co2'")
-            raise ClimateImpactStepError(
-                "Missing required attr 'total_co2'"
-            ) from None
+            raise ClimateImpactStepError("Missing required attr 'total_co2'") from None
 
         # Timings and ancillary metadata
         flight_information = {
@@ -315,7 +302,5 @@ class GWPMetrics(
         }
 
         flight.attrs["climate_impact"] = climate_impact
-        self.logger.info(
-            "Climate impact (EAGWP) computed with Dahlmann(2025) conversion factors"
-        )
+        self.logger.info("Climate impact (EAGWP) computed with Dahlmann(2025) conversion factors")
         return FlightWithClimateImpact.from_flight(flight)

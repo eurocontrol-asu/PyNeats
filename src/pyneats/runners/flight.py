@@ -253,12 +253,8 @@ class FlightRunner:
     # Step 3: Intersect with weather data
     def _intersect_weather(self) -> Self:
         if self.interpolated_flight is None:
-            logger.error(
-                "Missing interpolated_flight; did you call _interpolate() first?"
-            )
-            raise RuntimeError(
-                "_interpolate() must be called before _intersect_weather()."
-            )
+            logger.error("Missing interpolated_flight; did you call _interpolate() first?")
+            raise RuntimeError("_interpolate() must be called before _intersect_weather().")
 
         # Run the weather intersection step
         try:
@@ -286,12 +282,8 @@ class FlightRunner:
     # Step 4: Run Performance model
     def _performance(self) -> Self:
         if self.flight_with_weather is None:
-            logger.error(
-                "Missing flight_with_weather; did you call _intersect_weather() first?"
-            )
-            raise RuntimeError(
-                "_intersect_weather() must be called before _performance()."
-            )
+            logger.error("Missing flight_with_weather; did you call _intersect_weather() first?")
+            raise RuntimeError("_intersect_weather() must be called before _performance().")
 
         try:
             enriched: FlightWithPerformance = self.performance(self.flight_with_weather)
@@ -310,9 +302,7 @@ class FlightRunner:
     # Step 5: Run Emission model
     def _emissions(self) -> Self:
         if self.flight_with_performance is None:
-            logger.error(
-                "Missing flight_with_performance; did you call performance() first?"
-            )
+            logger.error("Missing flight_with_performance; did you call performance() first?")
             raise RuntimeError("performance() must be called before _emissions().")
         try:
             enriched: FlightWithEmissions = self.emission(self.flight_with_performance)
@@ -334,16 +324,12 @@ class FlightRunner:
     def _contrails(self) -> Self:
         start = time.time()
         if self.flight_with_emissions is None:
-            logger.error(
-                "Missing flight_with_emissions; did you call _emissions() first?"
-            )
+            logger.error("Missing flight_with_emissions; did you call _emissions() first?")
             raise RuntimeError("_emissions() must be called before _contrails().")
 
         # Run the contrails step (COCIP). It returns a base Flight.
         try:
-            enriched: FlightWithContrailsImpact = self.contrails_model(
-                self.flight_with_emissions
-            )
+            enriched: FlightWithContrailsImpact = self.contrails_model(self.flight_with_emissions)
         except ContrailsStepError:
             # Already logged inside the model; keep original traceback.
             raise
@@ -366,9 +352,7 @@ class FlightRunner:
     def _nonco2(self) -> Self:
         start = time.time()
         if self.flight_with_contrails is None:
-            logger.error(
-                "Missing flight_with_contrails; did you call _contrails() first?"
-            )
+            logger.error("Missing flight_with_contrails; did you call _contrails() first?")
             raise RuntimeError("_contrails() must be called before.")
 
         accf_params = self.cfg.params.get("non_co2_model", {})

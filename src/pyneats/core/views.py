@@ -210,7 +210,8 @@ class FlightView(Flight):
         if common_keys:
             warnings.warn(
                 f"Found duplicate keys in data and attrs: {common_keys}. "
-                "Data keys will overwrite attrs keys in returned dictionary.", stacklevel=2
+                "Data keys will overwrite attrs keys in returned dictionary.",
+                stacklevel=2,
             )
 
         return {**attrs, **data}

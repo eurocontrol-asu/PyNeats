@@ -41,9 +41,7 @@ class ContrailsParams(ClimateParams):
     met: MetDataset | None = None
     rad: MetDataset | None = None
 
-    cocip_kwargs: Mapping[str, Any] = field(
-        default_factory=lambda: DEFAULT_COCIP_KWARGS
-    )
+    cocip_kwargs: Mapping[str, Any] = field(default_factory=lambda: DEFAULT_COCIP_KWARGS)
 
 
 # ---- PyContrails COCIP wrapper ------------------------------------
@@ -83,9 +81,7 @@ class CoCiPModel(
         self.logger.info("COCIP step completed successfully")
         return FlightWithContrailsImpact.from_flight(out)
 
-    def run_fleet(
-        self, flights: list[FlightWithEmissions]
-    ) -> list[FlightWithContrailsImpact]:
+    def run_fleet(self, flights: list[FlightWithEmissions]) -> list[FlightWithContrailsImpact]:
         """
         Fleet-level vectorized CoCiP evaluation.
 

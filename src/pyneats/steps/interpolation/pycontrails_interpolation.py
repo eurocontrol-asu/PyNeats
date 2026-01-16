@@ -59,9 +59,7 @@ class PyContrailsInterpolator(
             original = flight.dataframe
 
             # Perform pycontrails interpolation
-            interpolated_flight: Flight = flight.resample_and_fill(
-                self.params.interpolation_time
-            )
+            interpolated_flight: Flight = flight.resample_and_fill(self.params.interpolation_time)
 
             # Interpolate optional columns
             t_orig_num = original["time"].values.astype(np.int64)
@@ -74,15 +72,9 @@ class PyContrailsInterpolator(
                     interpolated_flight[col] = interpolated_values
 
         except Exception as e:
-            raise TrajectoryInterpolationStepError(
-                f"resample_and_fill failed: {e}"
-            ) from e
+            raise TrajectoryInterpolationStepError(f"resample_and_fill failed: {e}") from e
 
         try:
-            return Flight4D.from_flight(
-                interpolated_flight
-            )  # schema/type validation (zero-copy)
+            return Flight4D.from_flight(interpolated_flight)  # schema/type validation (zero-copy)
         except ValidationError as ve:
-            raise TrajectoryInterpolationStepError(
-                f"invalid resampled schema: {ve}"
-            ) from ve
+            raise TrajectoryInterpolationStepError(f"invalid resampled schema: {ve}") from ve

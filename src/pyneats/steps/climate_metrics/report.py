@@ -92,9 +92,7 @@ class FlightReport:
     bada_code: str | None = None
 
     @classmethod
-    def extract(
-        cls, flight: Flight, include_fleet_metadata: bool = False
-    ) -> dict[str, Any]:
+    def extract(cls, flight: Flight, include_fleet_metadata: bool = False) -> dict[str, Any]:
         """
         Extract *only* flight-level fields from Flight.attrs (ignoring missing keys).
 

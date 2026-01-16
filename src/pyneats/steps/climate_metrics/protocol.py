@@ -13,9 +13,7 @@ __all__ = [
 
 
 @runtime_checkable
-class ClimateImpactModel(
-    Step[FlightWithNonCO2Impact, FlightWithClimateImpact], Protocol
-):
+class ClimateImpactModel(Step[FlightWithNonCO2Impact, FlightWithClimateImpact], Protocol):
     """
     Cilmate Impatct Model steps consume a FlightWithNonCO2Impact and produce
     an climate-metrics-enriched flight (zero-copy typed view).

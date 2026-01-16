@@ -65,9 +65,7 @@ def create_st_traffic_graph(
 
             if not temp_df.empty:
                 df_temp = df_temp.loc[temp_df.index].copy()
-                df_temp["it"] = np.floor(temp_df["time_numeric"] / dt_ns).astype(
-                    np.int32
-                )
+                df_temp["it"] = np.floor(temp_df["time_numeric"] / dt_ns).astype(np.int32)
                 grouping_cols.append("it")
         except Exception:
             warnings.warn("Temporal dimension skipped due to error.", stacklevel=2)
@@ -102,7 +100,8 @@ def create_st_traffic_graph(
         for uid_a, uid_b, weight in zip(
             edge_weights_df["uid_A"],
             edge_weights_df["uid_B"],
-            edge_weights_df["weight"], strict=False,
+            edge_weights_df["weight"],
+            strict=False,
         )
     ]
     G.add_edges_from(edge_list)
@@ -158,8 +157,7 @@ def cluster_st_traffic_louvain(
 
         if missing_attrs:
             raise KeyError(
-                f"DataFrame at index {i} is missing required "
-                f"attributes: {missing_attrs}"
+                f"DataFrame at index {i} is missing required attributes: {missing_attrs}"
             )
 
         # Create the unique UID string
@@ -182,8 +180,7 @@ def cluster_st_traffic_louvain(
 
     if not G.nodes:
         warnings.warn(
-            "Graph has no nodes/edges after processing. "
-            "Returning unclustered data.",
+            "Graph has no nodes/edges after processing. Returning unclustered data.",
             stacklevel=2,
         )
         return [list_of_df]
@@ -274,9 +271,7 @@ class LouvainTrafficClusterer:
             "dz": kwargs.get("dz", self.dz),
             "dt": kwargs.get("dt", self.dt),
             "resolution": kwargs.get("resolution", self.resolution),
-            "min_community_size": kwargs.get(
-                "min_community_size", self.min_community_size
-            ),
+            "min_community_size": kwargs.get("min_community_size", self.min_community_size),
         }
 
         # Call the core logic (your highly efficient function)

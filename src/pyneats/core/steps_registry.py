@@ -86,9 +86,7 @@ class _BigRegistry:
                 ctor_any = self._items[t][key]
             except KeyError as e:
                 known = ", ".join(sorted(self._items.get(t, {}))) or "(none)"
-                raise RegistryError(
-                    f"Unknown {t.__name__} name='{name}'. Known: {known}"
-                ) from e
+                raise RegistryError(f"Unknown {t.__name__} name='{name}'. Known: {known}") from e
 
         ctor = cast(Ctor[T], ctor_any)
         return ctor(**params)

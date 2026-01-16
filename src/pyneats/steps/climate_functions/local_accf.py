@@ -160,9 +160,7 @@ class LocalACCFModel(
         gp = _as_np(flight[self.params.col_geopotential])
 
         accf = self.o3_raw_formula(t, gp)
-        accf = np.where(
-            np.isfinite(accf), np.maximum(accf, 0.0), np.nan
-        )  # clamp negatives to 0
+        accf = np.where(np.isfinite(accf), np.maximum(accf, 0.0), np.nan)  # clamp negatives to 0
         try:
             # Scaling with version-specific factor
             accf /= self.params.scale_o3[self.params.accf_kwargs["accf_v"]]
@@ -201,9 +199,7 @@ class LocalACCFModel(
         )
 
         accf = self.ch4_raw_formula(gp, fin)
-        accf = np.where(
-            np.isfinite(accf), np.minimum(accf, 0.0), np.nan
-        )  # clamp positives to 0
+        accf = np.where(np.isfinite(accf), np.minimum(accf, 0.0), np.nan)  # clamp positives to 0
         try:
             # Scaling with version-specific factor
             accf /= self.params.scale_ch4[self.params.accf_kwargs["accf_v"]]
@@ -274,9 +270,7 @@ class LocalACCFModel(
         # Create the mask for INVALID rows
 
         # Condition 1: Pressure is too high (Altitude too low)
-        bad_pressure = (
-            flight[self.params.col_air_pressure] > DEFAULT_ACCF_VALIDITY_PRESSURE
-        )
+        bad_pressure = flight[self.params.col_air_pressure] > DEFAULT_ACCF_VALIDITY_PRESSURE
 
         # Condition 2: Phase is not Cruise
         # bad_phase = flight[self.params.col_phase] != "Cruise"

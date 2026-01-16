@@ -80,9 +80,7 @@ DEFAULT_MAX_REL_MASS_DIFF: Final[float] = 0.01
 
 DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW: Final[int] = 7
 REFERENCE_Q_FUEL: Final[float] = 43_130_000.0  # Baseline Value used in PyContrails/BADA
-DEFAULT_Q_FUEL: Final[float] = (
-    42_800_000.0  # Default value provided by the consortium (DLR/TO70)
-)
+DEFAULT_Q_FUEL: Final[float] = 42_800_000.0  # Default value provided by the consortium (DLR/TO70)
 
 DEFAULT_DELTA_TAU_COMPUTE_METHOD: Final[Literal["point", "zero"]] = "point"
 DEFAULT_DELTA_TAU_FILL_METHOD: Final[Literal["bffill", "none", "zero"]] = "bffill"
@@ -150,15 +148,9 @@ DEFAULT_WEATHER_USE_INDICES: Final[bool] = False
 
 # Default Fuel constants
 
-DEFAULT_AROMATICS_CONTENT: Final[float] = (
-    0.25  # default value - Not used in calculations
-)
-DEFAULT_SULPHUR_CONTENT: Final[float] = (
-    0.003  # default value - Not used in calculations
-)
-DEFAULT_NAPHTHALEN_CONTENT: Final[float] = (
-    0.03  # default value - Not used in calculations
-)
+DEFAULT_AROMATICS_CONTENT: Final[float] = 0.25  # default value - Not used in calculations
+DEFAULT_SULPHUR_CONTENT: Final[float] = 0.003  # default value - Not used in calculations
+DEFAULT_NAPHTHALEN_CONTENT: Final[float] = 0.03  # default value - Not used in calculations
 DEFAULT_HYDROGEN_CONTENT: Final[float] = (
     13.79  # default value provided by the consortium (DLR/TO70)
 )

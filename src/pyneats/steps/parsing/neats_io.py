@@ -252,17 +252,13 @@ def split_df_into_flights(
             "aircraft_mass",
             "true_airspeed",
         }
-        attr_columns = [
-            c for c in df.columns if c not in trajectory_cols and c != "flight_key"
-        ]
+        attr_columns = [c for c in df.columns if c not in trajectory_cols and c != "flight_key"]
 
     # --- Split by flight_key ---
     for _, grp in df.groupby("flight_key", sort=False):
         # Extract attrs from the *first row* of the group
         first_row = grp.iloc[0]
-        attrs = {
-            col: first_row[col] for col in attr_columns if pd.notna(first_row[col])
-        }
+        attrs = {col: first_row[col] for col in attr_columns if pd.notna(first_row[col])}
 
         # Drop attribute columns from the actual trajectory dataframe
         traj_df = grp.drop(columns=attr_columns + ["flight_key"]).reset_index(drop=True)

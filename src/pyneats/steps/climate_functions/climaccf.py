@@ -48,9 +48,7 @@ class ACCFParams(ClimateParams):
     met: MetDataset | None = None
     surface: MetDataset | None = None
 
-    accf_kwargs: Mapping[str, Any] = field(
-        default_factory=lambda: DEFAULT_CLIMACCF_KWARGS
-    )
+    accf_kwargs: Mapping[str, Any] = field(default_factory=lambda: DEFAULT_CLIMACCF_KWARGS)
 
 
 # ---- surface adapter for ACCF -------------------------------------
@@ -77,9 +75,7 @@ def make_accf_surface_view(surface: MetDataset) -> MetDataset:
             }
         )
         ds = ds.rename(
-            {
-                TOAOutgoingLongwaveFlux.standard_name: TopNetThermalRadiation.standard_name
-            }
+            {TOAOutgoingLongwaveFlux.standard_name: TopNetThermalRadiation.standard_name}
         )
     # 2) Align units on the surface shortwave flux if needed
     if SurfaceSolarDownwardRadiation.standard_name in ds:

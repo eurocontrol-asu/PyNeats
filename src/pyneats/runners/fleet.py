@@ -119,9 +119,7 @@ class FleetRunnerParams(RunnerConfig):
     gc_collect_between_steps: bool = True
 
     # CoCiP (pycontrails) parameters
-    cocip_kwargs: Mapping[str, Any] = field(
-        default_factory=lambda: DEFAULT_COCIP_KWARGS
-    )
+    cocip_kwargs: Mapping[str, Any] = field(default_factory=lambda: DEFAULT_COCIP_KWARGS)
 
     # Humidity scaling after weather intersection
     humidity_scaling: HumidityScaling | None = field(
@@ -143,9 +141,7 @@ class FleetRunnerParams(RunnerConfig):
             raise ValueError("FastFleetRunnerConfig.zarr_paths is required")
 
         if self.trajectory_json_filepath is None and self.trajectory_dataframe is None:
-            raise ValueError(
-                "Must provide either trajectory_json_filepath or trajectory_dataframe"
-            )
+            raise ValueError("Must provide either trajectory_json_filepath or trajectory_dataframe")
 
 
 # -----------------------------------------------------------------------------
@@ -242,17 +238,11 @@ def _process_parallel_results(
         if ok:
             successful.append(out)
         else:
-            errors.append(
-                _create_error_record(original_seq[i], flight_id, step_name, err)
-            )
-            logger.error(
-                "%s failed for flight %s (index %d): %s", step_name, flight_id, i, err
-            )
+            errors.append(_create_error_record(original_seq[i], flight_id, step_name, err))
+            logger.error("%s failed for flight %s (index %d): %s", step_name, flight_id, i, err)
 
     if errors:
-        logger.warning(
-            "%d/%d flights failed at %s", len(errors), len(original_seq), step_name
-        )
+        logger.warning("%d/%d flights failed at %s", len(errors), len(original_seq), step_name)
 
     return successful, errors
 
@@ -356,9 +346,7 @@ class FleetRunner:
     # Param handling (FlightRunner-like)
     # -------------------------------------------------------------------------
 
-    def _params(
-        self, key: str, *, extra: Mapping[str, Any] | None = None
-    ) -> dict[str, Any]:
+    def _params(self, key: str, *, extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
         """Return a defensive copy of cfg.params[key] merged with optional extra params."""
         base = dict(self.cfg.params.get(key, {}))
         if extra:
@@ -398,9 +386,7 @@ class FleetRunner:
     def _load_weather(self) -> Self:
         logger.info("Loading weather data from Zarr...")
 
-        weather = get_weather_from_zarr(
-            self.cfg.zarr_paths, chunks=self.cfg.zarr_read_chunks
-        )
+        weather = get_weather_from_zarr(self.cfg.zarr_paths, chunks=self.cfg.zarr_read_chunks)
         self.met, self.rad, self.wind = weather.met(), weather.rad(), weather.wind()
 
         # Create vectorized steps now that weather datasets are available
@@ -429,9 +415,7 @@ class FleetRunner:
         if self.source_fleet is None:
             raise RuntimeError("source_flights must be loaded before _parse_flights()")
 
-        self.parsed_fleet, errs = self._run_parallel_step(
-            self.source_fleet, "parsing", self.parser
-        )
+        self.parsed_fleet, errs = self._run_parallel_step(self.source_fleet, "parsing", self.parser)
         self.error_records.extend(errs)
 
         self.source_fleet = None  # free memory (FlightRunner-style)
@@ -462,13 +446,9 @@ class FleetRunner:
         start = time.time()
 
         if self.interpolated_fleet is None:
-            raise RuntimeError(
-                "interpolated_flights must be set before _intersect_weather()"
-            )
+            raise RuntimeError("interpolated_flights must be set before _intersect_weather()")
         if self.weather_step is None:
-            raise RuntimeError(
-                "weather_step must be initialized before _intersect_weather()"
-            )
+            raise RuntimeError("weather_step must be initialized before _intersect_weather()")
 
         # Run vectorized weather intersection
         flights = self._run_vectorized_step(
@@ -595,9 +575,7 @@ class FleetRunner:
         if self.fleet_with_climate_impact is None:
             raise RuntimeError("climate_impact must be set before _extract_results()")
 
-        successful_results = [
-            f.attrs["climate_impact"] for f in self.fleet_with_climate_impact
-        ]
+        successful_results = [f.attrs["climate_impact"] for f in self.fleet_with_climate_impact]
 
         self.results = {
             "fleet_meta_data": FleetReport.collect(),
@@ -785,16 +763,12 @@ class FleetRunner:
                 successful.append(flight)
 
         if errors:
-            logger.warning(
-                "%d/%d flights failed at %s", len(errors), len(seq), step_name
-            )
+            logger.warning("%d/%d flights failed at %s", len(errors), len(seq), step_name)
 
         return successful, errors
 
     @staticmethod
-    def _check_critical_columns(
-        df: pd.DataFrame, critical_columns: tuple[str, ...]
-    ) -> str | None:
+    def _check_critical_columns(df: pd.DataFrame, critical_columns: tuple[str, ...]) -> str | None:
         for col in critical_columns:
             if col not in df.columns:
                 return f"{col} (missing)"

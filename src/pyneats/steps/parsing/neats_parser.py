@@ -94,9 +94,7 @@ class NeatsTrajectoryParser(
                 df["altitude"] = ft_to_m(alt_ft)
 
             except Exception as e:
-                raise TrajectoryParserStepError(
-                    f"altitude conversion failed: {e}"
-                ) from e
+                raise TrajectoryParserStepError(f"altitude conversion failed: {e}") from e
 
             # 3) Parse time (tz-aware)
             try:
@@ -122,9 +120,7 @@ class NeatsTrajectoryParser(
             )
 
             if df.empty:
-                raise TrajectoryParserStepError(
-                    "no valid trajectory points after cleaning"
-                )
+                raise TrajectoryParserStepError("no valid trajectory points after cleaning")
 
             # 5) Build flight attributes from df.attrs (canonical keys)
             attrs_input: Mapping[str, Any] = getattr(df, "attrs", {}) or {}

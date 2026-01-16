@@ -29,15 +29,9 @@ class NEATSFuel(SAFBlend):
     configurable hydrogen content and/or q_fuel. Independent of pct_blend physics.
     """
 
-    aromatics_content: float = (
-        DEFAULT_AROMATICS_CONTENT  # default value - Not used in calculations
-    )
-    sulphur_content: float = (
-        DEFAULT_SULPHUR_CONTENT  # default value - Not used in calculations
-    )
-    naphthalene: float = (
-        DEFAULT_NAPHTHALEN_CONTENT  # default value - Not used in calculations
-    )
+    aromatics_content: float = DEFAULT_AROMATICS_CONTENT  # default value - Not used in calculations
+    sulphur_content: float = DEFAULT_SULPHUR_CONTENT  # default value - Not used in calculations
+    naphthalene: float = DEFAULT_NAPHTHALEN_CONTENT  # default value - Not used in calculations
 
     def __init__(
         self,
@@ -101,9 +95,7 @@ class NEATSFuel(SAFBlend):
         )
 
         # set the blend gate so that downstream code treats as SAFBlend
-        object.__setattr__(
-            self, "pct_blend", pct_blend_gate if pct_blend_gate > 0.0 else 1e-12
-        )
+        object.__setattr__(self, "pct_blend", pct_blend_gate if pct_blend_gate > 0.0 else 1e-12)
 
     @classmethod
     def from_attrs(cls, attrs: Mapping[str, Any]) -> NEATSFuel:
@@ -116,7 +108,6 @@ class NEATSFuel(SAFBlend):
             hydrogen_content=attrs.get("hydrogen_content"),
             h_c_ratio=attrs.get("h_c_ratio"),
             sulphur_content=attrs.get("sulphur_content") or attrs.get("sulfur_content"),
-            aromatics_content=attrs.get("aromatics_content")
-            or attrs.get("aromatic_content"),
+            aromatics_content=attrs.get("aromatics_content") or attrs.get("aromatic_content"),
             naphthalene=attrs.get("naphthalene"),
         )

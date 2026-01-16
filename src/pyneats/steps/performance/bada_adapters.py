@@ -279,9 +279,7 @@ class _PyBADAAdapterBase(Generic[TObj]):
     def fuel_flow_idle(self, state: State, atmosphere: Atmosphere) -> float | None: ...
 
     @abstractmethod
-    def fuel_flow(
-        self, state: State, atmosphere: Atmosphere, thrust: float
-    ) -> float | None: ...
+    def fuel_flow(self, state: State, atmosphere: Atmosphere, thrust: float) -> float | None: ...
 
     @staticmethod
     def _post_process(
@@ -442,9 +440,7 @@ class BADA4Adapter(_PyBADAAdapterBase[Bada4Aircraft], BaseBADAAdapter):
             deltaTemp=delta_tau,
         )
 
-    def fuel_flow(
-        self, state: State, atmosphere: Atmosphere, thrust: float
-    ) -> float | None:
+    def fuel_flow(self, state: State, atmosphere: Atmosphere, thrust: float) -> float | None:
         delta = atmosphere.delta
         M = state.M
         delta_tau = atmosphere.delta_tau
@@ -570,9 +566,7 @@ class BADA3Adapter(_PyBADAAdapterBase[Bada3Aircraft], BaseBADAAdapter):
             T=self.thrust_climb(state, atmosphere),
         )
 
-    def fuel_flow(
-        self, state: State, atmosphere: Atmosphere, thrust: float
-    ) -> float | None:
+    def fuel_flow(self, state: State, atmosphere: Atmosphere, thrust: float) -> float | None:
         v = state.v
         altitude_m = state.h
         phase = state.phase

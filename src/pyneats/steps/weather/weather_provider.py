@@ -139,9 +139,7 @@ class WeatherProviderParams(BaseParams):
 
     # Strict contract: either None, or a model that returns a Flight
     humidity_scaling: HumidityScalingModel | None = field(
-        default_factory=lambda: PcHumidityScalingAdapter(
-            humidity_scaling=DEFAULT_HUMIDITY_SCALING
-        )
+        default_factory=lambda: PcHumidityScalingAdapter(humidity_scaling=DEFAULT_HUMIDITY_SCALING)
     )
 
     # Mapping: met variable → output column name on Flight
@@ -256,9 +254,7 @@ class WeatherProvider(
                 level_buffer=self.params.level_buf,
             )
         except Exception as e:
-            raise WeatherStepError(
-                type(self).__name__, f"downselect failed: {e}"
-            ) from e
+            raise WeatherStepError(type(self).__name__, f"downselect failed: {e}") from e
 
     # --- main step ----------------------------------------------------
 
@@ -267,9 +263,7 @@ class WeatherProvider(
         try:
             flight = Flight4D.from_flight(flight)
         except ValidationError as e:
-            raise WeatherStepError(
-                type(self).__name__, f"input is not Flight4D: {e}"
-            ) from e
+            raise WeatherStepError(type(self).__name__, f"input is not Flight4D: {e}") from e
 
         # Downselect datasets
         self._ds_met = self.downselect(flight, self._met)
@@ -324,14 +318,10 @@ class WeatherProvider(
             # Assign columns directly (safer than concat with a new DF)
             for k, v in new_cols.items():
                 if v.shape[0] != len(df):
-                    raise ValueError(
-                        f"Length mismatch for column {k}: {v.shape[0]} vs {len(df)}"
-                    )
+                    raise ValueError(f"Length mismatch for column {k}: {v.shape[0]} vs {len(df)}")
                 df[k] = v
 
-            base = Flight(
-                data=df, attrs=getattr(flight, "attrs", None), fuel=flight.fuel
-            )
+            base = Flight(data=df, attrs=getattr(flight, "attrs", None), fuel=flight.fuel)
 
         except Exception as e:
             raise WeatherStepError(type(self).__name__, f"intersect failed: {e}") from e
@@ -341,17 +331,13 @@ class WeatherProvider(
             try:
                 base = self.params.humidity_scaling.eval(base)
             except Exception as e:
-                raise WeatherStepError(
-                    type(self).__name__, f"humidity scaling failed: {e}"
-                ) from e
+                raise WeatherStepError(type(self).__name__, f"humidity scaling failed: {e}") from e
 
         # Final validation (single source of truth)
         try:
             return FlightWithWeather.from_flight(base)
         except ValidationError as e:
-            raise WeatherStepError(
-                type(self).__name__, f"validation failed: {e}"
-            ) from e
+            raise WeatherStepError(type(self).__name__, f"validation failed: {e}") from e
 
     def run_fleet(self, flights: list[Flight4D]) -> list[FlightWithWeather]:
         """
@@ -403,9 +389,7 @@ class WeatherProvider(
         for k, v in new_cols.items():
             df[k] = v
 
-        fleet_with_weather = Fleet(
-            data=df, attrs=pyc_fleet.attrs, fl_attrs=pyc_fleet.fl_attrs
-        )
+        fleet_with_weather = Fleet(data=df, attrs=pyc_fleet.attrs, fl_attrs=pyc_fleet.fl_attrs)
 
         logger.info("Weather intersection complete in %.2fs", time.time() - t0)
 
@@ -414,9 +398,7 @@ class WeatherProvider(
 
         # Optional humidity scaling
         if self.params.humidity_scaling is not None:
-            flights_with_weather = self._apply_humidity_scaling_fleet(
-                flights_with_weather
-            )
+            flights_with_weather = self._apply_humidity_scaling_fleet(flights_with_weather)
 
         # Type narrowing
         typed = [FlightWithWeather.from_flight(f) for f in flights_with_weather]

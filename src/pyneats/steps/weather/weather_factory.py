@@ -127,9 +127,7 @@ class DWDZarrCacheSpec:
     rad_chunks: Mapping[str, int] | None = None
     wind_chunks: Mapping[str, int] | None = None
     # Unit fix: convert SDR [W m-2] to [J m-2] by multiplying by dt (seconds)
-    sdr_accumulate_dt_s: int | None = (
-        DEFAULT_SDR_ACCUMULATE_DT_S  # 1 hour by default; None to skip
-    )
+    sdr_accumulate_dt_s: int | None = DEFAULT_SDR_ACCUMULATE_DT_S  # 1 hour by default; None to skip
 
     zarr_caching_strategy: ZARR_CACHING_STRATEGY = DEFAULT_ZARR_CACHING_STRATEGY
 
@@ -185,14 +183,10 @@ class ERA5Factory(WeatherFactoryProtocol):
     def __init__(self, params: WeatherFactoryParams) -> None:
         self.params = params
 
-    def __call__(
-        self, asofdate: datetime, hour: int | None = None
-    ) -> WeatherProviderProtocol:
+    def __call__(self, asofdate: datetime, hour: int | None = None) -> WeatherProviderProtocol:
         disk = self.params.cache.disk if self.params.cache else None
         cachestore = (
-            DiskCacheStore(cache_dir=disk.cache_dir, allow_clear=disk.allow_clear)
-            if disk
-            else None
+            DiskCacheStore(cache_dir=disk.cache_dir, allow_clear=disk.allow_clear) if disk else None
         )
 
         t0, t1 = self.params.time_bounds(asofdate)
@@ -270,9 +264,7 @@ class DWDFactory(WeatherFactoryProtocol):
         self.params = params
 
     # ---------- public API ----------
-    def __call__(
-        self, asofdate: datetime, hour: int | None = None
-    ) -> WeatherProviderProtocol:
+    def __call__(self, asofdate: datetime, hour: int | None = None) -> WeatherProviderProtocol:
         zc = self.params.cache.zarr if self.params.cache else None
         run_hour = asofdate.hour if hour is None else hour
         date_str = asofdate.strftime("%Y%m%d")
@@ -319,8 +311,7 @@ class DWDFactory(WeatherFactoryProtocol):
             )
 
             met_vars = [
-                v.standard_name
-                for v in {**self._required_map, **self._optional_map}.values()
+                v.standard_name for v in {**self._required_map, **self._optional_map}.values()
             ]
             rad_vars = [v.standard_name for v in self._rad_map.values()]
 
@@ -363,18 +354,12 @@ class DWDFactory(WeatherFactoryProtocol):
         """
         zc = self.params.cache.zarr if self.params.cache else None
         if not zc:
-            raise WeatherFactoryError(
-                "No ZarrCacheSpec provided; cannot build zarr cache."
-            )
+            raise WeatherFactoryError("No ZarrCacheSpec provided; cannot build zarr cache.")
 
         run_hour = asofdate.hour if hour is None else hour
         date_str = asofdate.strftime("%Y%m%d")
 
-        if (
-            (not overwrite)
-            and os.path.exists(zc.met_store)
-            and os.path.exists(zc.rad_store)
-        ):
+        if (not overwrite) and os.path.exists(zc.met_store) and os.path.exists(zc.rad_store):
             logger.info(
                 "DWD zarr cache already exists; skipping write",
                 extra={"met_store": zc.met_store, "rad_store": zc.rad_store},
@@ -390,10 +375,7 @@ class DWDFactory(WeatherFactoryProtocol):
         )
 
         # 2) split
-        met_vars = [
-            v.standard_name
-            for v in {**self._required_map, **self._optional_map}.values()
-        ]
+        met_vars = [v.standard_name for v in {**self._required_map, **self._optional_map}.values()]
         rad_vars = [v.standard_name for v in self._rad_map.values()]
         met_ds_xr = ds_all[met_vars]
         rad_ds_xr = ds_all[rad_vars]
@@ -447,9 +429,7 @@ class DWDFactory(WeatherFactoryProtocol):
             # Combine two wind sources along level dimension
 
             wind_ds_xr_low = ds_wind[[v.standard_name for v in self._wind_map.values()]]
-            wind_ds_xr_high = met_ds_xr[
-                [v.standard_name for v in self._wind_map.values()]
-            ]
+            wind_ds_xr_high = met_ds_xr[[v.standard_name for v in self._wind_map.values()]]
             wind_ds_combined = xr.concat(
                 [wind_ds_xr_low, wind_ds_xr_high],
                 dim="level",
@@ -497,9 +477,7 @@ class DWDFactory(WeatherFactoryProtocol):
                     # Subsequent passes: Append ONLY the data variable (mode="a")
                     # We drop the coordinates to prevent Xarray from trying to check or
                     # re-write them, which saves time and avoids conflict errors.
-                    var_ds.drop_vars(var_ds.coords).to_zarr(
-                        store, mode="a", consolidated=False
-                    )
+                    var_ds.drop_vars(var_ds.coords).to_zarr(store, mode="a", consolidated=False)
 
                 # Force memory release before the next loop iteration
                 del var_ds
@@ -539,9 +517,7 @@ class DWDFactory(WeatherFactoryProtocol):
             # Map variables and sanity check units
             ds = self._standardize_vars(ds, var_map)
 
-            ds.attrs.update(
-                {"provider": "DWD", "dataset": "ICON-2mom", "product": "forecast"}
-            )
+            ds.attrs.update({"provider": "DWD", "dataset": "ICON-2mom", "product": "forecast"})
 
         except Exception as e:
             raise WeatherFactoryError(f"DWD standardization failed: {e}") from e
@@ -552,9 +528,7 @@ class DWDFactory(WeatherFactoryProtocol):
     def _select_files(prefix: str, directory: str, date: str, hour: int) -> list[str]:
         patt = re.compile(rf"^{re.escape(prefix)}_\d{{3}}_{date}{hour:02d}\.nc$")
         candidates = (
-            os.path.join(directory, f)
-            for f in os.listdir(directory)
-            if f.endswith(".nc")
+            os.path.join(directory, f) for f in os.listdir(directory) if f.endswith(".nc")
         )
         return sorted(f for f in candidates if patt.match(os.path.basename(f)))
 
@@ -583,9 +557,7 @@ class DWDFactory(WeatherFactoryProtocol):
         # light normalization: remove spaces/asterisks; fold "**" → "^"
         return u.replace("**", "^").replace("*", "").replace(" ", "")
 
-    def _standardize_vars(
-        self, ds: xr.Dataset, var_map: Mapping[str, MetVariable]
-    ) -> xr.Dataset:
+    def _standardize_vars(self, ds: xr.Dataset, var_map: Mapping[str, MetVariable]) -> xr.Dataset:
         for raw, mv in var_map.items():
             if raw not in ds:
                 logger.debug("%s not found in dataset", raw)

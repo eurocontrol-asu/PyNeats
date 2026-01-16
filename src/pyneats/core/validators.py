@@ -45,8 +45,7 @@ def validate_columns(
 
     if missing:
         raise ValidationError(
-            f"Missing required columns: {sorted(missing)}. "
-            f"Available columns: {sorted(actual_cols)}"
+            f"Missing required columns: {sorted(missing)}. Available columns: {sorted(actual_cols)}"
         )
 
 

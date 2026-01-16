@@ -101,9 +101,7 @@ class BaseStep(Generic[InFlight, OutFlight, Params]):
             params_dict = asdict(self.default_params())
             update_param_dict(params_dict, params)
         else:
-            raise TypeError(
-                f"Step parameters must be {self.default_params.__name__} or dict"
-            )
+            raise TypeError(f"Step parameters must be {self.default_params.__name__} or dict")
 
         update_param_dict(params_dict, params_kwargs)
         self.params = from_dict(self.default_params, params_dict)

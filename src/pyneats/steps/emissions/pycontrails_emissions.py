@@ -25,9 +25,7 @@ __all__ = [
 class PyContrailsEmissionParams(EmissionParams):
     """Parameters for the PyContrails emission model calculation."""
 
-    emissions_kwargs: Mapping[str, Any] = field(
-        default_factory=lambda: DEFAULT_EMISSIONS_KWARGS
-    )
+    emissions_kwargs: Mapping[str, Any] = field(default_factory=lambda: DEFAULT_EMISSIONS_KWARGS)
 
 
 @register(EmissionModel, "pycontrails")  # type: ignore[type-abstract]
