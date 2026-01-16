@@ -134,7 +134,7 @@ class GWPMetrics(
 
         eps = float(self.params.efficacy.get("Contrails", 1.0))
         s = self.params.surface_earth
-        return {h: (total_ef_J * eps) / s for h in self.params.horizons}
+        return dict.fromkeys(self.params.horizons, total_ef_J * eps / s)
 
     def _co2eq_from_eagwp_J_per_m2(
         self, agwp_J_per_m2: dict[int, float]
@@ -216,7 +216,9 @@ class GWPMetrics(
             total_co2_kg = float(flight.attrs["total_co2"])
         except Exception:
             self.logger.error("Flight attrs missing 'total_co2'")
-            raise ClimateImpactStepError("Missing required attr 'total_co2'")
+            raise ClimateImpactStepError(
+                "Missing required attr 'total_co2'"
+            ) from None
 
         # Timings and ancillary metadata
         flight_information = {
@@ -233,7 +235,7 @@ class GWPMetrics(
 
         # ---- CO₂: EAGWP (J·m⁻²) and CO₂eq = m_CO2 (kg) ----
         agwp_co2 = self._agwp_co2_J_per_m2(total_co2_kg)  # J·m⁻²
-        co2eq_co2 = {h: total_co2_kg for h in horizons}  # kg
+        co2eq_co2 = dict.fromkeys(horizons, total_co2_kg)  # kg
 
         # ---- Contrails: EAGWP (J·m⁻²) and CO₂eq via Joos ----
         eagwp_con = self._eagwp_contrails_J_per_m2(total_ef_J)  # J·m⁻²

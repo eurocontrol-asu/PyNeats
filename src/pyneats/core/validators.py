@@ -90,9 +90,8 @@ def validate_no_all_nan(df: pd.DataFrame, columns: Iterable[str]) -> None:
     all_nan_cols = []
 
     for col in columns:
-        if col in df.columns:
-            if df[col].isna().all():
-                all_nan_cols.append(col)
+        if col in df.columns and df[col].isna().all():
+            all_nan_cols.append(col)
 
     if all_nan_cols:
         raise ValidationError(f"Columns with all NaN values: {sorted(all_nan_cols)}")

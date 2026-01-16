@@ -6,11 +6,9 @@ from pandas.testing import assert_frame_equal
 from pyneats.steps.emissions.pycontrails_emissions import (
     FlightWithEmissions,
     FlightWithPerformance,
-    PyContrailsEmissionParams,
     PyContrailsEmissionModel,
+    PyContrailsEmissionParams,
 )
-
-from .fixtures.nm_traffic import nm_output
 
 
 @pytest.mark.integration

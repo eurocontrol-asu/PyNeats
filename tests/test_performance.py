@@ -1,11 +1,17 @@
 # ruff: noqa: F401
-import pytest
-from pyneats.steps.performance.bada_model import BADAPerformanceModel, BADAPerformanceModelParams
-from pyneats.steps.performance.views import FlightWithWeather, FlightWithPerformance
-from pandas.testing import assert_frame_equal
-from .fixtures.nm_traffic import nm_output
-from tqdm import tqdm
 from pathlib import Path
+
+import pytest
+from pandas.testing import assert_frame_equal
+from tqdm import tqdm
+
+from pyneats.steps.performance.bada_model import (
+    BADAPerformanceModel,
+    BADAPerformanceModelParams,
+)
+from pyneats.steps.performance.views import FlightWithPerformance, FlightWithWeather
+
+from .fixtures.nm_traffic import nm_output
 
 
 @pytest.mark.integration

@@ -1,9 +1,9 @@
 from pyneats.steps.climate_functions.climaccf import (
     ACCFModel,
+    ACCFParams,
     ClimateStepError,
     FlightWithNonCO2Impact,
     NonCO2Model,
-    aCCFParams,
     make_accf_surface_view,
 )
 from pyneats.steps.climate_functions.cocip import (
@@ -26,7 +26,7 @@ __all__ = [
     "ContrailsStepError",
     "FlightWithNonCO2Impact",
     "NonCO2Model",
-    "aCCFParams",
+    "ACCFParams",
     "ACCFModel",
     "ClimateStepError",
     "make_accf_surface_view",

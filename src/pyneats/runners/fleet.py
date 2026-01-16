@@ -20,11 +20,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Self, TypeVar, cast
 
-import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 from joblib.externals.loky import get_reusable_executor
-from pycontrails import Fleet, Flight
+from pycontrails import Flight
 from pycontrails.core.met import MetDataset
 from pycontrails.models.humidity_scaling import HumidityScaling
 
@@ -53,7 +52,6 @@ from pyneats.steps.emissions.protocol import EmissionModel
 from pyneats.steps.emissions.views import FlightWithEmissions
 from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
 from pyneats.steps.parsing.neats_io import neats_json_to_flights, split_df_into_flights
-from pyneats.steps.parsing.neats_parser import NEATSFuel
 from pyneats.steps.parsing.protocol import TrajectoryParser
 from pyneats.steps.parsing.views import Flight4D
 from pyneats.steps.performance import PerformanceModel

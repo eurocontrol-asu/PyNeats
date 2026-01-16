@@ -34,7 +34,7 @@ from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
 from pyneats.steps.emissions.views import FlightWithEmissions
 
 __all__ = [
-    "aCCFParams",
+    "ACCFParams",
     "ACCFModel",
     "make_accf_surface_view",
 ]
@@ -42,7 +42,7 @@ __all__ = [
 
 # ---- params --------------------------------------------------------
 @dataclass(frozen=True)
-class aCCFParams(ClimateParams):
+class ACCFParams(ClimateParams):
     """Parameters for the ACCF (ClimAccf) model."""
 
     met: MetDataset | None = None
@@ -107,7 +107,7 @@ class ACCFModel(
     BaseStep[
         FlightWithEmissions,
         FlightWithNonCO2Impact,
-        aCCFParams,
+        ACCFParams,
     ]
 ):
     """
@@ -118,7 +118,7 @@ class ACCFModel(
     - Validates required columns and returns a base Flight.
     """
 
-    default_params = aCCFParams
+    default_params = ACCFParams
 
     def _post_init(self) -> None:
         if self.params.met is None or self.params.surface is None:

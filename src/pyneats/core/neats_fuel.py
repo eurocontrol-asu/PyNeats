@@ -6,7 +6,7 @@ that implement requirements defined for NEATS
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, Optional
+from typing import Any
 
 from pycontrails.core.fuel import Fuel, JetA, SAFBlend
 
@@ -60,7 +60,8 @@ class NEATSFuel(SAFBlend):
             h_wt_pct = float(hydrogen_content)
         elif h_c_ratio is not None:
             r = float(h_c_ratio)
-            # Convert H/C atomic ratio to hydrogen *mass percent* (×100 to keep PyContrails' convention)
+            # Convert H/C atomic ratio to hydrogen *mass percent*
+            # (×100 to keep PyContrails' convention)
             h_wt_pct = (r * 1.008) / (12.011 + r * 1.008) * 100.0
         else:
             h_wt_pct = DEFAULT_HYDROGEN_CONTENT

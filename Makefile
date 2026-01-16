@@ -28,8 +28,8 @@ audit: ## Run security audit with pip-audit
 check: lint test ## Run all quality checks (lint + test)
 
 docs-serve:  ## Serve docs locally
-    uv sync --group docs --quiet
-    uv run mkdocs serve
+	uv sync --group docs --quiet
+	uv run mkdocs serve
 
 clean: ## Clean up build artifacts and caches
 	rm -rf .pytest_cache

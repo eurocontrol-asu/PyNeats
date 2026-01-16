@@ -1,11 +1,12 @@
-from typing import Any, List, Protocol
+from typing import Any, Protocol
 
 import pandas as pd
 
 
 class ClusteringProtocol(Protocol):
     """
-    A Protocol defining the required interface for any traffic clustering implementation.
+    A Protocol defining the required interface for any traffic clustering
+    implementation.
 
     Any class or function that implements this protocol must accept a list of
     pandas DataFrames (trajectories) and return a list of lists of pandas

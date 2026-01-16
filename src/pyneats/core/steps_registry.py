@@ -1,8 +1,8 @@
 """NEATS Steps Registry Module
 
 This module provides a registry system for NEATS processing steps. It implements
-a factory pattern that allows dynamic registration and instantiation of processing components
-based on their interface types.
+a factory pattern that allows dynamic registration and instantiation of processing
+components based on their interface types.
 """
 
 from __future__ import annotations

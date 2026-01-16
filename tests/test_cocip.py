@@ -4,14 +4,11 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 from pyneats.steps.climate_functions.cocip import (
-    FlightWithEmissions,
-    FlightWithContrailsImpact,
     CoCiPModel,
     ContrailsParams,
+    FlightWithContrailsImpact,
+    FlightWithEmissions,
 )
-
-from .fixtures.nm_traffic import nm_output
-from .fixtures.weather import weather
 
 
 @pytest.mark.integration

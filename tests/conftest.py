@@ -3,11 +3,8 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List
 
 import pytest
-
-from pyneats.core.views import FlightView
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.INFO)
@@ -30,7 +27,7 @@ def pytest_generate_tests(metafunc):
             filepath = traffic_path / "output_flights_5.json"
 
             if filepath.exists():
-                with open(filepath, "r", encoding="utf-8") as fh:
+                with open(filepath, encoding="utf-8") as fh:
                     data = json.load(fh)
                     flight_ids = []
                     for i, d in enumerate(data):
@@ -117,5 +114,5 @@ def bada_root_path(pytestconfig) -> Path | None:
         return default_path.resolve()
 
     return None
- 
+
 

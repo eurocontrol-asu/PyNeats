@@ -3,12 +3,10 @@
 import pytest
 from pandas.testing import assert_frame_equal
 
+from pyneats.steps.interpolation import PyContrailsInterpolator
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
 from pyneats.steps.parsing.neats_parser import NeatsTrajectoryParser
-from pyneats.steps.interpolation import PyContrailsInterpolator
 from pyneats.steps.parsing.views import Flight4D
-
-from .fixtures.nm_traffic import nm_input, nm_output
 
 
 @pytest.mark.integration
@@ -33,7 +31,7 @@ def test_interpolation(nm_input, nm_output, flight_idx):  # noqa: F811
 
     # Convert JSON to DataFrame
     dataframes = neats_json_to_flights([raw_flight])
-    assert len(dataframes) == 1, f"neats_json_to_flights should return 1 DataFrame"
+    assert len(dataframes) == 1, "neats_json_to_flights should return 1 DataFrame"
     df = dataframes[0]
 
     # Parse DataFrame to Flight4D

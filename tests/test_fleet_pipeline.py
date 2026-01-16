@@ -1,14 +1,12 @@
 """Test full fleet pipeline using FleetRunner."""
 
-import pytest
 from pathlib import Path
+
+import pytest
 from pandas.testing import assert_frame_equal
 
 from pyneats.runners.fleet import FleetRunner, FleetRunnerParams
 from pyneats.steps.weather.weather_store import ZarrPaths
-
-from .fixtures.nm_traffic import nm_output
-from .fixtures.weather import weather
 
 
 @pytest.mark.integration

@@ -31,7 +31,7 @@ from pyneats.core.physics import (
 )
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
-from pyneats.steps.climate_functions.climaccf import aCCFParams
+from pyneats.steps.climate_functions.climaccf import ACCFParams
 from pyneats.steps.climate_functions.protocol import ClimateStepError, NonCO2Model
 from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
 from pyneats.steps.emissions.views import FlightWithEmissions
@@ -42,7 +42,7 @@ __all__ = ["LocalACCFParams", "LocalACCFModel"]
 
 
 @dataclass(frozen=True)
-class LocalACCFParams(aCCFParams):
+class LocalACCFParams(ACCFParams):
     """Parameters for the Local Algorithmic Climate Change Functions (ACCF) model."""
 
     col_air_temperature: str = "air_temperature"  # [K]

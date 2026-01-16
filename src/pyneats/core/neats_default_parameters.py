@@ -1,7 +1,8 @@
 """NEATS Default Parameters Module
 
-This module serves as the single source of truth for all default parameters used across
-NEATS pipeline. All parameters described in the RSTS  document are centralized here to ensure:
+This module serves as the single source of truth for all default parameters
+used across NEATS pipeline. All parameters described in the RSTS document are
+centralized here to ensure:
 
 * Configuration Consistency
    - No hardcoded parameters exist in computation modules
@@ -143,9 +144,8 @@ DEFAULT_TIME_BUF: Final[tuple[np.timedelta64, np.timedelta64]] = (
 DEFAULT_LEVEL_BUF: tuple[float, float] = (0.0, 40.0)
 
 DEFAULT_WEATHER_INTEPOLATION_METHOD: Final[InterpolationMethod] = "linear"
-DEFAULT_WEATHER_USE_INDICES: Final[bool] = (
-    False  # Important. If True, delta_tau is wrongly extrapolated bellow the limit altitude
-)
+# Important. If True, delta_tau is wrongly extrapolated below the limit altitude
+DEFAULT_WEATHER_USE_INDICES: Final[bool] = False
 
 
 # Default Fuel constants

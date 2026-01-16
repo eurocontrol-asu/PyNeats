@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from typing import List
 
 import pytest
 
@@ -10,7 +9,7 @@ from pyneats.core.views import FlightView
 
 
 @pytest.fixture(scope="session")
-def nm_input() -> List[dict]:
+def nm_input() -> list[dict]:
     """Load raw NM input flights (5 flights) from JSON.
 
     Returns:
@@ -29,14 +28,14 @@ def nm_input() -> List[dict]:
     if not filepath.exists():
         raise FileNotFoundError(f"Input flights not found: {filepath}")
 
-    with open(filepath, "r", encoding="utf-8") as fh:
+    with open(filepath, encoding="utf-8") as fh:
         data = json.load(fh)
 
     return data
 
 
 @pytest.fixture(scope="session")
-def nm_output() -> List[FlightView]:
+def nm_output() -> list[FlightView]:
     """Load expected NM output flights (5 flights with full pipeline results) from JSON.
 
     Returns:
@@ -56,7 +55,7 @@ def nm_output() -> List[FlightView]:
     if not filepath.exists():
         raise FileNotFoundError(f"Output flights not found: {filepath}")
 
-    with open(filepath, "r", encoding="utf-8") as fh:
+    with open(filepath, encoding="utf-8") as fh:
         data = json.load(fh)
 
     flights = []

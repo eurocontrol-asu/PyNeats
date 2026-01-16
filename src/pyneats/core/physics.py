@@ -23,14 +23,16 @@ SURFACE_EARTH: Final[float] = 5.101e14  # m²
 SECONDS_PER_YEAR: Final[int] = 31_556_952  # s
 SOLAR_CONSTANT: Final[float] = 1360.0  # [W m^-2]
 
-#  CO2 GWP coefficients built with AirClim, alternatives to Joos (2013) (C(H) in W·m⁻²·yr·kg⁻¹)
+# CO2 GWP coefficients built with AirClim, alternatives to Joos (2013)
+# C(H) in W·m⁻²·yr·kg⁻¹
 CO2_AGWP_COEFF_WM2YR_PER_KG: Mapping[int, float] = {
     20: 24.16e-15,
     50: 47.57e-15,
     100: 74.36e-15,
 }
 
-# New generic conversion factors to convert RF to AGWP or ATR (Dahlmann et al., 2025) for Pulse 2025 scenario
+# New generic conversion factors to convert RF to AGWP or ATR
+# (Dahlmann et al., 2025) for Pulse 2025 scenario
 CONVERSION_FACTORS_AGWP_TO_RF: Final[dict[int, dict[str, float]]] = {
     20: {"CH4": 10.6318, "O3": 1.0192, "H2O": 1.0192, "PMO": 10.6318},
     50: {"CH4": 13.0968, "O3": 1.0192, "H2O": 1.0192, "PMO": 13.0968},
@@ -52,9 +54,12 @@ EFFICACY: Final[dict[str, float]] = {
     "PMO": 1.0,
 }
 
-# Historical RF backward calculation factor implicitely used in Dietmuller et al., 2023 and Yin et al., 2023
-# not necessary anymore while using modern conversion factors from Dahlmann et al., 2025
-# therefore used here to discount accf output value before applying conversion factors from Dahlmann et al., 2025
+# Historical RF backward calculation factor implicitly used in
+# Dietmuller et al., 2023 and Yin et al., 2023
+# Not necessary anymore while using modern conversion factors from
+# Dahlmann et al., 2025
+# Therefore used here to discount accf output value before applying
+# conversion factors from Dahlmann et al., 2025
 RF_BACKWARD_FACTOR: Final[dict[str, float]] = {
     "CH4": 0.492,
     "O3": 0.508,

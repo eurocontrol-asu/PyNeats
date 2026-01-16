@@ -121,6 +121,10 @@ select = [
 ]
 ignore = []
 
+[tool.ruff.lint.per-file-ignores]
+"src/pyneats/steps/climate_metrics/gwp.py" = ["N802", "N803", "N806"]  # Scientific notation (J, K units)
+"src/pyneats/steps/performance/bada_*.py" = ["N802", "N806"]  # Aviation acronyms (MTOW, MPL, OEW, M, TAS, CAS)
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"

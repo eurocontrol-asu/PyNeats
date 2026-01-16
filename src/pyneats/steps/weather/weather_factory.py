@@ -36,7 +36,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 import xarray as xr
 import zarr

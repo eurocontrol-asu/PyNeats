@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Dict, Final, List, Optional, Tuple
+from typing import Any, Final
 
 import networkx as nx
 import numpy as np
@@ -70,7 +70,7 @@ def create_st_traffic_graph(
                 )
                 grouping_cols.append("it")
         except Exception:
-            warnings.warn("Temporal dimension skipped due to error.")
+            warnings.warn("Temporal dimension skipped due to error.", stacklevel=2)
 
     if len(grouping_cols) < 2:
         return nx.Graph()
@@ -94,7 +94,7 @@ def create_st_traffic_graph(
     )
 
     # Graph Construction
-    G: nx.Graph = nx.Graph()
+    G: nx.Graph = nx.Graph()  # noqa: N806  (networkx convention)
     G.add_nodes_from(df["uid"].unique())
 
     edge_list: list[tuple[Any, Any, dict[str, Any]]] = [
@@ -102,7 +102,7 @@ def create_st_traffic_graph(
         for uid_a, uid_b, weight in zip(
             edge_weights_df["uid_A"],
             edge_weights_df["uid_B"],
-            edge_weights_df["weight"],
+            edge_weights_df["weight"], strict=False,
         )
     ]
     G.add_edges_from(edge_list)
@@ -126,10 +126,13 @@ def cluster_st_traffic_louvain(
         dlat (float, optional): latitude grid resolution  (deg). Defaults to 0.25.
         dz (float, optional): altitude grid resolution (FL). Defaults to None.
         dt (float, optional): time grid resolution (s). Defaults to None.
-        min_community_size (int, optional): Minimum number of UIDs required for a community to remain separate. Smaller communities are merged. Defaults to 1 (no merging).
+        min_community_size (int, optional): Minimum number of UIDs
+            required for a community to remain separate. Smaller
+            communities are merged. Defaults to 1 (no merging).
 
     Returns:
-        List[List[pd.DataFrame]]: each sublist contains DataFrames belonging to the same cluster.
+        List[List[pd.DataFrame]]: each sublist contains DataFrames
+            belonging to the same cluster.
     """
 
     if not list_of_df:
@@ -155,7 +158,8 @@ def cluster_st_traffic_louvain(
 
         if missing_attrs:
             raise KeyError(
-                f"DataFrame at index {i} is missing required attributes: {missing_attrs}"
+                f"DataFrame at index {i} is missing required "
+                f"attributes: {missing_attrs}"
             )
 
         # Create the unique UID string
@@ -174,11 +178,13 @@ def cluster_st_traffic_louvain(
 
     # 2. Concatenate and Compute Graph
     full_df: pd.DataFrame = pd.concat(data_for_concat, ignore_index=True)
-    G: nx.Graph = create_st_traffic_graph(full_df, dlon, dlat, dz, dt)
+    G: nx.Graph = create_st_traffic_graph(full_df, dlon, dlat, dz, dt)  # noqa: N806
 
     if not G.nodes:
         warnings.warn(
-            "Graph has no nodes/edges after processing. Returning unclustered data."
+            "Graph has no nodes/edges after processing. "
+            "Returning unclustered data.",
+            stacklevel=2,
         )
         return [list_of_df]
 
@@ -190,7 +196,7 @@ def cluster_st_traffic_louvain(
             resolution=resolution,
         )
     except Exception as e:
-        warnings.warn(f"Louvain failed: {e}. Returning unclustered data.")
+        warnings.warn(f"Louvain failed: {e}. Returning unclustered data.", stacklevel=2)
         return [list_of_df]
 
     # --- 3.5. Post-Processing: Filter and Merge Small Communities ---
@@ -206,8 +212,10 @@ def cluster_st_traffic_louvain(
     if minor_community_uids:
         major_communities.append(minor_community_uids)
         warnings.warn(
-            f"Merged {len(partition) - len(major_communities)} communities (size < {min_community_size}) "
-            f"into a single Minor/Noise cluster ({len(minor_community_uids)} UIDs)."
+            f"Merged {len(partition) - len(major_communities)} communities "
+            f"(size < {min_community_size}) into a single Minor/Noise cluster "
+            f"({len(minor_community_uids)} UIDs).",
+            stacklevel=2,
         )
 
     final_partition = major_communities

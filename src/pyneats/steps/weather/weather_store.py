@@ -7,10 +7,10 @@ for handling weather data storage and retrieval (Zarr/NetCDF)
 
 from __future__ import annotations
 
+import contextlib
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
 
 import xarray as xr
 from pycontrails import MetDataset
@@ -87,10 +87,8 @@ def clear_dataset_cache() -> None:
         ds = getattr(md, "data", None)
         close = getattr(ds, "close", None)
         if callable(close):
-            try:
+            with contextlib.suppress(Exception):
                 close()
-            except Exception:
-                pass
     _DATASET_CACHE.clear()
 
 
