@@ -26,7 +26,6 @@ from joblib.externals.loky import get_reusable_executor
 from typing_extensions import Self
 
 from pycontrails import Flight, Fleet
-from pycontrails.models.cocip import Cocip
 from pycontrails.models.humidity_scaling import HumidityScaling
 from pycontrails.core.met import MetDataset
 
@@ -39,10 +38,6 @@ from pyneats.core.compute_parameters import (
 from pyneats.core.neats_default_parameters import (
     DEFAULT_COCIP_KWARGS,
     DEFAULT_HUMIDITY_SCALING,
-    DEFAULT_LON_BUF,
-    DEFAULT_LAT_BUF,
-    DEFAULT_TIME_BUF,
-    DEFAULT_LEVEL_BUF,
 )
 
 from pyneats.core.steps import Step  
@@ -58,7 +53,7 @@ from pyneats.steps.parsing.views import Flight4D
 
 from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
 
-from pyneats.steps.weather.weather_provider import FlightWithWeather
+from pyneats.steps.weather.weather_provider import FlightWithWeather, WeatherProvider, WeatherProviderParams
 from pyneats.steps.weather.weather_store import ZarrPaths, get_weather_from_zarr, clear_dataset_cache
 
 from pyneats.steps.performance import PerformanceModel
@@ -67,6 +62,7 @@ from pyneats.steps.performance.views import FlightWithPerformance
 from pyneats.steps.emissions.protocol import EmissionModel
 from pyneats.steps.emissions.views import FlightWithEmissions
 
+from pyneats.steps.climate_functions.cocip import CoCiPModel, ContrailsParams
 from pyneats.steps.climate_functions.protocol import NonCO2Model
 from pyneats.steps.climate_functions.views import (
     FlightWithContrailsImpact,
@@ -444,31 +440,40 @@ class FleetRunner:
         if self.met is None or self.wind is None:
             raise RuntimeError("weather must be loaded before _intersect_weather()")
 
-        flights = self._fleet_weather_intersection(self.interpolated_fleet, self.met, self.wind)
+        # Create WeatherProvider step with meteorological datasets
+        weather_params = WeatherProviderParams(
+            humidity_scaling=self.cfg.humidity_scaling,
+            **self._params("weather_intersection")
+        )
+        weather_step = WeatherProvider(
+            met=self.met,
+            wind=self.wind,
+            rad=self.rad,  # Required by WeatherProvider constructor
+            params=weather_params
+        )
+
+        # Run vectorized weather intersection
+        flights = self._run_vectorized_step(
+            self.interpolated_fleet,
+            "weather intersection",
+            weather_step,
+            self.cfg.weather_critical_columns,
+        )
+
+        # Check humidity scaling failures (separate from weather intersection)
         flights, errs = self._check_and_filter_failed_flights(
             flights,
-            self.cfg.weather_critical_columns,
-            "weather intersection",
+            self.cfg.humidity_scaling_critical_columns,
+            "humidity scaling",
         )
         self.error_records.extend(errs)
 
         self.fleet_with_weather = cast(List[FlightWithWeather], flights)
         self.interpolated_fleet = None  # free memory
 
-        self.fleet_with_weather = self._apply_humidity_scaling(self.fleet_with_weather)
-        self.fleet_with_weather, errs = self._check_and_filter_failed_flights(
-            self.fleet_with_weather,
-            self.cfg.humidity_scaling_critical_columns,
-            "humidity scaling",
-        )
-
-        self.error_records.extend(errs)
-        self.fleet_with_weather = cast(List[FlightWithWeather], self.fleet_with_weather)
-
-
         end = time.time()
         print("_intersect_weather time", end - start)
-        
+
         return self
 
     def _performance(self) -> Self:
@@ -518,15 +523,21 @@ class FleetRunner:
         if self.met is None or self.rad is None:
             raise RuntimeError("weather must be loaded before _contrails()")
 
-        flights: List[FlightWithContrailsImpact] = self._fleet_cocip(self.fleet_with_emissions,
-                                                                     self.met,
-                                                                     self.rad)
-        flights, errs = self._check_and_filter_failed_flights(
-            flights,
-            self.cfg.cocip_critical_columns,
-            "CoCiP evaluation",
+        # Create CoCiP step with meteorological datasets
+        cocip_params = ContrailsParams(
+            met=self.met,
+            rad=self.rad,
+            cocip_kwargs=self.cfg.cocip_kwargs
         )
-        self.error_records.extend(errs)
+        cocip_step = CoCiPModel(params=cocip_params)
+
+        # Run vectorized CoCiP
+        flights = self._run_vectorized_step(
+            self.fleet_with_emissions,
+            "CoCiP evaluation",
+            cocip_step,
+            self.cfg.cocip_critical_columns,
+        )
 
         self.fleet_with_contrails = flights
         self.fleet_with_emissions = None  # free memory
@@ -597,36 +608,6 @@ class FleetRunner:
     # Public API
     # -------------------------------------------------------------------------
 
-
-    @staticmethod
-    def _seq_to_fleet(seq: List[Flight]) -> Fleet:
-
-        for s in seq:
-            s.attrs['columns'] = set(s.data.keys())
-            s["q_fuel"] = np.full(len(s), s.fuel.q_fuel)
-            s["ei_h2o"] = np.full(len(s), s.fuel.ei_h2o)
-            s.fuel = None
-
-        fleet : Fleet = Fleet.from_seq(seq)
-        fleet.attrs['columns'] = set(fleet.data.keys())
-        return fleet
-    
-    @staticmethod
-    def _fleet_to_seq(fleet: Fleet) -> List[Flight]:
-        
-        fleet_columns = fleet.attrs.pop('columns')
-        seq = fleet.to_flight_list()
-        
-        for s in seq:
-            flight_columns = s.attrs.pop('columns')
-            columns_to_delete = fleet_columns.difference(flight_columns)
-
-            for c in columns_to_delete:
-                s.data.pop(c)
-            s.fuel = NEATSFuel.from_attrs(s.attrs)
-
-        return seq
-    
     def eval(self) -> Self:
         """
         Run the full fast fleet pipeline.
@@ -702,6 +683,38 @@ class FleetRunner:
     # Parallel runner (generic)
     # -------------------------------------------------------------------------
 
+    def _run_vectorized_step(
+        self,
+        flights: List[T],
+        step_name: str,
+        step: Any,  # Step with run_fleet() method
+        critical_columns: Tuple[str, ...],
+    ) -> List[U]:
+        """
+        Run a vectorized step with error handling.
+
+        Args:
+            flights: List of input flights
+            step_name: Name of the step (for logging/error messages)
+            step: Step instance with run_fleet() method
+            critical_columns: Columns to check for failures
+
+        Returns:
+            List of successful output flights
+        """
+        # Call step's run_fleet() method
+        result_flights = step.run_fleet(flights)
+
+        # Check for critical column failures and filter
+        successful, errs = self._check_and_filter_failed_flights(
+            result_flights,
+            critical_columns,
+            step_name,
+        )
+        self.error_records.extend(errs)
+
+        return cast(List[U], successful)
+
     def _run_parallel_step(
         self,
         seq: List[T],
@@ -735,108 +748,6 @@ class FleetRunner:
     # Vectorized fleet operations
     # -------------------------------------------------------------------------
 
-    def _fleet_weather_intersection(self, seq: List[Flight4D], met: Any, wind: Any) -> List[Flight]:
-        t0 = time.time()
-        logger.info("Fleet-level weather intersection for %d flights...", len(seq))
-
-        pyc_fleet = self._seq_to_fleet(seq)
-
-        ds_met = pyc_fleet.downselect_met(
-            met,
-            longitude_buffer=DEFAULT_LON_BUF,
-            latitude_buffer=DEFAULT_LAT_BUF,
-            time_buffer=DEFAULT_TIME_BUF,
-            level_buffer=DEFAULT_LEVEL_BUF,
-        )
-
-        ds_wind = pyc_fleet.downselect_met(
-            wind,
-            longitude_buffer=DEFAULT_LON_BUF,
-            latitude_buffer=DEFAULT_LAT_BUF,
-            time_buffer=DEFAULT_TIME_BUF,
-            level_buffer=DEFAULT_LEVEL_BUF,
-        )
-
-        new_cols = self._intersect_weather_variables(pyc_fleet, ds_met, ds_wind)
-
-        df = pyc_fleet.dataframe.reset_index(drop=True)
-        for k, v in new_cols.items():
-            df[k] = v
-
-        fleet_with_weather = Fleet(data=df, attrs=pyc_fleet.attrs, fl_attrs=pyc_fleet.fl_attrs)
-
-        logger.info("Weather intersection complete in %.2fs", time.time() - t0)
-        return self._fleet_to_seq(fleet_with_weather)
-
-    @staticmethod
-    def _intersect_weather_variables(fleet: Fleet,
-                                     ds_met: Any,
-                                     ds_wind: Any) -> Dict[str, np.ndarray]:
-        var_map = {
-            "eastward_wind": ("u_wind", True),
-            "northward_wind": ("v_wind", True),
-            "air_temperature": ("air_temperature", False),
-            "specific_humidity": ("specific_humidity", False),
-            "geopotential": ("geopotential", False),
-            "potential_vorticity": ("potential_vorticity", False),
-        }
-
-        new_cols: Dict[str, np.ndarray] = {}
-
-        for met_var, (out_col, is_wind) in var_map.items():
-            if is_wind:
-                if met_var in ds_wind:
-                    dataset = ds_wind
-                elif met_var in ds_met:
-                    dataset = ds_met
-                else:
-                    raise KeyError(f"required wind var '{met_var}' missing (looked in WIND then MET)")
-            else:
-                if met_var in ds_met:
-                    dataset = ds_met
-                else:
-                    raise KeyError(f"required met var '{met_var}' missing in MET")
-
-            vals = fleet.intersect_met(dataset[met_var], method="linear", use_indices=False)
-            if is_wind:
-                vals = np.nan_to_num(vals, nan=0.0)
-
-            new_cols[out_col] = vals
-
-        return new_cols
-
-    def _apply_humidity_scaling(self, seq: List[FlightWithWeather]) -> List[FlightWithWeather]:
-        if self.cfg.humidity_scaling is None:
-            return seq
-
-        t0 = time.time()
-        logger.info("Applying humidity scaling...")
-
-        fleet = self._seq_to_fleet(seq)
-        fleet = self.cfg.humidity_scaling.eval(fleet)
-
-        logger.info("Humidity scaling complete in %.2fs", time.time() - t0)
-        return self._fleet_to_seq(fleet)
-
-    def _fleet_cocip(
-        self,
-        seq: List[FlightWithEmissions],
-        met: Any,
-        rad: Any,
-    ) -> List[FlightWithContrailsImpact]:
-        
-        logger.info("Fleet-level CoCiP evaluation for %d flights...", len(seq))
-
-        cocip = Cocip(met=met, rad=rad, **self.cfg.cocip_kwargs)
-        fleet = self._seq_to_fleet(seq)
-        results_fleet = cocip.eval(source=fleet)
-
-        out = self._fleet_to_seq(results_fleet)
-
-        # Zero-copy validation + type narrowing
-        typed = [FlightWithContrailsImpact.from_flight(f) for f in out]
-
-        return typed
 
     # -------------------------------------------------------------------------
     # Validation / filtering
