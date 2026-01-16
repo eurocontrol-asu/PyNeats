@@ -30,7 +30,7 @@ from pycontrails.models.humidity_scaling import HumidityScaling
 from pycontrails.core.met import MetDataset
 
 from pyneats.core.compute_parameters import (
-    DEFAULT_NJOBS, 
+    DEFAULT_NJOBS,
     DEFAULT_BATCH_SIZE,
     DEFAULT_JOBLIB_PREFERENCE,
 )
@@ -40,7 +40,7 @@ from pyneats.core.neats_default_parameters import (
     DEFAULT_HUMIDITY_SCALING,
 )
 
-from pyneats.core.steps import Step  
+from pyneats.core.steps import Step
 from pyneats.core.steps_registry import build
 from pyneats.runners.flight import RunnerConfig
 from pyneats.steps.parsing.neats_parser import NEATSFuel
@@ -53,8 +53,16 @@ from pyneats.steps.parsing.views import Flight4D
 
 from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
 
-from pyneats.steps.weather.weather_provider import FlightWithWeather, WeatherProvider, WeatherProviderParams
-from pyneats.steps.weather.weather_store import ZarrPaths, get_weather_from_zarr, clear_dataset_cache
+from pyneats.steps.weather.weather_provider import (
+    FlightWithWeather,
+    WeatherProvider,
+    WeatherProviderParams,
+)
+from pyneats.steps.weather.weather_store import (
+    ZarrPaths,
+    get_weather_from_zarr,
+    clear_dataset_cache,
+)
 
 from pyneats.steps.performance import PerformanceModel
 from pyneats.steps.performance.views import FlightWithPerformance
@@ -66,13 +74,11 @@ from pyneats.steps.climate_functions.cocip import CoCiPModel, ContrailsParams
 from pyneats.steps.climate_functions.protocol import NonCO2Model
 from pyneats.steps.climate_functions.views import (
     FlightWithContrailsImpact,
-    FlightWithNonCO2Impact
+    FlightWithNonCO2Impact,
 )
 
 from pyneats.steps.climate_metrics.protocol import ClimateImpactModel
 from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
-
-
 
 
 logger = logging.getLogger(__name__)
@@ -91,6 +97,7 @@ OutT = TypeVar("OutT", covariant=True)
 # -----------------------------------------------------------------------------
 # Config (RunnerConfig + fleet-specific fields)
 # -----------------------------------------------------------------------------
+
 
 # NOTE:
 # - This mirrors FlightRunner’s “cfg carries step names + params” philosophy.
@@ -120,16 +127,19 @@ class FleetRunnerParams(RunnerConfig):
 
     # Memory / executor behavior:
     # - If True, mimics your original runner behavior.
-    # - If False, loky pool stays alive across steps 
+    # - If False, loky pool stays alive across steps
     shutdown_executor_between_steps: bool = True
     gc_collect_between_steps: bool = True
 
     # CoCiP (pycontrails) parameters
-    cocip_kwargs: Mapping[str, Any] = field(default_factory=lambda: DEFAULT_COCIP_KWARGS)
+    cocip_kwargs: Mapping[str, Any] = field(
+        default_factory=lambda: DEFAULT_COCIP_KWARGS
+    )
 
     # Humidity scaling after weather intersection
-    humidity_scaling: HumidityScaling | None = field(default_factory=
-                                                     lambda: DEFAULT_HUMIDITY_SCALING)
+    humidity_scaling: HumidityScaling | None = field(
+        default_factory=lambda: DEFAULT_HUMIDITY_SCALING
+    )
 
     # Critical columns for vectorized-step failure detection
     weather_critical_columns: Tuple[str, ...] = (
@@ -146,7 +156,9 @@ class FleetRunnerParams(RunnerConfig):
             raise ValueError("FastFleetRunnerConfig.zarr_paths is required")
 
         if self.trajectory_json_filepath is None and self.trajectory_dataframe is None:
-            raise ValueError("Must provide either trajectory_json_filepath or trajectory_dataframe")
+            raise ValueError(
+                "Must provide either trajectory_json_filepath or trajectory_dataframe"
+            )
 
 
 # -----------------------------------------------------------------------------
@@ -157,11 +169,9 @@ class FleetRunnerParams(RunnerConfig):
 _STEP_CACHE: dict[tuple[type[Any], str, str], Any] = {}
 
 
-def _get_step_cached(interface: type[Step[InT, OutT]],
-                     name: str,
-                     params: Mapping[str, Any]
-                    ) -> Step[InT, OutT]:
-
+def _get_step_cached(
+    interface: type[Step[InT, OutT]], name: str, params: Mapping[str, Any]
+) -> Step[InT, OutT]:
     key = (interface, name.lower().strip())
     step = _STEP_CACHE.get(key)
     if step is None:
@@ -178,6 +188,7 @@ def make_step_func(
     copy_input: bool = False,
 ) -> Callable[[InT], OutT]:
     """Return a callable (InT -> OutT) using registry build() + per-process cache."""
+
     def fn(x: InT) -> OutT:
         step = _get_step_cached(interface, name, params)
         if copy_input and hasattr(x, "copy"):
@@ -191,6 +202,7 @@ def make_step_func(
 # Error handling helpers (fleet continues on error)
 # -----------------------------------------------------------------------------
 
+
 def _extract_flight_id(item: Any) -> str:
     if hasattr(item, "attrs"):
         return getattr(item, "attrs", {}).get("flight_id", "UNKNOWN")
@@ -203,7 +215,6 @@ def _process_one(
     processor_func: ProcessorFunc[T, U],
     flight_id_extractor: Callable[[T], str],
 ) -> Tuple[bool, int, Optional[U], Optional[str], str]:
-    
     flight_id = flight_id_extractor(item)
     try:
         out = processor_func(item)
@@ -244,11 +255,17 @@ def _process_parallel_results(
         if ok:
             successful.append(out)
         else:
-            errors.append(_create_error_record(original_seq[i], flight_id, step_name, err))
-            logger.error("%s failed for flight %s (index %d): %s", step_name, flight_id, i, err)
+            errors.append(
+                _create_error_record(original_seq[i], flight_id, step_name, err)
+            )
+            logger.error(
+                "%s failed for flight %s (index %d): %s", step_name, flight_id, i, err
+            )
 
     if errors:
-        logger.warning("%d/%d flights failed at %s", len(errors), len(original_seq), step_name)
+        logger.warning(
+            "%d/%d flights failed at %s", len(errors), len(original_seq), step_name
+        )
 
     return successful, errors
 
@@ -256,6 +273,7 @@ def _process_parallel_results(
 # -----------------------------------------------------------------------------
 # FastFleetRunner (FlightRunner-like shape)
 # -----------------------------------------------------------------------------
+
 
 class FleetRunner:
     """
@@ -273,6 +291,7 @@ class FleetRunner:
     This runner keeps "continue-on-error" semantics: per-flight failures are
     recorded and filtered out rather than aborting the whole run.
     """
+
     parser: Callable[[pd.DataFrame], Flight4D]
     interpolator: Callable[[Flight4D], Flight4D]
     performance: Callable[[FlightWithWeather], FlightWithPerformance]
@@ -294,7 +313,7 @@ class FleetRunner:
         self.fleet_with_weather: List[FlightWithWeather] | None = None
         self.fleet_with_performance: List[FlightWithPerformance] | None = None
         self.fleet_with_emissions: List[FlightWithEmissions] | None = None
-        self.fleet_with_contrails: List[FlightWithContrailsImpact] | None = None 
+        self.fleet_with_contrails: List[FlightWithContrailsImpact] | None = None
         self.fleet_with_nonco2: List[FlightWithNonCO2Impact] | None = None
         self.fleet_with_climate_impact: List[FlightWithClimateImpact] | None = None
 
@@ -309,7 +328,6 @@ class FleetRunner:
             TrajectoryParser,
             self.cfg.trajectory_parser,
             self._params("trajectory_parser"),
-            #self.cfg.params.get("trajectory_parser", {}),
             copy_input=True,  # DataFrame safety
         )
 
@@ -317,27 +335,23 @@ class FleetRunner:
             TrajectoryInterpolator,
             self.cfg.interpolator,
             self._params("interpolator"),
-            #self.cfg.params.get("interpolator", {}),
         )
 
         self.performance = make_step_func(
             PerformanceModel,
             self.cfg.performance,
             self._params("performance", extra=self._bada_params()),
-            #self.cfg.params.get("performance", {}),
         )
 
         self.emission = make_step_func(
             EmissionModel,
             self.cfg.emissions,
             self._params("emissions"),
-            #self.cfg.params.get("emissions", {}),
         )
 
         self.non_co2_model = make_step_func(
             NonCO2Model,
             self.cfg.non_co2_model,
-            #self.cfg.params.get("non_co2_model", {}),
             self._params("non_co2_model"),
         )
 
@@ -355,7 +369,9 @@ class FleetRunner:
     # Param handling (FlightRunner-like)
     # -------------------------------------------------------------------------
 
-    def _params(self, key: str, *, extra: Mapping[str, Any] | None = None) -> Dict[str, Any]:
+    def _params(
+        self, key: str, *, extra: Mapping[str, Any] | None = None
+    ) -> Dict[str, Any]:
         """Return a defensive copy of cfg.params[key] merged with optional extra params."""
         base = dict(self.cfg.params.get(key, {}))
         if extra:
@@ -395,7 +411,9 @@ class FleetRunner:
     def _load_weather(self) -> Self:
         logger.info("Loading weather data from Zarr...")
 
-        weather = get_weather_from_zarr(self.cfg.zarr_paths, chunks=self.cfg.zarr_read_chunks)
+        weather = get_weather_from_zarr(
+            self.cfg.zarr_paths, chunks=self.cfg.zarr_read_chunks
+        )
         self.met, self.rad, self.wind = weather.met(), weather.rad(), weather.wind()
 
         # Create vectorized steps now that weather datasets are available
@@ -404,68 +422,66 @@ class FleetRunner:
         # Weather intersection step
         weather_params = WeatherProviderParams(
             humidity_scaling=self.cfg.humidity_scaling,
-            **self._params("weather_intersection")
+            **self._params("weather_intersection"),
         )
         self.weather_step = WeatherProvider(
-            met=self.met,
-            rad=self.rad,
-            wind=self.wind,
-            params=weather_params
+            met=self.met, rad=self.rad, wind=self.wind, params=weather_params
         )
 
         # CoCiP step
         cocip_params = ContrailsParams(
-            met=self.met,
-            rad=self.rad,
-            cocip_kwargs=self.cfg.cocip_kwargs
+            met=self.met, rad=self.rad, cocip_kwargs=self.cfg.cocip_kwargs
         )
         self.cocip_step = CoCiPModel(params=cocip_params)
 
         return self
 
     def _parse_flights(self) -> Self:
-
         start = time.time()
 
         if self.source_fleet is None:
             raise RuntimeError("source_flights must be loaded before _parse_flights()")
 
-        self.parsed_fleet, errs = self._run_parallel_step(self.source_fleet, "parsing", self.parser)
+        self.parsed_fleet, errs = self._run_parallel_step(
+            self.source_fleet, "parsing", self.parser
+        )
         self.error_records.extend(errs)
 
         self.source_fleet = None  # free memory (FlightRunner-style)
 
         end = time.time()
-        print("_parse_flights time", end - start)
+        logger.debug("_parse_flights completed in %.2fs", end - start)
         return self
 
     def _interpolate(self) -> Self:
-        
         start = time.time()
 
         if self.parsed_fleet is None:
             raise RuntimeError("parsed_flights must be set before _interpolate()")
 
-        self.interpolated_fleet, errs = self._run_parallel_step(self.parsed_fleet,
-                                                     "interpolation",
-                                                     self.interpolator)
+        self.interpolated_fleet, errs = self._run_parallel_step(
+            self.parsed_fleet, "interpolation", self.interpolator
+        )
         self.error_records.extend(errs)
 
         self.parsed_fleet = None  # free memory
 
         end = time.time()
-        print("_interpolate time", end - start)
+        logger.debug("_interpolate completed in %.2fs", end - start)
 
         return self
 
     def _intersect_weather(self) -> Self:
-
         start = time.time()
 
         if self.interpolated_fleet is None:
-            raise RuntimeError("interpolated_flights must be set before _intersect_weather()")
+            raise RuntimeError(
+                "interpolated_flights must be set before _intersect_weather()"
+            )
         if self.weather_step is None:
-            raise RuntimeError("weather_step must be initialized before _intersect_weather()")
+            raise RuntimeError(
+                "weather_step must be initialized before _intersect_weather()"
+            )
 
         # Run vectorized weather intersection
         flights = self._run_vectorized_step(
@@ -487,50 +503,47 @@ class FleetRunner:
         self.interpolated_fleet = None  # free memory
 
         end = time.time()
-        print("_intersect_weather time", end - start)
+        logger.debug("_intersect_weather completed in %.2fs", end - start)
 
         return self
 
     def _performance(self) -> Self:
-
         start = time.time()
 
         if self.fleet_with_weather is None:
             raise RuntimeError("fleet_with_weather must be set before _performance()")
 
-        self.fleet_with_performance, errs = self._run_parallel_step(self.fleet_with_weather,
-                                             "performance",
-                                             self.performance)
+        self.fleet_with_performance, errs = self._run_parallel_step(
+            self.fleet_with_weather, "performance", self.performance
+        )
         self.error_records.extend(errs)
 
         self.fleet_with_weather = None  # free memory
 
         end = time.time()
-        print("_performance time", end - start)
+        logger.debug("_performance completed in %.2fs", end - start)
 
         return self
 
     def _emissions(self) -> Self:
-
         start = time.time()
 
         if self.fleet_with_performance is None:
             raise RuntimeError("_performance must be set before _emissions()")
 
-        self.fleet_with_emissions, errs = self._run_parallel_step(self.fleet_with_performance,
-                                             "emissions",
-                                             self.emission)
+        self.fleet_with_emissions, errs = self._run_parallel_step(
+            self.fleet_with_performance, "emissions", self.emission
+        )
         self.error_records.extend(errs)
 
         self.fleet_with_performance = None  # free memory
 
         end = time.time()
-        print("_emissions time", end - start)
+        logger.debug("_emissions completed in %.2fs", end - start)
 
         return self
 
     def _contrails(self) -> Self:
-
         start = time.time()
 
         if self.fleet_with_emissions is None:
@@ -550,55 +563,54 @@ class FleetRunner:
         self.fleet_with_emissions = None  # free memory
 
         end = time.time()
-        print("_contrails time", end - start)
+        logger.debug("_contrails completed in %.2fs", end - start)
         return self
-    
-    def _nonco2(self) -> Self:
 
+    def _nonco2(self) -> Self:
         start = time.time()
 
         if self.fleet_with_contrails is None:
             raise RuntimeError("_contrails must be set before _nonco2()")
 
-        self.fleet_with_nonco2, errs = self._run_parallel_step(self.fleet_with_contrails,
-                                             "non_co2_model",
-                                             self.non_co2_model)
+        self.fleet_with_nonco2, errs = self._run_parallel_step(
+            self.fleet_with_contrails, "non_co2_model", self.non_co2_model
+        )
         self.error_records.extend(errs)
 
         self.fleet_with_contrails = None  # free memory
 
         end = time.time()
-        print("_nonco2 time", end - start)
+        logger.debug("_nonco2 completed in %.2fs", end - start)
 
         return self
-    
-    def _climate_metrics(self) -> Self:
 
+    def _climate_metrics(self) -> Self:
         start = time.time()
 
         if self.fleet_with_nonco2 is None:
             raise RuntimeError("_nonco2 must be set before _climate_metrics()")
-        
-        self.fleet_with_climate_impact, errs = self._run_parallel_step(self.fleet_with_nonco2,
-                                             "climate_impact",
-                                             self.climate_impact)
+
+        self.fleet_with_climate_impact, errs = self._run_parallel_step(
+            self.fleet_with_nonco2, "climate_impact", self.climate_impact
+        )
         self.error_records.extend(errs)
 
         self.fleet_with_nonco2 = None  # free memory
 
         end = time.time()
-        print("_climate_metrics time", end - start)
+        logger.debug("_climate_metrics completed in %.2fs", end - start)
 
         return self
-    
-    def _extract_results(self) -> Self:
 
+    def _extract_results(self) -> Self:
         start = time.time()
-        
+
         if self.fleet_with_climate_impact is None:
             raise RuntimeError("climate_impact must be set before _extract_results()")
 
-        successful_results = [f.attrs['climate_impact'] for f in self.fleet_with_climate_impact]
+        successful_results = [
+            f.attrs["climate_impact"] for f in self.fleet_with_climate_impact
+        ]
 
         self.results = {
             "fleet_meta_data": FleetReport.collect(),
@@ -606,10 +618,9 @@ class FleetRunner:
         }
 
         end = time.time()
-        print("_extract_results time", end - start)
+        logger.debug("_extract_results completed in %.2fs", end - start)
 
         return self
-
 
     # -------------------------------------------------------------------------
     # Public API
@@ -625,26 +636,25 @@ class FleetRunner:
         logger.info("FastFleetRunner: starting pipeline")
 
         return (
-            self._load_trajectories() # pylint: disable=protected-access
-            ._load_weather() # pylint: disable=protected-access
-            ._parse_flights() # pylint: disable=protected-access
-            ._interpolate() # pylint: disable=protected-access
-            ._intersect_weather() # pylint: disable=protected-access
-            ._performance() # pylint: disable=protected-access
-            ._emissions() # pylint: disable=protected-access
-            ._contrails() # pylint: disable=protected-access
-            ._nonco2() # pylint: disable=protected-access
-            ._climate_metrics() # pylint: disable=protected-access
-            ._extract_results() # pylint: disable=protected-access
+            self._load_trajectories()  # pylint: disable=protected-access
+            ._load_weather()  # pylint: disable=protected-access
+            ._parse_flights()  # pylint: disable=protected-access
+            ._interpolate()  # pylint: disable=protected-access
+            ._intersect_weather()  # pylint: disable=protected-access
+            ._performance()  # pylint: disable=protected-access
+            ._emissions()  # pylint: disable=protected-access
+            ._contrails()  # pylint: disable=protected-access
+            ._nonco2()  # pylint: disable=protected-access
+            ._climate_metrics()  # pylint: disable=protected-access
+            ._extract_results()  # pylint: disable=protected-access
             ._clean_memory()  # pylint: disable=protected-access
         )
 
     def _clean_memory(self) -> Self:
-
         clear_dataset_cache()
 
         return self
-    
+
     def results_as_dataframe(self) -> pd.DataFrame:
         """
         Flatten self.results into one row per flight.
@@ -654,7 +664,7 @@ class FleetRunner:
         """
         rows: list[dict[str, Any]] = []
 
-        for payload in (self.results['flight_results'] or []):
+        for payload in self.results["flight_results"] or []:
             # -------- Error case --------
             if "error" in payload:
                 fi = payload.get("flight_information", {}) or {}
@@ -672,7 +682,7 @@ class FleetRunner:
             # Expand each species/horizon into wide fields
             for block in climate_metrics:
                 species = block.get("species")
-                for item in (block.get("value") or []):
+                for item in block.get("value") or []:
                     horizon = item.get("horizon")
 
                     # Column names such as CO2_20_AGWP_J_per_m2
@@ -729,7 +739,12 @@ class FleetRunner:
         processor_func: Callable[[T], U],
     ) -> Tuple[List[U], List[Dict[str, Any]]]:
         t0 = time.time()
-        logger.info("%s %d flights (n_jobs=%s)...", step_name.capitalize(), len(seq), self.cfg.njobs)
+        logger.info(
+            "%s %d flights (n_jobs=%s)...",
+            step_name.capitalize(),
+            len(seq),
+            self.cfg.njobs,
+        )
 
         results = Parallel(
             n_jobs=self.cfg.njobs,
@@ -754,7 +769,6 @@ class FleetRunner:
     # -------------------------------------------------------------------------
     # Vectorized fleet operations
     # -------------------------------------------------------------------------
-
 
     # -------------------------------------------------------------------------
     # Validation / filtering
@@ -784,17 +798,19 @@ class FleetRunner:
                 successful.append(flight)
 
         if errors:
-            logger.warning("%d/%d flights failed at %s", len(errors), len(seq), step_name)
+            logger.warning(
+                "%d/%d flights failed at %s", len(errors), len(seq), step_name
+            )
 
         return successful, errors
 
     @staticmethod
-    def _check_critical_columns(df: pd.DataFrame, critical_columns: Tuple[str, ...]) -> Optional[str]:
+    def _check_critical_columns(
+        df: pd.DataFrame, critical_columns: Tuple[str, ...]
+    ) -> Optional[str]:
         for col in critical_columns:
             if col not in df.columns:
                 return f"{col} (missing)"
             if df[col].isna().all():
                 return f"{col} (all NaN)"
         return None
-
-    

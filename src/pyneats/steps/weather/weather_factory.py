@@ -1,7 +1,7 @@
 """Weather Factory Module
 
-This module provides factory classes for creating weather providers from different 
-meteorological data sources. It supports both ERA5 reanalysis and DWD ICON-2mom 
+This module provides factory classes for creating weather providers from different
+meteorological data sources. It supports both ERA5 reanalysis and DWD ICON-2mom
 forecast data with flexible caching strategies.
 
 1. Data Sources:
@@ -24,7 +24,7 @@ forecast data with flexible caching strategies.
    - Variable standardization
    - Chunked data access
    - Thread-safe operations
-   - Comprehensive error handling 
+   - Comprehensive error handling
 """
 
 from __future__ import annotations
@@ -78,7 +78,7 @@ from pyneats.core.compute_parameters import (
 
 from pyneats.core.compute_parameters import (
     DEFAULT_ZARR_CACHING_STRATEGY,
-    ZARR_CACHING_STRATEGY
+    ZARR_CACHING_STRATEGY,
 )
 
 logger = logging.getLogger(__name__)
@@ -96,9 +96,6 @@ __all__ = [
     "ERA5Factory",
     "DWDFactory",
 ]
-
-
-
 
 
 # ---------------- error ----------------
@@ -121,6 +118,7 @@ class ERA5DiskCacheSpec:
 @dataclass(frozen=True)
 class DWDZarrCacheSpec:
     """Zarr cache specification for DWD ICON-2mom."""
+
     met_store: str
     rad_store: str
     wind_store: Optional[str] = None  # make optional
@@ -156,7 +154,6 @@ class WeatherFactoryParams:
     horizontal_resolution: float = DEFAULT_HORIZONTAL_RES_DEG
     pressure_levels: tuple[float, ...] = DEFAULT_PRESSURE_LEVELS_HPA
     weather_offset_hours: int = DEFAULT_WEATHER_OFFSET_H
-    
 
     # unified optional cache config
     cache: Optional[WeatherCacheConfig] = None
@@ -173,6 +170,7 @@ class WeatherFactoryParams:
 # ---------------- protocol ----------------
 class WeatherFactoryProtocol:
     """Protocol for weather factory implementations."""
+
     def __call__(
         self, asofdate: datetime, hour: Optional[int] = None
     ) -> WeatherProviderProtocol:  # pragma: no cover
@@ -277,7 +275,6 @@ class DWDFactory(WeatherFactoryProtocol):
     def __call__(
         self, asofdate: datetime, hour: Optional[int] = None
     ) -> WeatherProviderProtocol:
-
         zc = self.params.cache.zarr if self.params.cache else None
         run_hour = asofdate.hour if hour is None else hour
         date_str = asofdate.strftime("%Y%m%d")
@@ -408,7 +405,7 @@ class DWDFactory(WeatherFactoryProtocol):
         # 3) chunk (use defaults similar to your script)
         met_chunks = zc.met_chunks or DEFAULT_MET_CHUNKS
         rad_chunks = zc.rad_chunks or DEFAULT_RAD_CHUNKS
-        
+
         met_ds_xr = met_ds_xr.chunk(met_chunks)
         rad_ds_xr = rad_ds_xr.chunk(rad_chunks)
 
@@ -429,7 +426,6 @@ class DWDFactory(WeatherFactoryProtocol):
                 rad_ds_xr[sdr] = rad_ds_xr[sdr] * float(zc.sdr_accumulate_dt_s)
                 rad_ds_xr[sdr].attrs["units"] = "J m**-2"
 
-
             self.store_zarr(met_ds_xr, zc.met_store, mode, zc.zarr_caching_strategy)
             self.store_zarr(rad_ds_xr, zc.rad_store, mode, zc.zarr_caching_strategy)
 
@@ -447,14 +443,15 @@ class DWDFactory(WeatherFactoryProtocol):
 
             wind_ds_xr = ds_wind[[v.standard_name for v in self._wind_map.values()]]
             wind_chunks = zc.wind_chunks or DEFAULT_WIND_CHUNKS
- 
+
             wind_ds_xr = wind_ds_xr.chunk(wind_chunks)
 
-
-            # Combine two wind sources along level dimension 
+            # Combine two wind sources along level dimension
 
             wind_ds_xr_low = ds_wind[[v.standard_name for v in self._wind_map.values()]]
-            wind_ds_xr_high  = met_ds_xr[[v.standard_name for v in self._wind_map.values()]]
+            wind_ds_xr_high = met_ds_xr[
+                [v.standard_name for v in self._wind_map.values()]
+            ]
             wind_ds_combined = xr.concat(
                 [wind_ds_xr_low, wind_ds_xr_high],
                 dim="level",
@@ -466,7 +463,7 @@ class DWDFactory(WeatherFactoryProtocol):
             wind_ds_xr = wind_ds_combined.chunk(wind_chunks)
 
             os.makedirs(os.path.dirname(zc.wind_store), exist_ok=True)
-            
+
             self.store_zarr(wind_ds_xr, zc.wind_store, mode, zc.zarr_caching_strategy)
 
         logger.info(
@@ -474,40 +471,38 @@ class DWDFactory(WeatherFactoryProtocol):
             extra={"met_store": zc.met_store, "rad_store": zc.rad_store},
         )
         return (zc.met_store, zc.rad_store)
-    
-    @staticmethod
-    def store_zarr(met_dataset: xr.Dataset,
-                   store: str,
-                   mode: str,
-                   strategy: str):
 
+    @staticmethod
+    def store_zarr(met_dataset: xr.Dataset, store: str, mode: str, strategy: str):
         if strategy == "all_variables":
             # Standard fast write (higher peak memory)
             met_dataset.to_zarr(store, mode=mode, consolidated=True)
-            print("all_variables",strategy)
+            logger.debug("Zarr write strategy: %s", strategy)
         else:
             # Low-memory sequential write
-            print(strategy)
+            logger.debug("Zarr write strategy: %s", strategy)
             met_var_list = list(met_dataset.data_vars)
-            
+
             for i, var_name in enumerate(met_var_list):
                 var_ds = met_dataset[[var_name]]
-                
+
                 if i == 0:
                     # First pass: Initialize the store (mode="w")
-                    # CRITICAL SAFETY: We explicitly merge ALL coordinates from the parent 
+                    # CRITICAL SAFETY: We explicitly merge ALL coordinates from the parent
                     # met_dataset into this first write. This ensures the full grid (lat, lon, time)
-                    # is defined in the Zarr store immediately, preventing errors if the first 
+                    # is defined in the Zarr store immediately, preventing errors if the first
                     # variable doesn't happen to use all dimensions.
                     init_ds = var_ds.merge(met_dataset.coords)
                     init_ds.to_zarr(store, mode="w", consolidated=False)
-                    del init_ds # clean up the temporary object
+                    del init_ds  # clean up the temporary object
                 else:
                     # Subsequent passes: Append ONLY the data variable (mode="a")
-                    # We drop the coordinates to prevent Xarray from trying to check or 
+                    # We drop the coordinates to prevent Xarray from trying to check or
                     # re-write them, which saves time and avoids conflict errors.
-                    var_ds.drop_vars(var_ds.coords).to_zarr(store, mode="a", consolidated=False)
-                
+                    var_ds.drop_vars(var_ds.coords).to_zarr(
+                        store, mode="a", consolidated=False
+                    )
+
                 # Force memory release before the next loop iteration
                 del var_ds
                 gc.collect()
@@ -523,7 +518,6 @@ class DWDFactory(WeatherFactoryProtocol):
         hour: int,
         var_map: Mapping[str, MetVariable],
     ) -> xr.Dataset:
-
         files = self._select_files(prefix, self.params.data_dir, date_str, hour)
         if not files:
             raise WeatherFactoryError(
@@ -537,7 +531,7 @@ class DWDFactory(WeatherFactoryProtocol):
             if "level" in ds and float(ds["level"].values[0]) > 2000.0:
                 ds = ds.assign_coords(level=ds["level"].astype("float64") / 100.0)
 
-            # Unit fixes BEFORE mapping 
+            # Unit fixes BEFORE mapping
             if "clc" in ds:
                 ds["clc"] = ds["clc"] / 100.0
                 ds["clc"].attrs["units"] = "1"

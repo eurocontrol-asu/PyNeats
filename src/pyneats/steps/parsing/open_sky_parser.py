@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import logging
 import pandas as pd
 
 from pyneats.core.steps import BaseStep
@@ -17,8 +16,6 @@ __all__ = [
     "OpenSkyParser",
     "OpenSkyParserParams",
 ]
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)

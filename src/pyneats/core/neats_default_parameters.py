@@ -45,7 +45,6 @@ __all__ = [
     "DEFAULT_CLIMATE_IMPACT",
     "DEFAULT_INTERPOLATION_TIME",
     "DEFAULT_BADA4_VERSION",
-    "DEFAULT_BADA4_VERSION",
     "DEFAULT_Q_FUEL",
     "DEFAULT_DELTA_TAU_COMPUTE_METHOD",
     "DEFAULT_DELTA_TAU_FILL_METHOD",
@@ -73,13 +72,15 @@ DEFAULT_BADA4_VERSION: str = "4.2.1"
 DEFAULT_BADA3_VERSION: str = "3.16"
 
 DEFAULT_PAYLOAD_FACTOR: Final[float] = 1.0
-DEFAULT_FUEL_RESERVE_FRACTION: Final[float] = 0.15 # Following Teoh et al. (2024)
+DEFAULT_FUEL_RESERVE_FRACTION: Final[float] = 0.15  # Following Teoh et al. (2024)
 DEFAULT_MAX_MASS_ESTIMATION_ITER: Final[int] = 4
 DEFAULT_MAX_REL_MASS_DIFF: Final[float] = 0.01
 
 DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW: Final[int] = 7
-REFERENCE_Q_FUEL: Final[float] = 43_130_000.0 # Baseline Value used in PyContrails/BADA
-DEFAULT_Q_FUEL: Final[float] = 42_800_000.0 # Default value provided by the consortium (DLR/TO70)
+REFERENCE_Q_FUEL: Final[float] = 43_130_000.0  # Baseline Value used in PyContrails/BADA
+DEFAULT_Q_FUEL: Final[float] = (
+    42_800_000.0  # Default value provided by the consortium (DLR/TO70)
+)
 
 DEFAULT_DELTA_TAU_COMPUTE_METHOD: Final[Literal["point", "zero"]] = "point"
 DEFAULT_DELTA_TAU_FILL_METHOD: Final[Literal["bffill", "none", "zero"]] = "bffill"
@@ -103,7 +104,7 @@ DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
     "dt_integration": np.timedelta64(1, "m"),
     "max_age": np.timedelta64(12, "h"),
     "humidity_scaling": DEFAULT_HUMIDITY_SCALING,
-    "interpolation_use_indices": False,  
+    "interpolation_use_indices": False,
     "vpm_activation": False,
 }
 
@@ -123,7 +124,7 @@ DEFAULT_CLIMACCF_KWARGS: Final[Mapping[str, Any]] = {
     "PMO": True,
     "pfca": "PCFA-SAC",
     "horizontal_resolution": None,
-    "unit_K_per_kg_fuel": False
+    "unit_K_per_kg_fuel": False,
 }
 
 DEFAULT_ACCF_VALIDITY_PRESSURE = 40000
@@ -133,24 +134,34 @@ DEFAULT_ACCF_VALIDITY_PRESSURE = 40000
 InterpolationMethod = Literal["linear", "nearest"]
 
 DEFAULT_LAT_BUF: Final[tuple[float, float]] = (0.0, 0.0)
-DEFAULT_LON_BUF:  Final[tuple[float, float]] = (0.0, 0.0)
+DEFAULT_LON_BUF: Final[tuple[float, float]] = (0.0, 0.0)
 DEFAULT_TIME_BUF: Final[tuple[np.timedelta64, np.timedelta64]] = (
-        np.timedelta64(0, "h"),
-        np.timedelta64(0, "h"),
-    )
+    np.timedelta64(0, "h"),
+    np.timedelta64(0, "h"),
+)
 DEFAULT_LEVEL_BUF: tuple[float, float] = (0.0, 40.0)
 
 DEFAULT_WEATHER_INTEPOLATION_METHOD: Final[InterpolationMethod] = "linear"
-DEFAULT_WEATHER_USE_INDICES: Final[bool] = False # Important. If True, delta_tau is wrongly extrapolated bellow the limit altitude
+DEFAULT_WEATHER_USE_INDICES: Final[bool] = (
+    False  # Important. If True, delta_tau is wrongly extrapolated bellow the limit altitude
+)
 
 
 # Default Fuel constants
 
-DEFAULT_AROMATICS_CONTENT : Final[float] = 0.25  # default value - Not used in calculations
-DEFAULT_SULPHUR_CONTENT : Final[float] = 0.003   # default value - Not used in calculations
-DEFAULT_NAPHTHALEN_CONTENT : Final[float] = 0.03 # default value - Not used in calculations
-DEFAULT_HYDROGEN_CONTENT : Final[float] = 13.79 # default value provided by the consortium (DLR/TO70)
+DEFAULT_AROMATICS_CONTENT: Final[float] = (
+    0.25  # default value - Not used in calculations
+)
+DEFAULT_SULPHUR_CONTENT: Final[float] = (
+    0.003  # default value - Not used in calculations
+)
+DEFAULT_NAPHTHALEN_CONTENT: Final[float] = (
+    0.03  # default value - Not used in calculations
+)
+DEFAULT_HYDROGEN_CONTENT: Final[float] = (
+    13.79  # default value provided by the consortium (DLR/TO70)
+)
 
-# Zarr Chunking 
+# Zarr Chunking
 ZARR_CACHING_STRATEGY = Literal["all_variables", "by_variable"]
-DEFAULT_ZARR_CACHING_STRATEGY : Final[ZARR_CACHING_STRATEGY] = "all_variables"
+DEFAULT_ZARR_CACHING_STRATEGY: Final[ZARR_CACHING_STRATEGY] = "all_variables"

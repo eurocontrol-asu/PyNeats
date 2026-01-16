@@ -1,11 +1,11 @@
 """
-This module builds a wrapper around `pycontrails.models.accf.ACCF` (ClimAccf) to allow for the 
+This module builds a wrapper around `pycontrails.models.accf.ACCF` (ClimAccf) to allow for the
 computation of ACCF climate functions on a flight
 
 Key components:
 - `NonCO2Params`: Parameters for the ACCF model, including meteorological and surface datasets.
 - `make_accf_surface_view`: Function to adapt a surface MetDataset to be compatible with ClimAccf.
-- `ACCFModel`: A class that implements the ACCF model as a step in a processing pipeline.   
+- `ACCFModel`: A class that implements the ACCF model as a step in a processing pipeline.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Mapping
-import pandas as pd 
+import pandas as pd
 
 import xarray as xr
 
@@ -46,10 +46,13 @@ __all__ = [
 @dataclass(frozen=True)
 class aCCFParams(ClimateParams):
     """Parameters for the ACCF (ClimAccf) model."""
+
     met: MetDataset | None = None
     surface: MetDataset | None = None
 
-    accf_kwargs: Mapping[str, Any] = field(default_factory=lambda: DEFAULT_CLIMACCF_KWARGS)
+    accf_kwargs: Mapping[str, Any] = field(
+        default_factory=lambda: DEFAULT_CLIMACCF_KWARGS
+    )
 
 
 # ---- surface adapter for ACCF -------------------------------------
@@ -66,7 +69,6 @@ def make_accf_surface_view(surface: MetDataset) -> MetDataset:
     # Work on an xr.Dataset view
     ds: xr.Dataset = surface.data
 
-
     # 1) Update attrs for the OLR var, then rename it to "top net thermal"
     if TOAOutgoingLongwaveFlux.standard_name in ds:
         ds = ds.copy(deep=False)  # shallow copy to avoid mutating original
@@ -76,25 +78,17 @@ def make_accf_surface_view(surface: MetDataset) -> MetDataset:
                 "standard_name": TopNetThermalRadiation.standard_name,
             }
         )
-        print("TOAOutgoingLongwaveFlux in")
         ds = ds.rename(
             {
                 TOAOutgoingLongwaveFlux.standard_name: TopNetThermalRadiation.standard_name
             }
         )
-        print("TOAOutgoingLongwaveFlux in rename")
-    else:
-        print("TOAOutgoingLongwaveFlux out")
     # 2) Align units on the surface shortwave flux if needed
     if SurfaceSolarDownwardRadiation.standard_name in ds:
-
-        print("SurfaceSolarDownwardRadiation in")
         # Ensure units are consistent with the radiation flux variables expected by ClimAccf (e.g., W m-2)
         ds[SurfaceSolarDownwardRadiation.standard_name].attrs.update(
             {"units": TOAOutgoingLongwaveFlux.units}
         )
-    else:
-        print("SurfaceSolarDownwardRadiation out")
 
     # Wrap back into a MetDataset; keep other attrs untouched
     attrs_dict: dict[str, Any] | None = (
@@ -134,11 +128,8 @@ class ACCFModel(
 
         # Build a non-mutating view of surface for ACCF (Cocip can still use the base surface as-is)
         try:
-            print("make_accf_surface_view in")
             accf_surface = make_accf_surface_view(self.params.surface)
-            print("make_accf_surface_view out")
         except Exception as e:
-            print("make_accf_surface_view except")
             self.logger.exception("Failed to adapt surface dataset for ACCF")
             raise ClimateStepError(f"Surface adaptation failed: {e}") from e
 
@@ -154,25 +145,22 @@ class ACCFModel(
             raise ClimateStepError(f"ACCF initialization failed: {e}") from e
 
     def run(self, flight: FlightWithEmissions) -> FlightWithNonCO2Impact:
-
         try:
-
             out: Flight = self._impl.eval(flight)
             df: pd.DataFrame = out.to_dataframe()
             fuel_burn = pd.to_numeric(df["fuel_burn"], errors="coerce").fillna(0.0)
             nox_ei = pd.to_numeric(df["nox_ei"], errors="coerce").fillna(0.0)
-            
 
             if not self.params.accf_kwargs["unit_K_per_kg_fuel"]:
-                # Convert aCCF outputs from K per kg NOx to K per kg H2O and K per Fuel 
-                df['aCCF_CH4'] = df['aCCF_CH4'] * nox_ei
-                df['aCCF_O3'] = df['aCCF_O3'] * nox_ei
+                # Convert aCCF outputs from K per kg NOx to K per kg H2O and K per Fuel
+                df["aCCF_CH4"] = df["aCCF_CH4"] * nox_ei
+                df["aCCF_O3"] = df["aCCF_O3"] * nox_ei
 
             # Compute final ART_20 (K) from aCCF outputs (K per kg fuel)
 
-            flight['ATR_20_CH4'] = fuel_burn * df['aCCF_CH4']  # K
-            flight['ATR_20_O3'] = fuel_burn * df['aCCF_O3']  # K
-            flight['ATR_20_H2O'] = fuel_burn * df['aCCF_H2O']   # K
+            flight["ATR_20_CH4"] = fuel_burn * df["aCCF_CH4"]  # K
+            flight["ATR_20_O3"] = fuel_burn * df["aCCF_O3"]  # K
+            flight["ATR_20_H2O"] = fuel_burn * df["aCCF_H2O"]  # K
 
         except KeyError as e:
             self.logger.error("ACCFbackend: %s", e)
