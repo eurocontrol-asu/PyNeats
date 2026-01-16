@@ -35,10 +35,10 @@ from pyneats.core.neats_default_parameters import (
     InterpolationMethod,
 )
 
+from pyneats.core.fleet_utils import fleet_to_flights, flights_to_fleet
 from pyneats.core.steps import BaseStep, Step, StepError, BaseParams
 from pyneats.core.views import ValidationError
 from pyneats.steps.parsing import Flight4D
-from pyneats.steps.parsing.neats_parser import NEATSFuel
 
 __all__ = [
     "DEFAULT_REQUIRED_WEATHER_COLS",
@@ -372,7 +372,7 @@ class WeatherProvider(
         logger.info("Fleet-level weather intersection for %d flights...", len(flights))
 
         # Convert to Fleet
-        pyc_fleet = self._seq_to_fleet(flights)
+        pyc_fleet = flights_to_fleet(flights)
 
         # Downselect meteorological datasets to fleet envelope
         ds_met = pyc_fleet.downselect_met(
@@ -406,7 +406,7 @@ class WeatherProvider(
         logger.info("Weather intersection complete in %.2fs", time.time() - t0)
 
         # Convert back to List[Flight]
-        flights_with_weather = self._fleet_to_seq(fleet_with_weather)
+        flights_with_weather = fleet_to_flights(fleet_with_weather)
 
         # Optional humidity scaling
         if self.params.humidity_scaling is not None:
@@ -467,7 +467,7 @@ class WeatherProvider(
         t0 = time.time()
         logger.info("Applying humidity scaling...")
 
-        fleet = self._seq_to_fleet(flights)
+        fleet = flights_to_fleet(flights)
 
         # Call humidity scaling eval() which should return a Flight/Fleet
         scaled = self.params.humidity_scaling.eval(fleet)
@@ -485,33 +485,4 @@ class WeatherProvider(
             )
 
         logger.info("Humidity scaling complete in %.2fs", time.time() - t0)
-        return self._fleet_to_seq(fleet)
-
-    @staticmethod
-    def _seq_to_fleet(seq: List[Flight]) -> Fleet:
-        """Convert List[Flight] to Fleet, preserving fuel information."""
-        for s in seq:
-            s.attrs['columns'] = set(s.data.keys())
-            s["q_fuel"] = np.full(len(s), s.fuel.q_fuel)
-            s["ei_h2o"] = np.full(len(s), s.fuel.ei_h2o)
-            s.fuel = None
-
-        fleet: Fleet = Fleet.from_seq(seq)
-        fleet.attrs['columns'] = set(fleet.data.keys())
-        return fleet
-
-    @staticmethod
-    def _fleet_to_seq(fleet: Fleet) -> List[Flight]:
-        """Convert Fleet back to List[Flight], restoring fuel information."""
-        fleet_columns = fleet.attrs.pop('columns')
-        seq = fleet.to_flight_list()
-
-        for s in seq:
-            flight_columns = s.attrs.pop('columns')
-            columns_to_delete = fleet_columns.difference(flight_columns)
-
-            for c in columns_to_delete:
-                s.data.pop(c)
-            s.fuel = NEATSFuel.from_attrs(s.attrs)
-
-        return seq
+        return fleet_to_flights(fleet)

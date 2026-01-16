@@ -12,11 +12,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, List, Mapping
 
-import numpy as np
-from pycontrails import Flight, Fleet
+from pycontrails import Flight
 from pycontrails.core.met import MetDataset
 from pycontrails.models.cocip import Cocip
 
+from pyneats.core.fleet_utils import fleet_to_flights, flights_to_fleet
 from pyneats.core.neats_default_parameters import DEFAULT_COCIP_KWARGS
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
@@ -24,7 +24,6 @@ from pyneats.steps.climate_functions.params import ClimateParams
 from pyneats.steps.climate_functions.protocol import ContrailsModel, ContrailsStepError
 from pyneats.steps.climate_functions.views import FlightWithContrailsImpact
 from pyneats.steps.emissions.views import FlightWithEmissions
-from pyneats.steps.parsing.neats_parser import NEATSFuel
 
 __all__ = [
     "ContrailsParams",
@@ -99,7 +98,7 @@ class CoCiPModel(
         self.logger.info("Fleet-level CoCiP evaluation for %d flights...", len(flights))
 
         # Convert to Fleet
-        fleet = self._seq_to_fleet(flights)
+        fleet = flights_to_fleet(flights)
 
         # Run CoCiP on Fleet
         try:
@@ -109,39 +108,10 @@ class CoCiPModel(
             raise ContrailsStepError(f"Fleet CoCiP evaluation failed: {e}") from e
 
         # Convert back to List[Flight]
-        out = self._fleet_to_seq(results_fleet)
+        out = fleet_to_flights(results_fleet)
 
         # Zero-copy validation + type narrowing
         typed = [FlightWithContrailsImpact.from_flight(f) for f in out]
 
         self.logger.info("Fleet CoCiP step completed successfully")
         return typed
-
-    @staticmethod
-    def _seq_to_fleet(seq: List[Flight]) -> Fleet:
-        """Convert List[Flight] to Fleet, preserving fuel information."""
-        for s in seq:
-            s.attrs['columns'] = set(s.data.keys())
-            s["q_fuel"] = np.full(len(s), s.fuel.q_fuel)
-            s["ei_h2o"] = np.full(len(s), s.fuel.ei_h2o)
-            s.fuel = None
-
-        fleet: Fleet = Fleet.from_seq(seq)
-        fleet.attrs['columns'] = set(fleet.data.keys())
-        return fleet
-
-    @staticmethod
-    def _fleet_to_seq(fleet: Fleet) -> List[Flight]:
-        """Convert Fleet back to List[Flight], restoring fuel information."""
-        fleet_columns = fleet.attrs.pop('columns')
-        seq = fleet.to_flight_list()
-
-        for s in seq:
-            flight_columns = s.attrs.pop('columns')
-            columns_to_delete = fleet_columns.difference(flight_columns)
-
-            for c in columns_to_delete:
-                s.data.pop(c)
-            s.fuel = NEATSFuel.from_attrs(s.attrs)
-
-        return seq

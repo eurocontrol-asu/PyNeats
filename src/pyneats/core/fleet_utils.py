@@ -1,9 +1,6 @@
-"""Fleet conversion utilities.
+"""Utilities for Fleet ↔ List[Flight] conversions."""
 
-This module provides conversion functions between Flight sequences and Fleet objects.
-These utilities are used by the Fleet-only architecture to convert between single flights
-and Fleet representations.
-"""
+from __future__ import annotations
 
 from typing import List
 
@@ -12,53 +9,55 @@ from pycontrails import Flight, Fleet
 
 from pyneats.steps.parsing.neats_parser import NEATSFuel
 
+__all__ = [
+    "flights_to_fleet",
+    "fleet_to_flights",
+]
+
 
 def flights_to_fleet(flights: List[Flight]) -> Fleet:
-    """Convert list of flights to single Fleet object.
+    """
+    Convert List[Flight] to Fleet, preserving fuel information.
 
-    Fuel objects are converted to columns (q_fuel, ei_h2o) and stored in the Fleet.
-    Original column sets are tracked in fl_attrs[flight_id]['columns'] for later restoration.
+    Fuel properties (q_fuel, ei_h2o) are extracted from flight.fuel and stored
+    as columns in the Fleet dataframe. The original fuel object is set to None.
 
     Args:
-        flights: List of Flight objects to combine
+        flights: List of Flight objects with fuel information
 
     Returns:
-        Fleet object containing all flights
+        Fleet object with fuel information stored as columns
     """
-    for i, flight in enumerate(flights):
-        # Store original columns in attrs (will be propagated to fl_attrs by Fleet.from_seq)
-        flight.attrs["columns"] = set(flight.data.keys())
-
-        # Store fuel parameters in attrs for later restoration
-        flight.attrs["q_fuel"] = flight.fuel.q_fuel
-        flight.attrs["hydrogen_content"] = flight.fuel.hydrogen_content
-
-        # Convert fuel object to columns
+    for flight in flights:
+        flight.attrs['columns'] = set(flight.data.keys())
         flight["q_fuel"] = np.full(len(flight), flight.fuel.q_fuel)
         flight["ei_h2o"] = np.full(len(flight), flight.fuel.ei_h2o)
         flight.fuel = None
 
-    fleet: Fleet = Fleet.from_seq(flights)
-    fleet.attrs["columns"] = set(fleet.data.keys())
+    fleet = Fleet.from_seq(flights)
+    fleet.attrs['columns'] = set(fleet.data.keys())
     return fleet
 
 
 def fleet_to_flights(fleet: Fleet) -> List[Flight]:
-    """Convert Fleet object back to list of individual flights.
+    """
+    Convert Fleet back to List[Flight], restoring fuel information.
 
-    Restores original column sets and fuel objects for each flight.
+    Fuel properties (q_fuel, ei_h2o) are extracted from Fleet columns and used
+    to reconstruct flight.fuel objects. Columns that were added during Fleet
+    conversion are removed.
 
     Args:
-        fleet: Fleet object to split
+        fleet: Fleet object with fuel information as columns
 
     Returns:
-        List of Flight objects
+        List of Flight objects with restored fuel information
     """
-    fleet_columns = fleet.attrs.pop("columns")
+    fleet_columns = fleet.attrs.pop('columns')
     flights = fleet.to_flight_list()
 
     for flight in flights:
-        flight_columns = flight.attrs.pop("columns")
+        flight_columns = flight.attrs.pop('columns')
         columns_to_delete = fleet_columns.difference(flight_columns)
 
         for col in columns_to_delete:
