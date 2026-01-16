@@ -32,7 +32,15 @@ def pytest_generate_tests(metafunc):
             if filepath.exists():
                 with open(filepath, "r", encoding="utf-8") as fh:
                     data = json.load(fh)
-                    flight_ids = [d.get("flight_id", f"flight_{i}") for i, d in enumerate(data)]
+                    flight_ids = []
+                    for i, d in enumerate(data):
+                        fid = d.get("flight_id", f"flight_{i}")
+                        # flight_id is a list (one per waypoint), extract first element
+                        if isinstance(fid, list) and len(fid) > 0:
+                            fid = fid[0]
+                        elif not isinstance(fid, str):
+                            fid = f"flight_{i}"
+                        flight_ids.append(fid)
             else:
                 flight_ids = [f"flight_{i}" for i in range(5)]
         except Exception:
