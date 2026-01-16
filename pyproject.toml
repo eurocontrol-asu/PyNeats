@@ -8,8 +8,8 @@ description = "NEATS: aviation non-CO₂ climate metrics pipeline (PyNeats)."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = { file = "LICENSE" }
-authors = [{ name = "Philippe VERY", email = "philippe.very@eurocontrol.int" }, 
-           { name = "Ramon DALMAU", email = "ramon.dalmau-codina@eurocontrol.int" }, 
+authors = [{ name = "Philippe VERY", email = "philippe.very@eurocontrol.int" },
+           { name = "Ramon DALMAU", email = "ramon.dalmau-codina@eurocontrol.int" },
            { name = "Ana-Maria PELIN", email = "ana-maria.pelin.ext@eurocontrol.int" },
            {name = "Gabriel JARRY", email = "gabriel.jarry@eurocontrol.int"}]
 

@@ -1,19 +1,19 @@
 import os
+
 import pandas as pd
 
+from pyneats.runners.fleet import FleetRunner, FleetRunnerParams
 from pyneats.steps.weather.weather_store import ZarrPaths
-from pyneats.runners.fleet import FleetRunnerParams, FleetRunner
-
 
 # Read recipe inputs
 
 ZARR_PATH = "/path/to/zarr/files"
-met_store  = os.path.join(ZARR_PATH, "met_cache", "icon_met.zarr")
-rad_store  = os.path.join(ZARR_PATH, "met_cache", "icon_rad.zarr")
-wind_store = os.path.join(ZARR_PATH, "met_cache", "icon_wind.zarr")  # set to None if you don't have it
-zarr_paths=ZarrPaths(met_store=met_store,
-                     rad_store=rad_store,
-                     wind_store=wind_store)
+met_store = os.path.join(ZARR_PATH, "met_cache", "icon_met.zarr")
+rad_store = os.path.join(ZARR_PATH, "met_cache", "icon_rad.zarr")
+wind_store = os.path.join(
+    ZARR_PATH, "met_cache", "icon_wind.zarr"
+)  # set to None if you don't have it
+zarr_paths = ZarrPaths(met_store=met_store, rad_store=rad_store, wind_store=wind_store)
 
 
 # Required minimal DataFrame schema (per-trajectory DataFrame) with mandatory columns.
@@ -32,7 +32,8 @@ zarr_paths=ZarrPaths(met_store=met_store,
 #   aircraft_type      str               ICAO aircraft type
 #
 # Example row:
-#   49.208056 | -2.195556 | 2025-07-09 16:58:00 | 3 | FPO724P | EGJJ | LFPG | NM | 2025-07-09T16:52Z | B737
+#   49.208056 | -2.195556 | 2025-07-09 16:58:00 | 3 | FPO724P | EGJJ | LFPG | NM |
+#   2025-07-09T16:52Z | B737
 
 TRAJECTORY_MINIMAL_SCHEMA = [
     "latitude",
@@ -47,15 +48,17 @@ TRAJECTORY_MINIMAL_SCHEMA = [
     "aircraft_type",
 ]
 
-trajectory_dataframe = pd.DataFrame({col: pd.Series(dtype="object") for col in TRAJECTORY_MINIMAL_SCHEMA})
+trajectory_dataframe = pd.DataFrame(
+    {col: pd.Series(dtype="object") for col in TRAJECTORY_MINIMAL_SCHEMA}
+)
 
 BADA_PATH = "/path/to/bada/files/"
 
 n_jobs = 30
 
-#Instantiate Fleet Object
-params = FleetRunnerParams(    
-    trajectory_dataframe = trajectory_dataframe,
+# Instantiate Fleet Object
+params = FleetRunnerParams(
+    trajectory_dataframe=trajectory_dataframe,
     zarr_paths=zarr_paths,
     njobs=n_jobs,
     bada_path=BADA_PATH,
@@ -65,12 +68,11 @@ runner = FleetRunner(params)
 runner.eval()
 
 # Print results for the Fleet sample
-print('*************')
-print('************* Fleet Meta-data **************')
-print(runner.results['fleet_meta_data'])
-print('*************')
+print("*************")
+print("************* Fleet Meta-data **************")
+print(runner.results["fleet_meta_data"])
+print("*************")
 
-for elem in runner.results['flight_results']:
-    
-    print('*************')
+for elem in runner.results["flight_results"]:
+    print("*************")
     print(elem)

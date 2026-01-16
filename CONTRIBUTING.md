@@ -52,7 +52,7 @@ pytest .
 Don't forget to define the weather cache path if you want to run also tests involving weather data:
 
 ```
-pytest . --met-cache-dir=/datasave/NEATS_CLEAN/NyYXp7uG/met_cache 
+pytest . --met-cache-dir=/datasave/NEATS_CLEAN/NyYXp7uG/met_cache
 ```
 
 For instance.
