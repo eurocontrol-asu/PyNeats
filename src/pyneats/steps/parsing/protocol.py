@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 from typing import Protocol, runtime_checkable
+
 import pandas as pd
-from pyneats.steps.parsing.views import Flight4D
+
 from pyneats.core.steps import Step, StepError
+from pyneats.steps.parsing.views import Flight4D
 
 __all__ = [
     "TrajectoryParser",

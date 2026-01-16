@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import ClassVar, Final
+
 from pyneats.steps.performance.views import FlightWithPerformance
 
 __all__ = [

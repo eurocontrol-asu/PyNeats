@@ -10,31 +10,28 @@ Key components:
 
 from __future__ import annotations
 
-
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
-from collections.abc import Mapping
+
 import pandas as pd
-
 import xarray as xr
-
 from pycontrails import Flight
 from pycontrails.core.met import MetDataset
-from pycontrails.models.accf import ACCF  # pycontrails’ wrapper for ClimAccf
-from pycontrails.datalib.ecmwf import (
-    TopNetThermalRadiation,
-    SurfaceSolarDownwardRadiation,
-)
 from pycontrails.core.met_var import TOAOutgoingLongwaveFlux
+from pycontrails.datalib.ecmwf import (
+    SurfaceSolarDownwardRadiation,
+    TopNetThermalRadiation,
+)
+from pycontrails.models.accf import ACCF  # pycontrails’ wrapper for ClimAccf
 
 from pyneats.core.neats_default_parameters import DEFAULT_CLIMACCF_KWARGS
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
-from pyneats.steps.emissions.views import FlightWithEmissions
-from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
-from pyneats.steps.climate_functions.protocol import NonCO2Model, ClimateStepError
 from pyneats.steps.climate_functions.params import ClimateParams
-
+from pyneats.steps.climate_functions.protocol import ClimateStepError, NonCO2Model
+from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
+from pyneats.steps.emissions.views import FlightWithEmissions
 
 __all__ = [
     "aCCFParams",

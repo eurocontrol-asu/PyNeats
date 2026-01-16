@@ -1,5 +1,5 @@
-from typing import Final, Any, Literal
 from collections.abc import Mapping
+from typing import Any, Final, Literal
 
 __all__ = ["DEFAULT_NJOBS", "DEFAULT_BATCH_SIZE", "DEFAULT_JOBLIB_PREFERENCE"]
 

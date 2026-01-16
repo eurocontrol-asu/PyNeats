@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from pyneats.core.neats_default_parameters import DEFAULT_INTERPOLATION_TIME
 from pyneats.core.steps import BaseParams
 

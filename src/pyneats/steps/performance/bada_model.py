@@ -33,52 +33,49 @@ Aircraft Data (BADA) models. It provides:
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Literal, TypedDict
 from dataclasses import dataclass
 from importlib.resources import files
+from pathlib import Path
+from typing import Any, Literal, TypedDict
+
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-
-
 from pycontrails import Flight
-from pycontrails.physics.units import m_to_T_isa, ft_to_m
 from pycontrails.physics.jet import (
     acceleration as pc_acceleration,
+)
+from pycontrails.physics.jet import (
     overall_propulsion_efficiency,
 )
+from pycontrails.physics.units import ft_to_m, m_to_T_isa
 
 from pyneats.core.neats_default_parameters import (
-    DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW,
-    REFERENCE_Q_FUEL,
+    DEFAULT_BADA3_VERSION,
+    DEFAULT_BADA4_VERSION,
     DEFAULT_DELTA_TAU_COMPUTE_METHOD,
     DEFAULT_DELTA_TAU_FILL_METHOD,
-    DEFAULT_PAYLOAD_FACTOR,
     DEFAULT_FUEL_RESERVE_FRACTION,
     DEFAULT_MAX_MASS_ESTIMATION_ITER,
     DEFAULT_MAX_REL_MASS_DIFF,
-    DEFAULT_BADA4_VERSION,
-    DEFAULT_BADA3_VERSION,
+    DEFAULT_PAYLOAD_FACTOR,
     DEFAULT_ROCD_PHASE_THRESHOLD,
+    DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW,
+    REFERENCE_Q_FUEL,
 )
-
-from pyneats.core.steps_registry import register
 from pyneats.core.steps import BaseStep
-from pyneats.steps.weather.weather_provider import FlightWithWeather
-from pyneats.steps.performance.views import FlightWithPerformance
-from pyneats.steps.performance.protocol import PerformanceModel, PerformanceStepError
-from pyneats.steps.performance.params import PerformanceModelParams
-
+from pyneats.core.steps_registry import register
 from pyneats.steps.performance.bada_adapters import (
-    BaseBADAAdapter,
     BADA3Adapter,
     BADA4Adapter,
+    BaseBADAAdapter,
     FlightPhase,
 )
-
-from pyneats.steps.performance.bada_mapper import BadaMappingPaths, BadaMapper
-
+from pyneats.steps.performance.bada_mapper import BadaMapper, BadaMappingPaths
+from pyneats.steps.performance.params import PerformanceModelParams
+from pyneats.steps.performance.protocol import PerformanceModel, PerformanceStepError
+from pyneats.steps.performance.views import FlightWithPerformance
+from pyneats.steps.weather.weather_provider import FlightWithWeather
 
 __all__ = [
     "BADAPerformanceModel",

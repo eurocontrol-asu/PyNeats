@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
-from pyneats.steps.performance import FlightWithPerformance
 from pyneats.steps.emissions.params import EmissionParams
-from pyneats.steps.emissions.views import FlightWithEmissions
 from pyneats.steps.emissions.protocol import EmissionModel
-
+from pyneats.steps.emissions.views import FlightWithEmissions
+from pyneats.steps.performance import FlightWithPerformance
 
 __all__ = [
     "EurocontrolEmissionModel",

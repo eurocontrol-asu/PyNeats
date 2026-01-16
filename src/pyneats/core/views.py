@@ -27,14 +27,17 @@ Key Components:
 """
 
 from __future__ import annotations
+
 import warnings
-from typing import Any, ClassVar, TypeVar, cast
 from collections.abc import Iterable
+from typing import Any, ClassVar, TypeVar, cast
+
+import numpy as np
 from pycontrails import Flight
 from pycontrails.utils import json as json_utils
-from pyneats.core.steps import StepError
+
 from pyneats.core.neats_fuel import NEATSFuel
-import numpy as np
+from pyneats.core.steps import StepError
 
 __all__ = [
     "ValidationError",

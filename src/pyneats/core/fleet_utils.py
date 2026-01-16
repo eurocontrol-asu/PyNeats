@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-
 import numpy as np
-from pycontrails import Flight, Fleet
+from pycontrails import Fleet, Flight
 
 from pyneats.steps.parsing.neats_parser import NEATSFuel
 
@@ -52,11 +51,11 @@ def fleet_to_flights(fleet: Fleet) -> list[Flight]:
     Returns:
         List of Flight objects with restored fuel information
     """
-    fleet_columns = fleet.attrs.pop("columns")
+    fleet_columns = fleet.attrs.pop("columns", set())
     flights = fleet.to_flight_list()
 
     for flight in flights:
-        flight_columns = flight.attrs.pop("columns")
+        flight_columns = flight.attrs.pop("columns", set())
         columns_to_delete = fleet_columns.difference(flight_columns)
 
         for col in columns_to_delete:

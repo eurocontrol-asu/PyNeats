@@ -1,20 +1,20 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from functools import lru_cache
 from importlib import import_module
-from importlib.metadata import version as pkg_version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
 from typing import Any
-from collections.abc import Mapping
 
 from pycontrails.core.flight import Flight
 
-from pyneats.core.neats_default_parameters import (
-    DEFAULT_BADA4_VERSION,
-    DEFAULT_BADA3_VERSION,
-)
-
 import pyneats
+from pyneats.core.neats_default_parameters import (
+    DEFAULT_BADA3_VERSION,
+    DEFAULT_BADA4_VERSION,
+)
 
 __all__ = [
     "FlightReport",

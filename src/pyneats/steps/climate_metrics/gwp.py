@@ -17,33 +17,33 @@ The calculations follow the methodologies outlined in  Dahlmann et al. (2025),
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final
-from collections.abc import Mapping
+
 import pandas as pd
 
-from pyneats.core.steps import BaseStep, BaseParams
+from pyneats.core.neats_default_parameters import DEFAULT_CLIMACCF_KWARGS
+from pyneats.core.physics import (
+    CO2_AGWP_COEFF_WM2YR_PER_KG,
+    CONVERSION_FACTORS_AGWP_TO_RF,
+    CONVERSION_FACTORS_ATR_TO_RF,
+    EFFICACY,
+    METRICS_HORIZONS,
+    RF_BACKWARD_FACTOR,
+    SECONDS_PER_YEAR,
+    SURFACE_EARTH,
+)
+from pyneats.core.steps import BaseParams, BaseStep
 from pyneats.core.steps_registry import register
-from pyneats.steps.climate_functions.views import FlightWithContrailsImpact
 from pyneats.steps.climate_functions.climaccf import FlightWithNonCO2Impact
+from pyneats.steps.climate_functions.views import FlightWithContrailsImpact
 from pyneats.steps.climate_metrics.protocol import (
     ClimateImpactModel,
     ClimateImpactStepError,
 )
 from pyneats.steps.climate_metrics.report import FlightReport
 from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
-from pyneats.core.physics import (
-    METRICS_HORIZONS,
-    SURFACE_EARTH,
-    SECONDS_PER_YEAR,
-    CO2_AGWP_COEFF_WM2YR_PER_KG,
-    CONVERSION_FACTORS_AGWP_TO_RF,
-    CONVERSION_FACTORS_ATR_TO_RF,
-    EFFICACY,
-    RF_BACKWARD_FACTOR,
-)
-
-from pyneats.core.neats_default_parameters import DEFAULT_CLIMACCF_KWARGS
 
 __all__ = [
     "GWPParams",

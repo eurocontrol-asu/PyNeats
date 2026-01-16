@@ -4,8 +4,8 @@ This module provides low-level validation functions for DataFrames and dictionar
 These primitives are used by FleetSchema (Layer 2) for declarative validation.
 """
 
-from typing import Any
 from collections.abc import Iterable
+from typing import Any
 
 import pandas as pd
 

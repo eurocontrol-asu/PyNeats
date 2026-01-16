@@ -16,68 +16,59 @@ Pipeline Stages:
 
 import logging
 import time
-from typing import Any
 from dataclasses import dataclass, field
-from typing import Self
-import pandas as pd
+from typing import Any, Self
 
+import pandas as pd
 from pycontrails.core.met import MetDataset
 
+from pyneats.core.neats_default_parameters import (
+    DEFAULT_CLIMATE_IMPACT,
+    DEFAULT_CONTRAILS_MODEL,
+    DEFAULT_EMISSIONS,
+    DEFAULT_INTERPOLATOR,
+    DEFAULT_NON_CO2_MODEL,
+    DEFAULT_PERFORMANCE,
+    DEFAULT_TRAJECTORY_PARSER,
+)
+from pyneats.core.steps_registry import build
 from pyneats.steps.climate_functions import (
+    ClimateStepError,
     ContrailsModel,
+    ContrailsStepError,
     FlightWithContrailsImpact,
     FlightWithNonCO2Impact,
     NonCO2Model,
-    ContrailsStepError,
-    ClimateStepError,
 )
-
 from pyneats.steps.climate_metrics import (
-    FlightWithClimateImpact,
     ClimateImpactModel,
     ClimateImpactStepError,
+    FlightWithClimateImpact,
 )
-
-from pyneats.steps.interpolation import (
-    TrajectoryInterpolator,
-    TrajectoryInterpolationStepError,
-)
-
-from pyneats.steps.parsing import (
-    TrajectoryParserStepError,
-    Flight4D,
-    TrajectoryParser,
-)
-
-from pyneats.steps.performance import (
-    FlightWithPerformance,
-    PerformanceStepError,
-    PerformanceModel,
-)
-
 from pyneats.steps.emissions import (
+    EmissionModel,
     EmissionStepError,
     FlightWithEmissions,
-    EmissionModel,
 )
-
+from pyneats.steps.interpolation import (
+    TrajectoryInterpolationStepError,
+    TrajectoryInterpolator,
+)
+from pyneats.steps.parsing import (
+    Flight4D,
+    TrajectoryParser,
+    TrajectoryParserStepError,
+)
+from pyneats.steps.performance import (
+    FlightWithPerformance,
+    PerformanceModel,
+    PerformanceStepError,
+)
 from pyneats.steps.weather import (
+    FlightWithWeather,
     WeatherProviderProtocol,
     WeatherStepError,
-    FlightWithWeather,
 )
-
-from pyneats.core.neats_default_parameters import (
-    DEFAULT_INTERPOLATOR,
-    DEFAULT_TRAJECTORY_PARSER,
-    DEFAULT_EMISSIONS,
-    DEFAULT_PERFORMANCE,
-    DEFAULT_CONTRAILS_MODEL,
-    DEFAULT_NON_CO2_MODEL,
-    DEFAULT_CLIMATE_IMPACT,
-)
-
-from pyneats.core.steps_registry import build
 
 logger = logging.getLogger(__name__)
 

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
+
 from pyneats.core.steps import Step, StepError
-from pyneats.steps.performance import FlightWithPerformance
 from pyneats.steps.emissions.views import FlightWithEmissions
+from pyneats.steps.performance import FlightWithPerformance
 
 __all__ = [
     "EmissionModel",

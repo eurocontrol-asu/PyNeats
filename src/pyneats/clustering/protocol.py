@@ -1,4 +1,5 @@
-from typing import Protocol, List, Any
+from typing import Any, List, Protocol
+
 import pandas as pd
 
 

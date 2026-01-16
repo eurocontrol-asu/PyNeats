@@ -15,45 +15,49 @@ import gc
 import json
 import logging
 import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeVar, cast
-from collections.abc import Callable, Mapping
+from typing import Any, Self, TypeVar, cast
 
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 from joblib.externals.loky import get_reusable_executor
-from typing import Self
-
-from pycontrails import Flight, Fleet
-from pycontrails.models.humidity_scaling import HumidityScaling
+from pycontrails import Fleet, Flight
 from pycontrails.core.met import MetDataset
+from pycontrails.models.humidity_scaling import HumidityScaling
 
 from pyneats.core.compute_parameters import (
-    DEFAULT_NJOBS,
     DEFAULT_BATCH_SIZE,
     DEFAULT_JOBLIB_PREFERENCE,
+    DEFAULT_NJOBS,
 )
-
 from pyneats.core.neats_default_parameters import (
     DEFAULT_COCIP_KWARGS,
     DEFAULT_HUMIDITY_SCALING,
 )
-
 from pyneats.core.steps import Step
 from pyneats.core.steps_registry import build
 from pyneats.runners.flight import RunnerConfig
-from pyneats.steps.parsing.neats_parser import NEATSFuel
-
+from pyneats.steps.climate_functions.cocip import CoCiPModel, ContrailsParams
+from pyneats.steps.climate_functions.protocol import NonCO2Model
+from pyneats.steps.climate_functions.views import (
+    FlightWithContrailsImpact,
+    FlightWithNonCO2Impact,
+)
+from pyneats.steps.climate_metrics.protocol import ClimateImpactModel
 from pyneats.steps.climate_metrics.report import FleetReport
-
+from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
+from pyneats.steps.emissions.protocol import EmissionModel
+from pyneats.steps.emissions.views import FlightWithEmissions
+from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
 from pyneats.steps.parsing.neats_io import neats_json_to_flights, split_df_into_flights
+from pyneats.steps.parsing.neats_parser import NEATSFuel
 from pyneats.steps.parsing.protocol import TrajectoryParser
 from pyneats.steps.parsing.views import Flight4D
-
-from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
-
+from pyneats.steps.performance import PerformanceModel
+from pyneats.steps.performance.views import FlightWithPerformance
 from pyneats.steps.weather.weather_provider import (
     FlightWithWeather,
     WeatherProvider,
@@ -61,26 +65,9 @@ from pyneats.steps.weather.weather_provider import (
 )
 from pyneats.steps.weather.weather_store import (
     ZarrPaths,
-    get_weather_from_zarr,
     clear_dataset_cache,
+    get_weather_from_zarr,
 )
-
-from pyneats.steps.performance import PerformanceModel
-from pyneats.steps.performance.views import FlightWithPerformance
-
-from pyneats.steps.emissions.protocol import EmissionModel
-from pyneats.steps.emissions.views import FlightWithEmissions
-
-from pyneats.steps.climate_functions.cocip import CoCiPModel, ContrailsParams
-from pyneats.steps.climate_functions.protocol import NonCO2Model
-from pyneats.steps.climate_functions.views import (
-    FlightWithContrailsImpact,
-    FlightWithNonCO2Impact,
-)
-
-from pyneats.steps.climate_metrics.protocol import ClimateImpactModel
-from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
-
 
 logger = logging.getLogger(__name__)
 

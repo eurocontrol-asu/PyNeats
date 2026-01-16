@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from typing import Any, ClassVar, Final
+
 from pyneats.steps.emissions.views import FlightWithEmissions
 
 __all__ = [

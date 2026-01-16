@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from typing import Any
-from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
 
+from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
 
 __all__ = ["FlightWithClimateImpact"]
 

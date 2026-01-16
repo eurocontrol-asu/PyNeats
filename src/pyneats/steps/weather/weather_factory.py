@@ -33,26 +33,27 @@ import gc
 import logging
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import ClassVar, Optional
-from collections.abc import Mapping
-import zarr
+
 import xarray as xr
+import zarr
 from pycontrails import DiskCacheStore, MetDataset
 from pycontrails.core.met_var import (
-    MetVariable,
     AirTemperature,
     CloudAreaFractionInAtmosphereLayer,
     EastwardWind,
     Geopotential,
     MassFractionOfCloudIceInAir,
+    MetVariable,
     NorthwardWind,
     RelativeHumidity,
     SpecificHumidity,
-    VerticalVelocity,
-    TOAOutgoingLongwaveFlux,
     TOANetDownwardShortwaveFlux,
+    TOAOutgoingLongwaveFlux,
+    VerticalVelocity,
 )
 from pycontrails.datalib.ecmwf import (
     ERA5,
@@ -61,26 +62,22 @@ from pycontrails.datalib.ecmwf import (
 )
 from pycontrails.models.cocip import Cocip
 
+from pyneats.core.compute_parameters import (
+    DEFAULT_HORIZONTAL_RES_DEG,
+    DEFAULT_MET_CHUNKS,
+    DEFAULT_PRESSURE_LEVELS_HPA,
+    DEFAULT_RAD_CHUNKS,
+    DEFAULT_SDR_ACCUMULATE_DT_S,
+    DEFAULT_WEATHER_OFFSET_H,
+    DEFAULT_WIND_CHUNKS,
+    DEFAULT_ZARR_CACHING_STRATEGY,
+    ZARR_CACHING_STRATEGY,
+)
 from pyneats.steps.weather.weather_provider import (
     WeatherProvider,
     WeatherProviderProtocol,
 )
 from pyneats.steps.weather.weather_store import ZarrPaths, get_weather_from_zarr
-
-from pyneats.core.compute_parameters import (
-    DEFAULT_SDR_ACCUMULATE_DT_S,
-    DEFAULT_HORIZONTAL_RES_DEG,
-    DEFAULT_PRESSURE_LEVELS_HPA,
-    DEFAULT_WEATHER_OFFSET_H,
-    DEFAULT_WIND_CHUNKS,
-    DEFAULT_MET_CHUNKS,
-    DEFAULT_RAD_CHUNKS,
-)
-
-from pyneats.core.compute_parameters import (
-    DEFAULT_ZARR_CACHING_STRATEGY,
-    ZARR_CACHING_STRATEGY,
-)
 
 logger = logging.getLogger(__name__)
 

@@ -5,18 +5,18 @@ that implement requirements defined for NEATS
 
 from __future__ import annotations
 
-from typing import Optional, Any
 from collections.abc import Mapping
+from typing import Any, Optional
 
 from pycontrails.core.fuel import Fuel, JetA, SAFBlend
+
 from pyneats.core.neats_default_parameters import (
     DEFAULT_AROMATICS_CONTENT,
-    DEFAULT_NAPHTHALEN_CONTENT,
-    DEFAULT_SULPHUR_CONTENT,
     DEFAULT_HYDROGEN_CONTENT,
+    DEFAULT_NAPHTHALEN_CONTENT,
     DEFAULT_Q_FUEL,
+    DEFAULT_SULPHUR_CONTENT,
 )
-
 
 __all__ = [
     "NEATSFuel",

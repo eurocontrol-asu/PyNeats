@@ -28,9 +28,9 @@ NEATS pipeline. All parameters described in the RSTS  document are centralized h
 
 """
 
-from typing import Final
-from typing import Any, Literal
 from collections.abc import Mapping
+from typing import Any, Final, Literal
+
 import numpy as np
 from pycontrails.models.humidity_scaling import (
     ExponentialBoostHumidityScaling,

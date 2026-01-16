@@ -31,13 +31,14 @@ Key Components:
 """
 
 from __future__ import annotations
+
 from abc import abstractmethod
-from typing import Generic, Literal, Protocol, TypeVar, cast
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Generic, Literal, Protocol, TypeVar, cast
 
 from packaging import version
-from pycontrails.physics.units import m_per_s_to_knots, ft_to_m
+from pycontrails.physics.units import ft_to_m, m_per_s_to_knots
 
 try:
     import pyBADA.atmosphere as atm
@@ -53,7 +54,6 @@ except ImportError as e:
 
 
 from pyneats.steps.performance.protocol import PerformanceStepError
-
 
 __all__ = [
     "AircraftProtocol",

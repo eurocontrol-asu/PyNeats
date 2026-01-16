@@ -1,9 +1,9 @@
 from pyneats.steps.climate_metrics.gwp import (
-    FlightWithClimateImpact,
-    GWPParams,
     ClimateImpactModel,
-    GWPMetrics,
     ClimateImpactStepError,
+    FlightWithClimateImpact,
+    GWPMetrics,
+    GWPParams,
 )
 
 __all__ = [

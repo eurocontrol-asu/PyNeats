@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from typing import ClassVar, Final
+
 from pyneats.steps.weather.weather_provider import FlightWithWeather
 
 __all__ = [

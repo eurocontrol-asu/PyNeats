@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 from typing import Protocol, runtime_checkable
+
 from pyneats.core.steps import Step, StepError
-from pyneats.steps.weather.weather_provider import FlightWithWeather
 from pyneats.steps.performance.views import FlightWithPerformance
+from pyneats.steps.weather.weather_provider import FlightWithWeather
 
 __all__ = [
     "PerformanceModel",

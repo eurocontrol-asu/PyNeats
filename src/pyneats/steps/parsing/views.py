@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import ClassVar, Final
+
 from pyneats.core.views import FlightView
 
 __all__ = [

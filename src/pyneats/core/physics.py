@@ -1,7 +1,7 @@
 """Physical and Radiative Constants for Climate Impact Calculations"""
 
-from typing import Final
 from collections.abc import Mapping
+from typing import Final
 
 __all__ = [
     "METRICS_HORIZONS",

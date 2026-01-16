@@ -7,10 +7,10 @@ based on their interface types.
 
 from __future__ import annotations
 
-from typing import Any, TypeVar, cast
+import warnings
 from collections.abc import Callable, Mapping
 from threading import RLock
-import warnings
+from typing import Any, TypeVar, cast
 
 __all__ = [
     # public API

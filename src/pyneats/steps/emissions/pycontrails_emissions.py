@@ -1,18 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
-from collections.abc import Mapping
+
 from pycontrails import Flight
 from pycontrails.models.emissions import Emissions
 
 from pyneats.core.neats_default_parameters import DEFAULT_EMISSIONS_KWARGS
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
-from pyneats.steps.performance import FlightWithPerformance
 from pyneats.steps.emissions.params import EmissionParams
+from pyneats.steps.emissions.protocol import EmissionModel, EmissionStepError
 from pyneats.steps.emissions.views import FlightWithEmissions
-from pyneats.steps.emissions.protocol import EmissionStepError, EmissionModel
+from pyneats.steps.performance import FlightWithPerformance
 
 __all__ = [
     "PyContrailsEmissionParams",

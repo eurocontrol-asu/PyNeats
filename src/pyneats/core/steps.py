@@ -12,15 +12,14 @@ Key Components:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+import logging
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass
 from time import perf_counter
 from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
-from collections.abc import Mapping
-import logging
 
-from dacite import from_dict
 import pandas as pd
-
+from dacite import from_dict
 from pycontrails import Flight
 
 __all__ = [

@@ -1,22 +1,23 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
-from collections.abc import Mapping
-import pandas as pd
 
+import pandas as pd
 from pycontrails import Flight
 from pycontrails.physics.units import ft_to_m
-from pyneats.core.steps import BaseStep
-from pyneats.core.views import ValidationError
-from pyneats.core.steps_registry import register
-from pyneats.steps.parsing.params import TrajectoryParserParams
-from pyneats.steps.parsing.views import Flight4D, REQUIRED_4D_COLS
-from pyneats.steps.parsing.protocol import (
-    TrajectoryParserStepError,
-    TrajectoryParser,
-)
+
 from pyneats.core.neats_fuel import NEATSFuel
+from pyneats.core.steps import BaseStep
+from pyneats.core.steps_registry import register
+from pyneats.core.views import ValidationError
+from pyneats.steps.parsing.params import TrajectoryParserParams
+from pyneats.steps.parsing.protocol import (
+    TrajectoryParser,
+    TrajectoryParserStepError,
+)
+from pyneats.steps.parsing.views import REQUIRED_4D_COLS, Flight4D
 
 __all__ = [
     "NeatsTrajectoryParserParams",

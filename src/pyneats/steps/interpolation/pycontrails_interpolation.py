@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+import numpy as np
 from pycontrails import Flight
+
 from pyneats.core.steps import BaseStep
-from pyneats.core.views import ValidationError
 from pyneats.core.steps_registry import register
-from pyneats.steps.parsing.views import Flight4D
+from pyneats.core.views import ValidationError
 from pyneats.steps.interpolation.params import TrajectoryInterpolationParams
 from pyneats.steps.interpolation.protocol import (
-    TrajectoryInterpolator,
     TrajectoryInterpolationStepError,
+    TrajectoryInterpolator,
 )
-import numpy as np
+from pyneats.steps.parsing.views import Flight4D
 
 __all__ = [
     "PyContrailsInterpolationParams",

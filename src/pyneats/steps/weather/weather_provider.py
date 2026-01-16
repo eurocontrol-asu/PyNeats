@@ -13,30 +13,29 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final, Protocol, runtime_checkable
-from collections.abc import Mapping
 
 import numpy as np
-from numpy.typing import NDArray
 import pandas as pd
-from pycontrails import Flight, Fleet
+from numpy.typing import NDArray
+from pycontrails import Fleet, Flight
 from pycontrails.core.met import MetDataset
 from pycontrails.models.humidity_scaling import HumidityScaling
 
+from pyneats.core.fleet_utils import fleet_to_flights, flights_to_fleet
 from pyneats.core.neats_default_parameters import (
+    DEFAULT_HUMIDITY_SCALING,
     DEFAULT_LAT_BUF,
     DEFAULT_LEVEL_BUF,
     DEFAULT_LON_BUF,
     DEFAULT_TIME_BUF,
     DEFAULT_WEATHER_INTEPOLATION_METHOD,
     DEFAULT_WEATHER_USE_INDICES,
-    DEFAULT_HUMIDITY_SCALING,
     InterpolationMethod,
 )
-
-from pyneats.core.fleet_utils import fleet_to_flights, flights_to_fleet
-from pyneats.core.steps import BaseStep, Step, StepError, BaseParams
+from pyneats.core.steps import BaseParams, BaseStep, Step, StepError
 from pyneats.core.views import ValidationError
 from pyneats.steps.parsing import Flight4D
 

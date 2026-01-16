@@ -14,29 +14,27 @@ avoiding heavy weather data transfers and overheads between PyContrails and Clim
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 import numpy as np
-from numpy.typing import NDArray
 import pandas as pd
-
+from numpy.typing import NDArray
 from pycontrails import Flight
-from pyneats.core.steps import BaseStep
-from pyneats.core.neats_default_parameters import DEFAULT_ACCF_VALIDITY_PRESSURE
-from pyneats.core.steps_registry import register
-from pyneats.steps.emissions.views import FlightWithEmissions
-from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
-from pyneats.steps.climate_functions.protocol import NonCO2Model, ClimateStepError
-from pyneats.steps.climate_functions.climaccf import aCCFParams
 
+from pyneats.core.neats_default_parameters import DEFAULT_ACCF_VALIDITY_PRESSURE
 from pyneats.core.physics import (
     ACCF_SCALE_03,
     ACCF_SCALE_CH4,
     ACCF_SCALE_H2O,
     SOLAR_CONSTANT,
 )
-
+from pyneats.core.steps import BaseStep
+from pyneats.core.steps_registry import register
+from pyneats.steps.climate_functions.climaccf import aCCFParams
+from pyneats.steps.climate_functions.protocol import ClimateStepError, NonCO2Model
+from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
+from pyneats.steps.emissions.views import FlightWithEmissions
 
 __all__ = ["LocalACCFParams", "LocalACCFModel"]
 

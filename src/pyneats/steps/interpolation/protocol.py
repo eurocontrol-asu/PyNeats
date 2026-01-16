@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
+
 from pyneats.core.steps import Step, StepError
 from pyneats.steps.parsing.views import Flight4D
 
