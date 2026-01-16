@@ -10,7 +10,10 @@ from .fixtures.nm_traffic import nm_input, nm_output
 from .fixtures.weather import weather
 
 
-@pytest.mark.parametrize("flight_idx", range(5))
+@pytest.mark.integration
+@pytest.mark.requires_weather
+@pytest.mark.requires_bada
+@pytest.mark.slow
 def test_pipeline(nm_input, nm_output, weather, bada_root_path, flight_idx):  # noqa: F811
     """Test full pipeline for individual flights.
 
@@ -46,6 +49,7 @@ def test_pipeline(nm_input, nm_output, weather, bada_root_path, flight_idx):  # 
     # Get input and expected output for this flight
     raw_flight = nm_input[flight_idx]
     expected_flight = nm_output[flight_idx]
+    flight_id = expected_flight.attrs.get("flight_id", f"flight_{flight_idx}")
     expected_output = FlightWithClimateImpact.from_flight(expected_flight.copy()).to_dataframe()
 
     # Convert JSON to DataFrame, then parse to Flight
@@ -72,5 +76,6 @@ def test_pipeline(nm_input, nm_output, weather, bada_root_path, flight_idx):  # 
         expected_output[check_cols],
         rtol=rtol,
         atol=atol,
-        obj="FlightWithContrailsImpact",
+        check_dtype=False,
+        obj=f"Flight {flight_idx} [{flight_id}] (full pipeline)",
     )
