@@ -347,6 +347,10 @@ class FleetRunner:
             self._params("climate_impact"),
         )
 
+        # ---- Vectorized step objects (created in _load_weather) --------------
+        self.weather_step: WeatherProvider | None = None
+        self.cocip_step: CoCiPModel | None = None
+
     # -------------------------------------------------------------------------
     # Param handling (FlightRunner-like)
     # -------------------------------------------------------------------------
@@ -394,6 +398,29 @@ class FleetRunner:
         weather = get_weather_from_zarr(self.cfg.zarr_paths, chunks=self.cfg.zarr_read_chunks)
         self.met, self.rad, self.wind = weather.met(), weather.rad(), weather.wind()
 
+        # Create vectorized steps now that weather datasets are available
+        logger.info("Initializing vectorized steps (weather, CoCiP)...")
+
+        # Weather intersection step
+        weather_params = WeatherProviderParams(
+            humidity_scaling=self.cfg.humidity_scaling,
+            **self._params("weather_intersection")
+        )
+        self.weather_step = WeatherProvider(
+            met=self.met,
+            rad=self.rad,
+            wind=self.wind,
+            params=weather_params
+        )
+
+        # CoCiP step
+        cocip_params = ContrailsParams(
+            met=self.met,
+            rad=self.rad,
+            cocip_kwargs=self.cfg.cocip_kwargs
+        )
+        self.cocip_step = CoCiPModel(params=cocip_params)
+
         return self
 
     def _parse_flights(self) -> Self:
@@ -437,26 +464,14 @@ class FleetRunner:
 
         if self.interpolated_fleet is None:
             raise RuntimeError("interpolated_flights must be set before _intersect_weather()")
-        if self.met is None or self.wind is None:
-            raise RuntimeError("weather must be loaded before _intersect_weather()")
-
-        # Create WeatherProvider step with meteorological datasets
-        weather_params = WeatherProviderParams(
-            humidity_scaling=self.cfg.humidity_scaling,
-            **self._params("weather_intersection")
-        )
-        weather_step = WeatherProvider(
-            met=self.met,
-            wind=self.wind,
-            rad=self.rad,  # Required by WeatherProvider constructor
-            params=weather_params
-        )
+        if self.weather_step is None:
+            raise RuntimeError("weather_step must be initialized before _intersect_weather()")
 
         # Run vectorized weather intersection
         flights = self._run_vectorized_step(
             self.interpolated_fleet,
             "weather intersection",
-            weather_step,
+            self.weather_step,
             self.cfg.weather_critical_columns,
         )
 
@@ -520,22 +535,14 @@ class FleetRunner:
 
         if self.fleet_with_emissions is None:
             raise RuntimeError("_emissions must be set before _contrails()")
-        if self.met is None or self.rad is None:
-            raise RuntimeError("weather must be loaded before _contrails()")
-
-        # Create CoCiP step with meteorological datasets
-        cocip_params = ContrailsParams(
-            met=self.met,
-            rad=self.rad,
-            cocip_kwargs=self.cfg.cocip_kwargs
-        )
-        cocip_step = CoCiPModel(params=cocip_params)
+        if self.cocip_step is None:
+            raise RuntimeError("cocip_step must be initialized before _contrails()")
 
         # Run vectorized CoCiP
         flights = self._run_vectorized_step(
             self.fleet_with_emissions,
             "CoCiP evaluation",
-            cocip_step,
+            self.cocip_step,
             self.cfg.cocip_critical_columns,
         )
 
