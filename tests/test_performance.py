@@ -37,7 +37,6 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
 
     # Get expected flight
     expected_flight = nm_output[flight_idx]
-    flight_id = expected_flight.attrs.get("flight_id", f"flight_{flight_idx}")
     expected_output = FlightWithPerformance.from_flight(expected_flight.copy()).to_dataframe()
 
 
@@ -60,7 +59,7 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
         expected_output[check_cols],
         rtol=rtol,
         atol=atol,
-        obj=f"Flight {flight_idx} [{flight_id}] (performance - baseline)",
+        obj=f"Flight {flight_idx} (performance - baseline)",
     )
 
     # Set payload factor
@@ -73,7 +72,7 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
         rtol=rtol,
         atol=atol,
         check_dtype=False,
-        obj=f"Flight {flight_idx} [{flight_id}] (performance - with payload_factor)",
+        obj=f"Flight {flight_idx} (performance - with payload_factor)",
     )
 
     # Set takeoff weight
@@ -85,7 +84,7 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
         rtol=rtol,
         atol=atol,
         check_dtype=False,
-        obj=f"Flight {flight_idx} [{flight_id}] (performance - with takeoff_weight)",
+        obj=f"Flight {flight_idx} (performance - with takeoff_weight)",
     )
 
     # Set aircraft mass along the trajectory
@@ -97,7 +96,7 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
         rtol=rtol,
         atol=atol,
         check_dtype=False,
-        obj=f"Flight {flight_idx} [{flight_id}] (performance - with aircraft_mass)",
+        obj=f"Flight {flight_idx} (performance - with aircraft_mass)",
     )
 
     # Set fuel flow
@@ -109,7 +108,7 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
         rtol=rtol,
         atol=atol,
         check_dtype=False,
-        obj=f"Flight {flight_idx} [{flight_id}] (performance - with fuel_flow)",
+        obj=f"Flight {flight_idx} (performance - with fuel_flow)",
     )
 
     # Set engine efficiency
@@ -121,5 +120,5 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
         rtol=rtol,
         atol=atol,
         check_dtype=False,
-        obj=f"Flight {flight_idx} [{flight_id}] (performance - with engine_efficiency)",
+        obj=f"Flight {flight_idx} (performance - with engine_efficiency)",
     )

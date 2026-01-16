@@ -26,7 +26,6 @@ def test_emissions(nm_output, flight_idx):  # noqa: F811
 
     # Get expected flight
     expected_flight = nm_output[flight_idx]
-    flight_id = expected_flight.attrs.get("flight_id", f"flight_{flight_idx}")
     expected_output = FlightWithEmissions.from_flight(expected_flight.copy()).to_dataframe()
 
     # Create input (FlightWithPerformance from golden data)
@@ -44,6 +43,6 @@ def test_emissions(nm_output, flight_idx):  # noqa: F811
         rtol=rtol,
         atol=atol,
         check_dtype=False,
-        obj=f"Flight {flight_idx} [{flight_id}] (emissions)",
+        obj=f"Flight {flight_idx} (emissions)",
     )
 

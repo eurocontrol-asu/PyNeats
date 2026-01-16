@@ -34,7 +34,6 @@ def test_cocip(nm_output, weather, flight_idx):  # noqa: F811
 
     # Get expected flight
     expected_flight = nm_output[flight_idx]
-    flight_id = expected_flight.attrs.get("flight_id", f"flight_{flight_idx}")
     expected_output = FlightWithContrailsImpact.from_flight(expected_flight.copy()).to_dataframe()
 
     # Create input (FlightWithEmissions from golden, remove CoCiP outputs)
@@ -59,6 +58,6 @@ def test_cocip(nm_output, weather, flight_idx):  # noqa: F811
         rtol=rtol,
         atol=atol,
         check_dtype=False,
-        obj=f"Flight {flight_idx} [{flight_id}] (contrails)",
+        obj=f"Flight {flight_idx} (contrails)",
     )
 
