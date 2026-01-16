@@ -11,6 +11,7 @@ help: ## Show this help message
 install: ## Install all dependencies with uv
 	uv sync --all-groups
 	uv run pip install pybada --no-deps --ignore-requires-python
+	uv run pip install git+https://github.com/dlr-pa/oac.git
 
 format: ## Auto-format code with ruff
 	uv run ruff format src/pyneats tests/
