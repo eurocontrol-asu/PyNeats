@@ -225,7 +225,7 @@ class FlightView(Flight):
         f = Flight.from_dict(d)
 
         # This is needed because it forces it as column instead of attribute when reading from dict
-        # We should force overloaded to_dict to save flight_id as single value (so that is parsed as an attribute) or
+        # We should force overloaded to_dict to save flight_id as single value (so that is parsed as an attribute) or # noqa: E501
         # also overload the from_dict
         f["altitude"] = f.altitude
         f.attrs["flight_id"] = f["flight_id"][0]

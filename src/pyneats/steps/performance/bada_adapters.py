@@ -255,7 +255,7 @@ class _PyBADAAdapterBase(Generic[TObj]):
         rocd_mps: float,
         mass: float,
         tau_const: float,
-        TAS: float,
+        TAS: float,  # noqa: N803 (aviation acronym: True Airspeed)
         accel_mps2: float,
         drag: float,
     ) -> float:

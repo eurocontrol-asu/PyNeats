@@ -231,8 +231,8 @@ class LocalACCFModel(
         return 4.05e-16 + 1.48e-16 * np.abs(pv)
 
     def compute_h2o(self, flight: Flight) -> FloatArray:
-        """Compute water vapor (H2O) Pulse-based Average Temperature Response over 20 years (P-ATR20)
-        for water vapor emissions.
+        """Compute water vapor (H2O) Pulse-based Average Temperature Response
+        over 20 years (P-ATR20) for water vapor emissions.
         Uses potential vorticity as input parameter.
         """
 

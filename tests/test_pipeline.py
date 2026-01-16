@@ -23,7 +23,7 @@ def test_pipeline(nm_input, nm_output, weather, bada_root_path, flight_idx):  # 
     # Skip if weather not available
     if weather is None:
         pytest.skip(
-            "Weather data not available. Use pytest --met-cache-dir=/path/to/data or set MET_CACHE_DIR"
+            "Weather data not available. Use pytest --met-cache-dir=/path/to/data or set MET_CACHE_DIR" # noqa: E501
         )
 
     # Skip if BADA not available

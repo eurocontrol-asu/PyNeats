@@ -183,7 +183,8 @@ class FlightRunner:
         Returns a shallow copy of the source DataFrame if it exists, otherwise returns None.
 
         Returns:
-            pd.DataFrame | None: A shallow copy of the source DataFrame, or None if the source is not set.
+            pd.DataFrame | None: A shallow copy of the source DataFrame,
+                or None if the source is not set.
         """
         return None if self._source is None else self._source.copy(deep=False)
 

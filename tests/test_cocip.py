@@ -22,7 +22,7 @@ def test_cocip(nm_output, weather, flight_idx):  # noqa: F811
     # Skip if weather not available
     if weather is None:
         pytest.skip(
-            "Weather data not available. Use pytest --met-cache-dir=/path/to/data or set MET_CACHE_DIR"
+            "Weather data not available. Use pytest --met-cache-dir=/path/to/data or set MET_CACHE_DIR" # noqa: E501
         )
 
     rtol = 1e-3  # 0.1% relative tolerance

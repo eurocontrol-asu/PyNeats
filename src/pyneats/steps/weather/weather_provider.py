@@ -236,9 +236,9 @@ class WeatherProvider(
         """
         Downselects the meteorological dataset to the relevant subset for a given flight.
 
-        This method calls the `downselect_met` method from PyContrails of the provided `Flight4D` object,
-        passing in the meteorological dataset and buffer parameters
-
+        This method calls the `downselect_met` method from PyContrails of the
+        provided `Flight4D` object, passing in the meteorological dataset and
+        buffer parameters
         Args:
             flight (Flight4D): The flight object containing trajectory and downselection logic.
             met (MetDataset): The meteorological dataset to be filtered.

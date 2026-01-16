@@ -2,11 +2,12 @@
 Optimized fleet-level orchestration of NEATS climate computations
 that leverages vectorized operations for significant performance improvements.
 
-- Single cfg object holding step names + params (RunnerConfig) + fleet settings (FastFleetRunnerConfig)
+- Single cfg object holding step names + params (RunnerConfig) + fleet settings
+  (FastFleetRunnerConfig)
 - Explicit, typed intermediate pipeline attributes (like FlightRunner)
 - Decomposed pipeline into intermediate steps (like FlightRunner)
 - Generic, registry-based step construction with per-process caching for joblib workers
-- Continue-on-error behavior for per-flight steps, while keeping vectorized steps fleet-level
+- Continue-on-error behavior for per-flight steps, keeping vectorized steps fleet-level
 """
 
 from __future__ import annotations

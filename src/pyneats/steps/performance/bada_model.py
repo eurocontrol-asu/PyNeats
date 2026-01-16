@@ -248,11 +248,11 @@ class BADAPerformanceModel(
 
         except Exception as e:
             self.logger.info(
-                "Preprocessing and aircraft attribute extraction failed during Performance evaluation"
+                "Preprocessing and aircraft attribute extraction failed during Performance evaluation" # noqa: E501
             )
 
             raise PerformanceStepError(
-                f"Preprocessing and aircraft attribute extraction failed during Performance evaluation: {e}"
+                f"Preprocessing and aircraft attribute extraction failed during Performance evaluation: {e}" # noqa: E501
             ) from e
 
         # --- First attempt: normal BADA (3 or 4) execution ---
@@ -263,7 +263,7 @@ class BADAPerformanceModel(
 
         except PerformanceStepError as exc:
             self.logger.info(
-                "BADA performance evaluation failed. Retrying BADA performance evaluation with BADA3 enforced",
+                "BADA performance evaluation failed. Retrying BADA performance evaluation with BADA3 enforced", # noqa: E501
                 extra={"icao": icao, "series": series, "engine_id": engine_id_attr},
             )
 
@@ -276,7 +276,7 @@ class BADAPerformanceModel(
 
                 if bada4_code is None:
                     self.logger.info(
-                        "BADA performance evaluation already performed with BADA3, no need to retry with BADA3 again",
+                        "BADA performance evaluation already performed with BADA3, no need to retry with BADA3 again", # noqa: E501
                         extra={
                             "icao": icao,
                             "series": series,
@@ -284,7 +284,7 @@ class BADAPerformanceModel(
                         },
                     )
                     raise PerformanceStepError(
-                        "BADA performance evaluation already performed with BADA3, no need to retry with BADA3 again"
+                        "BADA performance evaluation already performed with BADA3, no need to retry with BADA3 again" # noqa: E501
                     ) from exc
 
                 return self.run_by_bada_version(
@@ -661,7 +661,7 @@ class BADAPerformanceModel(
 
         if adapter.MPL is None:
             self.logger.warning(
-                "BADA adapter for ICAO '%s' does not provide MPL, assuming MPL = MTOW - OEW. Conservative case",
+                "BADA adapter for ICAO '%s' does not provide MPL, assuming MPL = MTOW - OEW. Conservative case", # noqa: E501
                 icao,
             )
             maximum_payload = maximum_takeoff_weight - operating_empty_weight

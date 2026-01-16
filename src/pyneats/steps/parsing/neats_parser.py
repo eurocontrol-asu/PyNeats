@@ -42,8 +42,8 @@ class NeatsTrajectoryParser(
     ]
 ):
     """
-    Parse NM trajectory data or AO trajectory data that follows NEATS Json format into Flight4D format.
-    __call__(df: pd.DataFrame) -> Flight4D
+    Parse NM trajectory data or AO trajectory data that follows NEATS Json format
+    into Flight4D format.
 
     It performs:
 

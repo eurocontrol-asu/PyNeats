@@ -15,7 +15,8 @@ __all__ = [
 @runtime_checkable
 class PerformanceModel(Step[FlightWithWeather, FlightWithPerformance], Protocol):
     """
-    Performance steps consume a weather-enriched flight and produce a performance-enriched flight (zero-copy view).
+    Performance steps consume a weather-enriched flight and produce a
+    performance-enriched flight (zero-copy view).
     """
 
 

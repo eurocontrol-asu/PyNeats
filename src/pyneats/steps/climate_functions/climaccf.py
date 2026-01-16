@@ -83,7 +83,7 @@ def make_accf_surface_view(surface: MetDataset) -> MetDataset:
         )
     # 2) Align units on the surface shortwave flux if needed
     if SurfaceSolarDownwardRadiation.standard_name in ds:
-        # Ensure units are consistent with the radiation flux variables expected by ClimAccf (e.g., W m-2)
+        # Ensure units are consistent with the radiation flux variables expected by ClimAccf (e.g., W m-2) # noqa: E501
         ds[SurfaceSolarDownwardRadiation.standard_name].attrs.update(
             {"units": TOAOutgoingLongwaveFlux.units}
         )
