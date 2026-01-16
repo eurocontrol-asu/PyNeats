@@ -65,4 +65,3 @@ def nm_output() -> list[FlightView]:
         flights.append(f)
 
     return flights
-

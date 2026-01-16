@@ -10,6 +10,9 @@ from pyneats.steps.climate_functions.cocip import (
     FlightWithEmissions,
 )
 
+from .fixtures.nm_traffic import nm_output  # noqa: F401
+from .fixtures.weather import weather  # noqa: F401
+
 
 @pytest.mark.integration
 @pytest.mark.requires_weather
@@ -22,7 +25,7 @@ def test_cocip(nm_output, weather, flight_idx):  # noqa: F811
     # Skip if weather not available
     if weather is None:
         pytest.skip(
-            "Weather data not available. Use pytest --met-cache-dir=/path/to/data or set MET_CACHE_DIR" # noqa: E501
+            "Weather data not available. Use pytest --met-cache-dir=/path/to/data or set MET_CACHE_DIR"  # noqa: E501
         )
 
     rtol = 1e-3  # 0.1% relative tolerance
@@ -57,4 +60,3 @@ def test_cocip(nm_output, weather, flight_idx):  # noqa: F811
         check_dtype=False,
         obj=f"Flight {flight_idx} (contrails)",
     )
-

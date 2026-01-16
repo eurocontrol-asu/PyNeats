@@ -10,6 +10,9 @@ from pyneats.steps.emissions.pycontrails_emissions import (
     PyContrailsEmissionParams,
 )
 
+from .fixtures.nm_traffic import nm_output  # noqa: F401
+from .fixtures.weather import weather  # noqa: F401
+
 
 @pytest.mark.integration
 def test_emissions(nm_output, flight_idx):  # noqa: F811
@@ -43,4 +46,3 @@ def test_emissions(nm_output, flight_idx):  # noqa: F811
         check_dtype=False,
         obj=f"Flight {flight_idx} (emissions)",
     )
-

@@ -8,6 +8,9 @@ from pyneats.steps.parsing.neats_io import neats_json_to_flights
 from pyneats.steps.parsing.neats_parser import NeatsTrajectoryParser
 from pyneats.steps.parsing.views import Flight4D
 
+from .fixtures.nm_traffic import nm_input, nm_output  # noqa: F401
+from .fixtures.weather import weather  # noqa: F401
+
 
 @pytest.mark.integration
 def test_interpolation(nm_input, nm_output, flight_idx):  # noqa: F811
@@ -49,4 +52,3 @@ def test_interpolation(nm_input, nm_output, flight_idx):  # noqa: F811
         check_dtype=False,
         obj=f"Flight {flight_idx} (interpolation)",
     )
-

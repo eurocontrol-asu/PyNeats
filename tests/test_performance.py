@@ -11,7 +11,7 @@ from pyneats.steps.performance.bada_model import (
 )
 from pyneats.steps.performance.views import FlightWithPerformance, FlightWithWeather
 
-from .fixtures.nm_traffic import nm_output
+from .fixtures.nm_traffic import nm_output  # noqa: F401
 
 
 @pytest.mark.integration
@@ -44,7 +44,6 @@ def test_performance(nm_output, flight_idx, bada_root_path):  # noqa: F811
     # Get expected flight
     expected_flight = nm_output[flight_idx]
     expected_output = FlightWithPerformance.from_flight(expected_flight.copy()).to_dataframe()
-
 
     # Create input
     input = FlightWithWeather.from_flight(expected_flight.copy())

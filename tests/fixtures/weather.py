@@ -42,4 +42,3 @@ def weather(weather_path) -> WeatherProvider | None:  # noqa: F811
         wind_store = None  # optional
 
     return get_weather_from_zarr(ZarrPaths(met_store, rad_store, wind_store))
-

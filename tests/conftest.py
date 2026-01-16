@@ -114,5 +114,3 @@ def bada_root_path(pytestconfig) -> Path | None:
         return default_path.resolve()
 
     return None
-
-

@@ -6,6 +6,9 @@ from pandas.testing import assert_frame_equal
 from pyneats.runners.flight import FlightRunner, RunnerConfig
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
 
+from .fixtures.nm_traffic import nm_input, nm_output  # noqa: F401
+from .fixtures.weather import weather  # noqa: F401
+
 
 @pytest.mark.integration
 @pytest.mark.requires_weather
@@ -23,7 +26,7 @@ def test_pipeline(nm_input, nm_output, weather, bada_root_path, flight_idx):  # 
     # Skip if weather not available
     if weather is None:
         pytest.skip(
-            "Weather data not available. Use pytest --met-cache-dir=/path/to/data or set MET_CACHE_DIR" # noqa: E501
+            "Weather data not available. Use pytest --met-cache-dir=/path/to/data or set MET_CACHE_DIR"  # noqa: E501
         )
 
     # Skip if BADA not available

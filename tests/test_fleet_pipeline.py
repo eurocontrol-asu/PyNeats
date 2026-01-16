@@ -8,6 +8,9 @@ from pandas.testing import assert_frame_equal
 from pyneats.runners.fleet import FleetRunner, FleetRunnerParams
 from pyneats.steps.weather.weather_store import ZarrPaths
 
+from .fixtures.nm_traffic import nm_output  # noqa: F401
+from .fixtures.weather import weather  # noqa: F401
+
 
 @pytest.mark.integration
 @pytest.mark.requires_weather
@@ -26,7 +29,7 @@ def test_fleet_pipeline(nm_output, weather, weather_path, bada_root_path):  # no
     # Skip if weather not available
     if weather is None:
         pytest.skip(
-            "Weather data not available. Use pytest --met-cache-dir=/path/to/data or set MET_CACHE_DIR" # noqa: E501
+            "Weather data not available. Use pytest --met-cache-dir=/path/to/data or set MET_CACHE_DIR"  # noqa: E501
         )
 
     # Skip if BADA not available
