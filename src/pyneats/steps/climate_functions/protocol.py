@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from pyneats.core.steps import Step, StepError
+from pyneats.core.steps import Step, StepError, VectorizedStep
 from pyneats.steps.climate_functions.views import (
     FlightWithContrailsImpact,
     FlightWithNonCO2Impact,
@@ -18,8 +18,17 @@ __all__ = [
 
 
 @runtime_checkable
-class ContrailsModel(Step[FlightWithEmissions, FlightWithContrailsImpact], Protocol):
-    """A climate step that enriches a Flight with contrail impact columns."""
+class ContrailsModel(
+    Step[FlightWithEmissions, FlightWithContrailsImpact],
+    VectorizedStep[FlightWithEmissions, FlightWithContrailsImpact],
+    Protocol,
+):
+    """
+    A climate step that enriches a Flight with contrail impact columns.
+
+    This protocol requires both single-flight (__call__) and fleet-level
+    (run_fleet) execution capabilities.
+    """
 
 
 @runtime_checkable

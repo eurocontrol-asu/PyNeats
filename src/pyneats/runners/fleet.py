@@ -19,7 +19,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Self, TypeVar, cast
+from typing import Any, Generic, Self, TypeVar, cast
 
 import pandas as pd
 from joblib import Parallel, delayed
@@ -37,11 +37,11 @@ from pyneats.core.neats_default_parameters import (
     DEFAULT_COCIP_KWARGS,
     DEFAULT_HUMIDITY_SCALING,
 )
-from pyneats.core.steps import Step
+from pyneats.core.steps import Step, VectorizedStep
 from pyneats.core.steps_registry import build
 from pyneats.runners.flight import RunnerConfig
 from pyneats.steps.climate_functions.cocip import CoCiPModel, ContrailsParams
-from pyneats.steps.climate_functions.protocol import NonCO2Model
+from pyneats.steps.climate_functions.protocol import ContrailsModel, NonCO2Model
 from pyneats.steps.climate_functions.views import (
     FlightWithContrailsImpact,
     FlightWithNonCO2Impact,
@@ -59,6 +59,7 @@ from pyneats.steps.performance import PerformanceModel
 from pyneats.steps.performance.views import FlightWithPerformance
 from pyneats.steps.weather.weather_provider import (
     FlightWithWeather,
+    PcHumidityScalingAdapter,
     WeatherProvider,
     WeatherProviderParams,
 )
@@ -74,12 +75,45 @@ logger = logging.getLogger(__name__)
 # Types
 # -----------------------------------------------------------------------------
 
+# Unbounded type vars for generic parallel processing (handles DataFrame inputs too)
 T = TypeVar("T")
 U = TypeVar("U")
-ProcessorFunc = Callable[[T], U]
 
-InT = TypeVar("InT", contravariant=True)
-OutT = TypeVar("OutT", covariant=True)
+# Type vars for Step interface (InT can be DataFrame|Flight, OutT must be Flight)
+# These are used by _get_step_cached and make_step_func
+InT = TypeVar("InT")  # Invariant, unbounded (parsers take DataFrame)
+OutT = TypeVar("OutT", bound=Flight)  # Invariant, bound to Flight (Step protocol requires this)
+
+# Flight-bounded type vars for vectorized steps and flight filtering
+InFlightT = TypeVar("InFlightT", bound=Flight)
+OutFlightT = TypeVar("OutFlightT", bound=Flight)
+FlightT = TypeVar("FlightT", bound=Flight)
+
+
+# -----------------------------------------------------------------------------
+# Discriminated union for parallel step results (enables type narrowing)
+# -----------------------------------------------------------------------------
+
+
+@dataclass(slots=True, frozen=True)
+class StepSuccess(Generic[U]):
+    """Successful step result with typed output."""
+
+    index: int
+    flight_id: str
+    data: U
+
+
+@dataclass(slots=True, frozen=True)
+class StepFailure:
+    """Failed step result with error info."""
+
+    index: int
+    flight_id: str
+    error_msg: str
+
+
+StepResult = StepSuccess[U] | StepFailure
 
 # -----------------------------------------------------------------------------
 # Config (RunnerConfig + fleet-specific fields)
@@ -149,7 +183,15 @@ class FleetRunnerParams(RunnerConfig):
 # -----------------------------------------------------------------------------
 
 # Each loky worker is a separate Python process => this cache is naturally per-process.
-_STEP_CACHE: dict[tuple[type[Any], str, str], Any] = {}
+#
+# IMPORTANT: Cache key is (interface, name) only - params are NOT included.
+# This means the first params used for a given (interface, name) pair are cached,
+# and subsequent calls with different params will return the cached step.
+#
+# This is intentional for FleetRunner's use case where each step type is created
+# once per process with fixed params. If you need different params for the same
+# step type, consider including a params hash in the key.
+_STEP_CACHE: dict[tuple[type[Any], str], Any] = {}
 
 
 def _get_step_cached(
@@ -160,7 +202,8 @@ def _get_step_cached(
     if step is None:
         step = build(interface, name, **dict(params))
         _STEP_CACHE[key] = step
-    return cast(Step[InT, OutT], step)
+    # Return the cached/built step
+    return step
 
 
 def make_step_func(
@@ -186,32 +229,37 @@ def make_step_func(
 # -----------------------------------------------------------------------------
 
 
-def _extract_flight_id(item: Any) -> str:
-    if hasattr(item, "attrs"):
-        return getattr(item, "attrs", {}).get("flight_id", "UNKNOWN")
-    return "UNKNOWN"
-
-
 def _process_one(
     i: int,
     item: T,
-    processor_func: ProcessorFunc[T, U],
-    flight_id_extractor: Callable[[T], str],
-) -> tuple[bool, int, U | None, str | None, str]:
-    flight_id = flight_id_extractor(item)
+    processor_func: Callable[[T], U],
+) -> StepResult[U]:
+    """
+    Process a single item and return a discriminated union result.
+
+    Returns StepSuccess[U] on success, StepFailure on error.
+    This enables type-safe result processing without casts.
+    """
+    # Extract flight_id inline (simplifies API, always same logic)
+    flight_id = (
+        getattr(item, "attrs", {}).get("flight_id", "UNKNOWN")
+        if hasattr(item, "attrs")
+        else "UNKNOWN"
+    )
     try:
         out = processor_func(item)
-        return True, i, out, None, flight_id
+        return StepSuccess(index=i, flight_id=flight_id, data=out)
     except Exception as e:
-        return False, i, None, repr(e), flight_id
+        return StepFailure(index=i, flight_id=flight_id, error_msg=repr(e))
 
 
 def _create_error_record(
     original_flight: Any,
     flight_id: str,
     step_name: str,
-    error_msg: str | None,
+    error_msg: str,
 ) -> dict[str, Any]:
+    """Create a structured error record for a failed flight."""
     attrs = original_flight.attrs if hasattr(original_flight, "attrs") else {}
     return {
         "flight_information": {
@@ -227,19 +275,36 @@ def _create_error_record(
 
 
 def _process_parallel_results(
-    results: list[tuple[bool, int, Any, str | None, str]],
-    original_seq: list[Any],
+    results: list[StepResult[U]],
+    original_seq: list[T],
     step_name: str,
-) -> tuple[list[Any], list[dict[str, Any]]]:
-    successful: list[Any] = []
+) -> tuple[list[U], list[dict[str, Any]]]:
+    """
+    Process parallel step results using discriminated union pattern.
+
+    Type narrowing via isinstance allows returning typed list[U] without cast.
+    """
+    successful: list[U] = []
     errors: list[dict[str, Any]] = []
 
-    for ok, i, out, err, flight_id in sorted(results, key=lambda x: x[1]):
-        if ok:
-            successful.append(out)
+    for res in sorted(results, key=lambda x: x.index):
+        if isinstance(res, StepSuccess):
+            # Type narrowing: res.data is U
+            successful.append(res.data)
         else:
-            errors.append(_create_error_record(original_seq[i], flight_id, step_name, err))
-            logger.error("%s failed for flight %s (index %d): %s", step_name, flight_id, i, err)
+            # res is StepFailure
+            errors.append(
+                _create_error_record(
+                    original_seq[res.index], res.flight_id, step_name, res.error_msg
+                )
+            )
+            logger.error(
+                "%s failed for flight %s (index %d): %s",
+                step_name,
+                res.flight_id,
+                res.index,
+                res.error_msg,
+            )
 
     if errors:
         logger.warning("%d/%d flights failed at %s", len(errors), len(original_seq), step_name)
@@ -340,7 +405,7 @@ class FleetRunner:
 
         # ---- Vectorized step objects (created in _load_weather) --------------
         self.weather_step: WeatherProvider | None = None
-        self.cocip_step: CoCiPModel | None = None
+        self.cocip_step: ContrailsModel | None = None
 
     # -------------------------------------------------------------------------
     # Param handling (FlightRunner-like)
@@ -393,8 +458,14 @@ class FleetRunner:
         logger.info("Initializing vectorized steps (weather, CoCiP)...")
 
         # Weather intersection step
+        # Wrap HumidityScaling (pycontrails) with adapter for HumidityScalingModel protocol
+        humidity_model = (
+            PcHumidityScalingAdapter(self.cfg.humidity_scaling)
+            if self.cfg.humidity_scaling is not None
+            else None
+        )
         weather_params = WeatherProviderParams(
-            humidity_scaling=self.cfg.humidity_scaling,
+            humidity_scaling=humidity_model,
             **self._params("weather_intersection"),
         )
         self.weather_step = WeatherProvider(
@@ -466,7 +537,7 @@ class FleetRunner:
         )
         self.error_records.extend(errs)
 
-        self.fleet_with_weather = cast(list[FlightWithWeather], flights)
+        self.fleet_with_weather = flights
         self.interpolated_fleet = None  # free memory
 
         end = time.time()
@@ -629,7 +700,10 @@ class FleetRunner:
         """
         rows: list[dict[str, Any]] = []
 
-        for payload in self.results["flight_results"] or []:
+        if self.results is None:
+            return pd.DataFrame(rows)
+
+        for payload in self.results.get("flight_results") or []:
             # -------- Error case --------
             if "error" in payload:
                 fi = payload.get("flight_information", {}) or {}
@@ -667,24 +741,24 @@ class FleetRunner:
 
     def _run_vectorized_step(
         self,
-        flights: list[T],
+        flights: list[InFlightT],
         step_name: str,
-        step: Any,  # Step with run_fleet() method
+        step: VectorizedStep[InFlightT, OutFlightT],
         critical_columns: tuple[str, ...],
-    ) -> list[U]:
+    ) -> list[OutFlightT]:
         """
         Run a vectorized step with error handling.
 
         Args:
-            flights: List of input flights
+            flights: List of input flights (must be Flight subclass)
             step_name: Name of the step (for logging/error messages)
-            step: Step instance with run_fleet() method
+            step: Step instance implementing VectorizedStep protocol
             critical_columns: Columns to check for failures
 
         Returns:
-            List of successful output flights
+            List of successful output flights (type-safe, no cast needed)
         """
-        # Call step's run_fleet() method
+        # Call step's run_fleet() method (typed via VectorizedStep protocol)
         result_flights = step.run_fleet(flights)
 
         # Check for critical column failures and filter
@@ -695,7 +769,7 @@ class FleetRunner:
         )
         self.error_records.extend(errs)
 
-        return cast(list[U], successful)
+        return successful
 
     def _run_parallel_step(
         self,
@@ -703,6 +777,11 @@ class FleetRunner:
         step_name: str,
         processor_func: Callable[[T], U],
     ) -> tuple[list[U], list[dict[str, Any]]]:
+        """
+        Run a step in parallel across all items using joblib.
+
+        Returns typed results without cast thanks to discriminated union pattern.
+        """
         t0 = time.time()
         logger.info(
             "%s %d flights (n_jobs=%s)...",
@@ -711,15 +790,13 @@ class FleetRunner:
             self.cfg.njobs,
         )
 
-        results = Parallel(
+        results: list[StepResult[U]] = Parallel(
             n_jobs=self.cfg.njobs,
             prefer=self.cfg.prefer,
             batch_size=self.cfg.batch_size,
-        )(
-            delayed(_process_one)(i, item, processor_func, _extract_flight_id)
-            for i, item in enumerate(seq)
-        )
+        )(delayed(_process_one)(i, item, processor_func) for i, item in enumerate(seq))
 
+        # Type-safe processing via discriminated union
         good_seq, error_records = _process_parallel_results(results, seq, step_name)
 
         if self.cfg.shutdown_executor_between_steps:
@@ -729,7 +806,7 @@ class FleetRunner:
             gc.collect()
 
         logger.info("%s complete in %.2fs", step_name.capitalize(), time.time() - t0)
-        return cast(list[U], good_seq), error_records
+        return good_seq, error_records
 
     # -------------------------------------------------------------------------
     # Vectorized fleet operations
@@ -741,14 +818,19 @@ class FleetRunner:
 
     def _check_and_filter_failed_flights(
         self,
-        seq: list[Flight],
+        seq: list[FlightT],
         critical_columns: tuple[str, ...],
         step_name: str,
-    ) -> tuple[list[Flight], list[dict[str, Any]]]:
+    ) -> tuple[list[FlightT], list[dict[str, Any]]]:
+        """
+        Filter out flights that failed based on critical column checks.
+
+        Generic over FlightT (bound to Flight) to preserve input type in output.
+        """
         if not critical_columns:
             return seq, []
 
-        successful: list[Flight] = []
+        successful: list[FlightT] = []
         errors: list[dict[str, Any]] = []
 
         for flight in seq:

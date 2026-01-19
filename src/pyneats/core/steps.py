@@ -25,9 +25,12 @@ from pycontrails import Flight
 __all__ = [
     "InFlight",
     "OutFlight",
+    "InFlightT",
+    "OutFlightT",
     "Params",
     "StepError",
     "Step",
+    "VectorizedStep",
     "BaseStep",
     "BaseParams",
 ]
@@ -57,6 +60,28 @@ class Step(Protocol[InFlight, OutFlight]):
     """Protocol defining the core interface for NEATS processing steps."""
 
     def __call__(self, flight: InFlight) -> OutFlight: ...
+
+
+# Invariant type variables for VectorizedStep (lists are invariant)
+InFlightT = TypeVar("InFlightT", bound=Flight)
+OutFlightT = TypeVar("OutFlightT", bound=Flight)
+
+
+@runtime_checkable
+class VectorizedStep(Protocol[InFlightT, OutFlightT]):
+    """
+    Protocol for steps that support fleet-level vectorized execution.
+
+    Steps implementing this protocol can process multiple flights in a single
+    batch operation, enabling performance optimizations like vectorized
+    computations and reduced overhead.
+
+    Type Parameters:
+        InFlightT: The input flight type (invariant, bound to Flight)
+        OutFlightT: The output flight type (invariant, bound to Flight)
+    """
+
+    def run_fleet(self, flights: list[InFlightT]) -> list[OutFlightT]: ...
 
 
 def update_param_dict(
@@ -92,7 +117,7 @@ class BaseStep(Generic[InFlight, OutFlight, Params]):
         self,
         params: Params | Mapping[str, Any] | None = None,
         **params_kwargs: Any,
-    ):
+    ) -> None:
         if params is None:
             params_dict = asdict(self.default_params())
         elif isinstance(params, self.default_params):
