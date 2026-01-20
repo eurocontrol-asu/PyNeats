@@ -335,6 +335,34 @@ def apply_q_fuel(
     return data
 
 
+def filter_input_to_match_outputs(
+    input_data: list[dict[str, Any]],
+    outputs: list[FlightView],
+) -> list[dict[str, Any]]:
+    """Filter input flights to only include those that succeeded in pipeline.
+
+    This ensures input and output JSON files have matching flights.
+    """
+    # Get flight IDs from successful outputs
+    output_ids = {f.attrs.get("flight_id") for f in outputs}
+
+    # Filter input to only include flights that succeeded
+    filtered = [
+        flight
+        for flight in input_data
+        if flight["flight_information"]["flight_identification"] in output_ids
+    ]
+
+    if len(filtered) < len(input_data):
+        _log.warning(
+            "Filtered input from %d to %d flights (some flights failed in pipeline)",
+            len(input_data),
+            len(filtered),
+        )
+
+    return filtered
+
+
 def main() -> int:
     """Main entry point."""
     args = parse_args()
@@ -410,12 +438,12 @@ def main() -> int:
 
     for suffix, modifier_fn, perturb_key in test_cases:
         _log.info("-" * 40)
-        _log.info("Generating case: %s (factor=%.2f)", suffix, PERTURBATIONS[perturb_key])
+        _log.info("Generating case: %s (factor=%.3f)", suffix, PERTURBATIONS[perturb_key])
 
         # Apply modification
         modified_input = modifier_fn(original_input, baseline, PERTURBATIONS[perturb_key])
 
-        # Save modified input
+        # Save modified input to temporary path first
         case_input_path = args.output_dir / f"{base_name}_{suffix}_input.json"
         save_input(modified_input, case_input_path)
 
@@ -423,10 +451,21 @@ def main() -> int:
         _log.info("Running pipeline...")
         try:
             outputs = run_pipeline(case_input_path, zarr_paths, args.bada_path)
+
+            # Filter input to only include flights that succeeded
+            filtered_input = filter_input_to_match_outputs(modified_input, outputs)
+
+            # Re-save filtered input (overwrite)
+            save_input(filtered_input, case_input_path)
+
+            # Save output
             case_output_path = args.output_dir / f"{base_name}_{suffix}_output.json"
             save_output(outputs, case_output_path)
         except Exception as e:
             _log.error("Failed to generate case %s: %s", suffix, e)
+            # Remove the input file if pipeline failed completely
+            if case_input_path.exists():
+                case_input_path.unlink()
             continue
 
     _log.info("=" * 60)
