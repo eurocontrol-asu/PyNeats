@@ -55,7 +55,7 @@ _log = logging.getLogger(__name__)
 
 
 # Perturbation factors for each test case
-PERTURBATIONS = {
+PERTURBATIONS: dict[str, float] = {
     "payload_factor": 0.85,  # 85% of default (1.0 -> 0.85)
     "takeoff_mass": 1.02,  # 102% of baseline
     "aircraft_mass_col": 0.995,  # 99.5% of baseline (small to avoid BADA failures)
@@ -63,6 +63,7 @@ PERTURBATIONS = {
     "engine_efficiency_col": 0.97,  # 97% of baseline
     "hydrogen_content": 1.02,  # 102% of default (13.79 -> ~14.07)
     "q_fuel": 0.98,  # 98% of default (42.8M -> ~41.9M)
+    "mixed_columns": 1.0,  # Not used, but kept for interface consistency
 }
 
 
@@ -367,6 +368,77 @@ def apply_q_fuel(
     return data
 
 
+def apply_mixed_columns(
+    input_data: list[dict[str, Any]],
+    baseline: dict[str, Any],
+    factor: float,  # Not used, kept for interface consistency
+) -> list[dict[str, Any]]:
+    """Apply different optional columns to different flights.
+
+    This creates a heterogeneous input where flights have different columns,
+    testing the FleetRunner's ability to handle column harmonization.
+
+    Column assignment pattern:
+    - Flight 0: fuel_flow only
+    - Flight 1: aircraft_mass only
+    - Flight 2: engine_efficiency only
+    - Flight 3: all three columns (fuel_flow, aircraft_mass, engine_efficiency)
+    - Flight 4+: no optional columns
+
+    Args:
+        input_data: Original input flight data
+        baseline: Baseline values extracted from default case outputs
+        factor: Perturbation factor (not used, kept for interface consistency)
+
+    Returns:
+        Modified input with heterogeneous columns across flights
+    """
+    data = copy.deepcopy(input_data)
+
+    # Define which columns each flight should have
+    # Pattern: [(has_fuel_flow, has_aircraft_mass, has_engine_efficiency), ...]
+    column_patterns = [
+        (True, False, False),  # Flight 0: fuel_flow only
+        (False, True, False),  # Flight 1: aircraft_mass only
+        (False, False, True),  # Flight 2: engine_efficiency only
+        (True, True, True),  # Flight 3: all columns
+        (False, False, False),  # Flight 4+: no optional columns
+    ]
+
+    for idx, flight in enumerate(data):
+        flight_id = flight["flight_information"]["flight_identification"]
+        trajectory_data = flight["flight_information"]["trajectory"]["trajectory_data"]
+
+        # Get pattern for this flight (cycle if more flights than patterns)
+        pattern_idx = idx % len(column_patterns)
+        has_ff, has_am, has_ee = column_patterns[pattern_idx]
+
+        # Get baseline values for this flight
+        ff_values = baseline["fuel_flow"].get(flight_id)
+        am_values = baseline["aircraft_mass"].get(flight_id)
+        ee_values = baseline["engine_efficiency"].get(flight_id)
+
+        # Apply columns based on pattern
+        for i, waypoint in enumerate(trajectory_data):
+            if has_ff and ff_values is not None and i < len(ff_values):
+                waypoint["ff"] = float(ff_values[i])
+            if has_am and am_values is not None and i < len(am_values):
+                waypoint["am"] = float(am_values[i])
+            if has_ee and ee_values is not None and i < len(ee_values):
+                waypoint["ee"] = float(ee_values[i])
+
+        _log.debug(
+            "Flight %d (%s): ff=%s, am=%s, ee=%s",
+            idx,
+            flight_id,
+            has_ff,
+            has_am,
+            has_ee,
+        )
+
+    return data
+
+
 def filter_input_to_match_outputs(
     input_data: list[dict[str, Any]],
     result: PipelineResult,
@@ -490,7 +562,7 @@ def main() -> int:
     _log.info("=" * 60)
 
     # Define all test cases: (suffix, modifier_function, perturbation_key)
-    test_cases = [
+    test_cases: list[tuple[str, Any, str]] = [
         ("payload_factor", apply_payload_factor, "payload_factor"),
         ("takeoff_mass", apply_takeoff_mass, "takeoff_mass"),
         ("aircraft_mass_col", apply_aircraft_mass_column, "aircraft_mass_col"),
@@ -498,6 +570,8 @@ def main() -> int:
         ("engine_efficiency_col", apply_engine_efficiency_column, "engine_efficiency_col"),
         ("hydrogen_content", apply_hydrogen_content, "hydrogen_content"),
         ("q_fuel", apply_q_fuel, "q_fuel"),
+        # Special case: tests FleetRunner's column harmonization with heterogeneous inputs
+        ("mixed_columns", apply_mixed_columns, "mixed_columns"),
     ]
 
     for suffix, modifier_fn, perturb_key in test_cases:
