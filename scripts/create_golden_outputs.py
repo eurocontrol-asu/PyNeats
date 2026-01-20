@@ -32,6 +32,7 @@ import copy
 import json
 import logging
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -142,12 +143,43 @@ def create_zarr_paths(weather_path: Path) -> ZarrPaths:
     return ZarrPaths(met_store, rad_store, wind_store)
 
 
+@dataclass
+class PipelineResult:
+    """Result of running the pipeline on a set of flights."""
+
+    outputs: list[FlightView]
+    errors: list[dict[str, Any]]
+
+    @property
+    def num_succeeded(self) -> int:
+        """Number of flights that succeeded."""
+        return len(self.outputs)
+
+    @property
+    def num_failed(self) -> int:
+        """Number of flights that failed."""
+        return len(self.errors)
+
+    def get_failed_flight_ids(self) -> set[str]:
+        """Get the set of flight IDs that failed."""
+        return {err.get("flight_id", "unknown") for err in self.errors}
+
+
 def run_pipeline(
     input_path: Path,
     zarr_paths: ZarrPaths,
     bada_path: Path,
-) -> list[FlightView]:
-    """Run FleetRunner pipeline and return output flights."""
+) -> PipelineResult:
+    """Run FleetRunner pipeline and return results with error information.
+
+    Args:
+        input_path: Path to input JSON file
+        zarr_paths: Weather data paths
+        bada_path: Path to BADA data directory
+
+    Returns:
+        PipelineResult containing successful outputs and error records
+    """
     cfg = FleetRunnerParams(
         trajectory_json_filepath=str(input_path),
         zarr_paths=zarr_paths,
@@ -161,10 +193,10 @@ def run_pipeline(
     if runner.fleet_with_climate_impact is None:
         raise RuntimeError(f"Pipeline produced no output. Errors: {runner.error_records}")
 
-    if runner.error_records:
-        _log.warning("Pipeline had %d errors: %s", len(runner.error_records), runner.error_records)
-
-    return list(runner.fleet_with_climate_impact)
+    return PipelineResult(
+        outputs=list(runner.fleet_with_climate_impact),
+        errors=list(runner.error_records) if runner.error_records else [],
+    )
 
 
 def extract_baseline_values(flights: list[FlightView]) -> dict[str, Any]:
@@ -337,14 +369,21 @@ def apply_q_fuel(
 
 def filter_input_to_match_outputs(
     input_data: list[dict[str, Any]],
-    outputs: list[FlightView],
+    result: PipelineResult,
 ) -> list[dict[str, Any]]:
     """Filter input flights to only include those that succeeded in pipeline.
 
     This ensures input and output JSON files have matching flights.
+
+    Args:
+        input_data: Original input flight data
+        result: Pipeline result containing outputs and errors
+
+    Returns:
+        Filtered list of input flights matching successful outputs
     """
     # Get flight IDs from successful outputs
-    output_ids = {f.attrs.get("flight_id") for f in outputs}
+    output_ids = {f.attrs.get("flight_id") for f in result.outputs}
 
     # Filter input to only include flights that succeeded
     filtered = [
@@ -353,12 +392,24 @@ def filter_input_to_match_outputs(
         if flight["flight_information"]["flight_identification"] in output_ids
     ]
 
-    if len(filtered) < len(input_data):
+    # Log detailed information about failed flights
+    if result.num_failed > 0:
+        _log.warning("=" * 60)
+        _log.warning("PIPELINE FAILURES: %d flight(s) failed", result.num_failed)
+        _log.warning("=" * 60)
+        for error in result.errors:
+            flight_id = error.get("flight_id", "unknown")
+            error_msg = error.get("error", "Unknown error")
+            step = error.get("step", "unknown step")
+            _log.warning("  Flight '%s' failed at step '%s':", flight_id, step)
+            _log.warning("    Error: %s", error_msg)
+        _log.warning("-" * 60)
         _log.warning(
-            "Filtered input from %d to %d flights (some flights failed in pipeline)",
+            "Filtered input: %d -> %d flights (excluded failed flights)",
             len(input_data),
             len(filtered),
         )
+        _log.warning("=" * 60)
 
     return filtered
 
@@ -407,8 +458,21 @@ def main() -> int:
 
         # Run pipeline
         _log.info("Running pipeline on default case...")
-        default_outputs = run_pipeline(default_input_path, zarr_paths, args.bada_path)
-        save_output(default_outputs, default_output_path)
+        default_result = run_pipeline(default_input_path, zarr_paths, args.bada_path)
+
+        if default_result.num_failed > 0:
+            _log.warning(
+                "Default case had %d failures - these flights will be excluded from all cases",
+                default_result.num_failed,
+            )
+            # Filter input to match successful outputs
+            filtered_input = filter_input_to_match_outputs(original_input, default_result)
+            save_input(filtered_input, default_input_path)
+            # Update original_input to only include successful flights
+            original_input = filtered_input
+
+        save_output(default_result.outputs, default_output_path)
+        default_outputs = default_result.outputs
     else:
         _log.info("Skipping default case (--skip-default)")
         # Load existing output to extract baseline
@@ -440,7 +504,7 @@ def main() -> int:
         _log.info("-" * 40)
         _log.info("Generating case: %s (factor=%.3f)", suffix, PERTURBATIONS[perturb_key])
 
-        # Apply modification
+        # Apply modification to the (possibly filtered) original input
         modified_input = modifier_fn(original_input, baseline, PERTURBATIONS[perturb_key])
 
         # Save modified input to temporary path first
@@ -450,17 +514,25 @@ def main() -> int:
         # Run pipeline
         _log.info("Running pipeline...")
         try:
-            outputs = run_pipeline(case_input_path, zarr_paths, args.bada_path)
+            result = run_pipeline(case_input_path, zarr_paths, args.bada_path)
 
             # Filter input to only include flights that succeeded
-            filtered_input = filter_input_to_match_outputs(modified_input, outputs)
+            filtered_input = filter_input_to_match_outputs(modified_input, result)
 
             # Re-save filtered input (overwrite)
             save_input(filtered_input, case_input_path)
 
             # Save output
             case_output_path = args.output_dir / f"{base_name}_{suffix}_output.json"
-            save_output(outputs, case_output_path)
+            save_output(result.outputs, case_output_path)
+
+            # Summary for this case
+            _log.info(
+                "Case '%s': %d succeeded, %d failed",
+                suffix,
+                result.num_succeeded,
+                result.num_failed,
+            )
         except Exception as e:
             _log.error("Failed to generate case %s: %s", suffix, e)
             # Remove the input file if pipeline failed completely
