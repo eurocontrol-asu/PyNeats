@@ -96,7 +96,7 @@ def test_flight_runner_golden(
         )
 
         # Compare climate_payload
-        actual_payload = pipeline.flight_with_climate_impact.climate_payload
+        actual_payload = pipeline.flight_with_climate_impact.attrs.get("climate_impact", {})
         expected_payload = expected_flight.attrs.get("climate_impact", {})
         assert_climate_payload_equal(
             actual_payload,

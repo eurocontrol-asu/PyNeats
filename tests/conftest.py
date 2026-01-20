@@ -221,6 +221,15 @@ def weather(weather_path: Path | None):
 # -----------------------------------------------------------------------------
 
 
+# Keys to skip when comparing climate_payload (timing metrics vary between runs)
+_SKIP_CLIMATE_KEYS = frozenset(
+    {
+        "contrails_computation_time",
+        "non_co2_computation_time",
+    }
+)
+
+
 def assert_climate_payload_equal(
     actual: dict[str, Any],
     expected: dict[str, Any],
@@ -242,14 +251,15 @@ def assert_climate_payload_equal(
         raise AssertionError(f"{path}: type mismatch: {type(actual)} != {type(expected)}")
 
     if isinstance(expected, dict):
-        actual_keys = set(actual.keys())
-        expected_keys = set(expected.keys())
+        # Filter out keys that should be skipped (timing metrics)
+        actual_keys = set(actual.keys()) - _SKIP_CLIMATE_KEYS
+        expected_keys = set(expected.keys()) - _SKIP_CLIMATE_KEYS
         if actual_keys != expected_keys:
             missing = expected_keys - actual_keys
             extra = actual_keys - expected_keys
             raise AssertionError(f"{path}: key mismatch. Missing: {missing}, Extra: {extra}")
 
-        for key in expected:
+        for key in expected_keys:
             assert_climate_payload_equal(
                 actual[key], expected[key], rtol, path=f"{path}.{key}" if path else key
             )
