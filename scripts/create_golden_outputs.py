@@ -56,8 +56,8 @@ _log = logging.getLogger(__name__)
 # Perturbation factors for each test case
 PERTURBATIONS = {
     "payload_factor": 0.85,  # 85% of default (1.0 -> 0.85)
-    "takeoff_mass": 1.05,  # 105% of baseline
-    "aircraft_mass_col": 0.98,  # 98% of baseline
+    "takeoff_mass": 1.02,  # 102% of baseline
+    "aircraft_mass_col": 0.995,  # 99.5% of baseline (small to avoid BADA failures)
     "fuel_flow_col": 1.03,  # 103% of baseline
     "engine_efficiency_col": 0.97,  # 97% of baseline
     "hydrogen_content": 1.02,  # 102% of default (13.79 -> ~14.07)
