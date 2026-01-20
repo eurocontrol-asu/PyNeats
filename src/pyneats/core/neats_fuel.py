@@ -97,17 +97,45 @@ class NEATSFuel(SAFBlend):
         # set the blend gate so that downstream code treats as SAFBlend
         object.__setattr__(self, "pct_blend", pct_blend_gate if pct_blend_gate > 0.0 else 1e-12)
 
+    @staticmethod
+    def _to_scalar(val: Any) -> Any:
+        """Convert list/array to scalar if needed.
+
+        When loading from JSON, fuel properties may be stored as arrays (columns)
+        rather than scalars (attrs) due to FlightView.to_dict() merging behavior.
+        This extracts the first element if the value is a list/array.
+        """
+        if val is None:
+            return None
+        if isinstance(val, (list, tuple)) and len(val) > 0:
+            return val[0]
+        # Handle numpy arrays
+        if hasattr(val, "__len__") and hasattr(val, "__getitem__") and not isinstance(val, str):
+            try:
+                if len(val) > 0:
+                    return val[0]
+            except TypeError:
+                pass
+        return val
+
     @classmethod
     def from_attrs(cls, attrs: Mapping[str, Any]) -> NEATSFuel:
         """
         Build a NEATSFuel instance from a generic attributes dictionary.
         Accepts both None and missing values; applies NEATS defaults.
+
+        Note: Handles the case where fuel properties are stored as arrays
+        (from column serialization) by extracting the first element.
         """
         return cls(
-            q_fuel=attrs.get("q_fuel"),
-            hydrogen_content=attrs.get("hydrogen_content"),
-            h_c_ratio=attrs.get("h_c_ratio"),
-            sulphur_content=attrs.get("sulphur_content") or attrs.get("sulfur_content"),
-            aromatics_content=attrs.get("aromatics_content") or attrs.get("aromatic_content"),
-            naphthalene=attrs.get("naphthalene"),
+            q_fuel=cls._to_scalar(attrs.get("q_fuel")),
+            hydrogen_content=cls._to_scalar(attrs.get("hydrogen_content")),
+            h_c_ratio=cls._to_scalar(attrs.get("h_c_ratio")),
+            sulphur_content=cls._to_scalar(
+                attrs.get("sulphur_content") or attrs.get("sulfur_content")
+            ),
+            aromatics_content=cls._to_scalar(
+                attrs.get("aromatics_content") or attrs.get("aromatic_content")
+            ),
+            naphthalene=cls._to_scalar(attrs.get("naphthalene")),
         )
