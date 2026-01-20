@@ -1,40 +1,54 @@
-"""Test full pipeline using FlightRunner."""
+"""Test full pipeline using FlightRunner against golden reference data.
+
+This module tests the FlightRunner pipeline by:
+1. Loading input flights from golden test cases
+2. Running each flight through the full pipeline
+3. Comparing results against expected golden outputs
+
+Golden test cases are auto-discovered from tests/data/golden/.
+Each case has a {case_name}_input.json and {case_name}_output.json pair.
+"""
+
+from __future__ import annotations
+
+from typing import Any
 
 import pytest
 from pandas.testing import assert_frame_equal
 
+from pyneats.core.views import FlightView
 from pyneats.runners.flight import FlightRunner, RunnerConfig
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
-
-from .fixtures.nm_traffic import nm_input, nm_output  # noqa: F401
-from .fixtures.weather import weather  # noqa: F401
 
 
 @pytest.mark.integration
 @pytest.mark.requires_weather
 @pytest.mark.requires_bada
 @pytest.mark.slow
-def test_pipeline(nm_input, nm_output, weather, bada_root_path, flight_idx):  # noqa: F811
-    """Test full pipeline for individual flights.
+def test_flight_runner_golden(
+    golden_case: str,
+    golden_input: list[dict[str, Any]],
+    golden_output: list[FlightView],
+    weather,
+    bada_root_path,
+):
+    """Test FlightRunner produces golden outputs for each case.
 
-    Parses raw input, runs full FlightRunner pipeline, and compares
-    with expected FlightWithClimateImpact output from golden data.
+    Runs each flight in the golden case through FlightRunner and compares
+    the output with expected results.
     """
     # Import here to avoid collection errors when pyBADA not installed
     from pyneats.steps.climate_functions.views import FlightWithClimateImpact
 
-    # Skip if weather not available
+    # Skip if dependencies not available
     if weather is None:
-        pytest.skip(
-            "Weather data not available. Use pytest --met-cache-dir=/path/to/data or set MET_CACHE_DIR"  # noqa: E501
-        )
-
-    # Skip if BADA not available
+        pytest.skip("Weather data not available")
     if bada_root_path is None or not bada_root_path.exists():
         pytest.skip("BADA data not available")
 
-    rtol = 1e-3  # 0.1% relative tolerance (same as main branch)
-    atol = float("inf")  # Absolute tolerance (same as main branch)
+    # Test configuration
+    rtol = 1e-3  # 0.1% relative tolerance
+    atol = float("inf")  # No absolute tolerance limit
     check_cols = list(FlightWithClimateImpact.REQUIRED)
 
     # Setup BADA parameters
@@ -42,37 +56,40 @@ def test_pipeline(nm_input, nm_output, weather, bada_root_path, flight_idx):  # 
         "bada4_root_path": str(bada_root_path),
         "bada3_root_path": str(bada_root_path),
     }
-
     cfg = RunnerConfig(params={"performance": performance_params})
 
-    # Get input and expected output for this flight
-    raw_flight = nm_input[flight_idx]
-    expected_flight = nm_output[flight_idx]
-    expected_output = FlightWithClimateImpact.from_flight(expected_flight.copy()).to_dataframe()
-
-    # Convert JSON to DataFrame, then parse to Flight
-
-    dataframes = neats_json_to_flights([raw_flight])
-    assert len(dataframes) == 1, "neats_json_to_flights should return 1 DataFrame"
-
-    df = dataframes[0]
-
-    # Create flight runner
-    pipeline = FlightRunner(weather, df, cfg=cfg)
-    pipeline.eval()
-
-    # Get output of pipeline
-    if pipeline.flight_with_climate_impact is not None:
-        output = pipeline.flight_with_climate_impact.to_dataframe()
-    else:
-        raise RuntimeError("No 'flight_with_climate_impact' available on FlightRunner result")
-
-    # Assert that input matches output
-    assert_frame_equal(
-        output[check_cols],
-        expected_output[check_cols],
-        rtol=rtol,
-        atol=atol,
-        check_dtype=False,
-        obj=f"Flight {flight_idx} (full pipeline)",
+    # Convert input JSON to DataFrames
+    dataframes = neats_json_to_flights(golden_input)
+    assert len(dataframes) == len(golden_output), (
+        f"Case '{golden_case}': input has {len(dataframes)} flights, "
+        f"but output has {len(golden_output)} flights"
     )
+
+    # Test each flight
+    for i, (df, expected_flight) in enumerate(zip(dataframes, golden_output, strict=True)):
+        flight_id = expected_flight.attrs.get("flight_id", f"flight_{i}")
+        if isinstance(flight_id, list):
+            flight_id = flight_id[0] if flight_id else f"flight_{i}"
+
+        # Run pipeline
+        pipeline = FlightRunner(weather, df, cfg=cfg)
+        pipeline.eval()
+
+        # Get output
+        if pipeline.flight_with_climate_impact is None:
+            pytest.fail(
+                f"Case '{golden_case}', flight {i} [{flight_id}]: pipeline produced no output"
+            )
+
+        output = pipeline.flight_with_climate_impact.to_dataframe()
+        expected = FlightWithClimateImpact.from_flight(expected_flight.copy()).to_dataframe()
+
+        # Compare
+        assert_frame_equal(
+            output[check_cols],
+            expected[check_cols],
+            rtol=rtol,
+            atol=atol,
+            check_dtype=False,
+            obj=f"Case '{golden_case}', flight {i} [{flight_id}]",
+        )
