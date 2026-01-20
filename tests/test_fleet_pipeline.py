@@ -32,7 +32,7 @@ def test_fleet_runner_golden(
     golden_output: list[FlightView],
     weather,
     weather_path,
-    bada_root_path,
+    bada_path,
 ):
     """Test FleetRunner produces golden outputs for each case.
 
@@ -45,7 +45,7 @@ def test_fleet_runner_golden(
     # Skip if dependencies not available
     if weather is None:
         pytest.skip("Weather data not available")
-    if bada_root_path is None or not bada_root_path.exists():
+    if bada_path is None or not bada_path.exists():
         pytest.skip("BADA data not available")
     if weather_path is None:
         pytest.skip("Weather path not available")
@@ -68,7 +68,7 @@ def test_fleet_runner_golden(
     cfg = FleetRunnerParams(
         trajectory_json_filepath=str(golden_input_path),
         zarr_paths=zarr_paths,
-        bada_path=str(bada_root_path),
+        bada_path=str(bada_path),
         params={},
     )
 

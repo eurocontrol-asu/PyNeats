@@ -44,16 +44,16 @@ def pytest_configure(config: pytest.Config) -> None:
 def pytest_addoption(parser: pytest.Parser) -> None:
     """Add custom command line options."""
     parser.addoption(
-        "--met-cache-dir",
+        "--weather-path",
         action="store",
         default=None,
-        help="Path to test met cache data folder",
+        help="Path to weather data directory (containing icon_met.zarr, icon_rad.zarr)",
     )
     parser.addoption(
-        "--bada-root-path",
+        "--bada-path",
         action="store",
         default=None,
-        help="Path to BADA root directory (containing BADA3 and BADA4 subdirectories)",
+        help="Path to BADA data directory",
     )
 
 
@@ -148,15 +148,15 @@ def weather_path(pytestconfig: pytest.Config) -> Path | None:
     """Get path to weather data directory.
 
     Priority:
-    1. --met-cache-dir command line option
-    2. MET_CACHE_DIR environment variable
+    1. --weather-path command line option
+    2. WEATHER_PATH environment variable
     3. None (tests will skip)
     """
-    path = pytestconfig.getoption("met_cache_dir")
+    path = pytestconfig.getoption("weather_path")
     if path:
         return Path(path).resolve()
 
-    env_path = os.environ.get("MET_CACHE_DIR")
+    env_path = os.environ.get("WEATHER_PATH")
     if env_path:
         return Path(env_path).resolve()
 
@@ -164,19 +164,19 @@ def weather_path(pytestconfig: pytest.Config) -> Path | None:
 
 
 @pytest.fixture(scope="session")
-def bada_root_path(pytestconfig: pytest.Config) -> Path | None:
-    """Get path to BADA root directory.
+def bada_path(pytestconfig: pytest.Config) -> Path | None:
+    """Get path to BADA data directory.
 
     Priority:
-    1. --bada-root-path command line option
-    2. BADA_ROOT_PATH environment variable
+    1. --bada-path command line option
+    2. BADA_PATH environment variable
     3. None (tests will skip)
     """
-    path = pytestconfig.getoption("bada_root_path")
+    path = pytestconfig.getoption("bada_path")
     if path:
         return Path(path).resolve()
 
-    env_path = os.environ.get("BADA_ROOT_PATH")
+    env_path = os.environ.get("BADA_PATH")
     if env_path:
         return Path(env_path).resolve()
 
