@@ -598,27 +598,40 @@ class FleetRunner:
     # -------------------------------------------------------------------------
 
 
+
     @staticmethod
     def _seq_to_fleet(seq: List[Flight]) -> Fleet:
 
+        # 1. Store original columns and add fuel columns
         for s in seq:
-            s.attrs['columns'] = set(s.data.keys())
+            s.attrs['_original_columns'] = set(s.data.keys())
             s["q_fuel"] = np.full(len(s), s.fuel.q_fuel)
             s["ei_h2o"] = np.full(len(s), s.fuel.ei_h2o)
             s.fuel = None
 
-        fleet : Fleet = Fleet.from_seq(seq)
-        fleet.attrs['columns'] = set(fleet.data.keys())
+        # 2. Harmonize: compute union of all columns and pad missing with NaN
+        all_columns: set[str] = set()
+        for s in seq:
+            all_columns.update(s.data.keys())
+
+        for s in seq:
+            for col in all_columns - set(s.data.keys()):
+                s[col] = np.full(len(s), np.nan)
+
+        
+        # 3. Now safe to create Fleet (all flights have same columns)
+        fleet = Fleet.from_seq(seq)
+        fleet.attrs["_fleet_columns"] = all_columns
         return fleet
     
     @staticmethod
     def _fleet_to_seq(fleet: Fleet) -> List[Flight]:
         
-        fleet_columns = fleet.attrs.pop('columns')
+        fleet_columns = fleet.attrs.pop('_fleet_columns')
         seq = fleet.to_flight_list()
         
         for s in seq:
-            flight_columns = s.attrs.pop('columns')
+            flight_columns = s.attrs.pop('_original_columns')
             columns_to_delete = fleet_columns.difference(flight_columns)
 
             for c in columns_to_delete:

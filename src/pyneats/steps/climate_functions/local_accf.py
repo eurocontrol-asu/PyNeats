@@ -272,10 +272,7 @@ class LocalACCFModel(
         # Condition 1: Pressure is too high (Altitude too low)
         bad_pressure = flight[self.params.col_air_pressure] > DEFAULT_ACCF_VALIDITY_PRESSURE
 
-        # Condition 2: Phase is not Cruise
-        #bad_phase = flight[self.params.col_phase] != "Cruise"
-
-        mask = bad_pressure 
+        mask = bad_pressure
 
         o3[mask] = 0.0
         ch4[mask] = 0.0

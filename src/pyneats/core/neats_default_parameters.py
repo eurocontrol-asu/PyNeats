@@ -151,6 +151,3 @@ DEFAULT_SULPHUR_CONTENT : Final[float] = 0.003   # default value - Not used in c
 DEFAULT_NAPHTHALEN_CONTENT : Final[float] = 0.03 # default value - Not used in calculations
 DEFAULT_HYDROGEN_CONTENT : Final[float] = 13.79 # default value provided by the consortium (DLR/TO70)
 
-# Zarr Chunking 
-ZARR_CACHING_STRATEGY = Literal["all_variables", "by_variable"]
-DEFAULT_ZARR_CACHING_STRATEGY : Final[ZARR_CACHING_STRATEGY] = "all_variables"
