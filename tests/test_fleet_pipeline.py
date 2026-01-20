@@ -19,6 +19,7 @@ from pandas.testing import assert_frame_equal
 from pyneats.core.views import FlightView
 from pyneats.runners.fleet import FleetRunner, FleetRunnerParams
 from pyneats.steps.weather.weather_store import ZarrPaths
+from tests.conftest import assert_climate_payload_equal
 
 
 @pytest.mark.integration
@@ -105,4 +106,13 @@ def test_fleet_runner_golden(
             atol=atol,
             check_dtype=False,
             obj=f"Case '{golden_case}', flight {i} [{flight_id}]",
+        )
+
+        # Compare climate_payload
+        actual_payload = output_flight.attrs.get("climate_impact", {})
+        expected_payload = expected_flight.attrs.get("climate_impact", {})
+        assert_climate_payload_equal(
+            actual_payload,
+            expected_payload,
+            rtol=rtol,
         )

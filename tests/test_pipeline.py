@@ -19,6 +19,7 @@ from pandas.testing import assert_frame_equal
 from pyneats.core.views import FlightView
 from pyneats.runners.flight import FlightRunner, RunnerConfig
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
+from tests.conftest import assert_climate_payload_equal
 
 
 @pytest.mark.integration
@@ -84,7 +85,7 @@ def test_flight_runner_golden(
         output = pipeline.flight_with_climate_impact.to_dataframe()
         expected = FlightWithClimateImpact.from_flight(expected_flight.copy()).to_dataframe()
 
-        # Compare
+        # Compare dataframe columns
         assert_frame_equal(
             output[check_cols],
             expected[check_cols],
@@ -92,4 +93,13 @@ def test_flight_runner_golden(
             atol=atol,
             check_dtype=False,
             obj=f"Case '{golden_case}', flight {i} [{flight_id}]",
+        )
+
+        # Compare climate_payload
+        actual_payload = pipeline.flight_with_climate_impact.climate_payload
+        expected_payload = expected_flight.attrs.get("climate_impact", {})
+        assert_climate_payload_equal(
+            actual_payload,
+            expected_payload,
+            rtol=rtol,
         )

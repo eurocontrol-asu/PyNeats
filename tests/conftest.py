@@ -5,12 +5,14 @@ This module provides:
 - Auto-discovery of golden test cases from tests/data/golden/
 - Parametrized fixtures for input/output pairs
 - Weather and BADA path configuration
+- Helper functions for comparing test outputs
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -212,3 +214,68 @@ def weather(weather_path: Path | None):
         wind_store = None  # optional
 
     return get_weather_from_zarr(ZarrPaths(met_store, rad_store, wind_store))
+
+
+# -----------------------------------------------------------------------------
+# Helper functions for test comparisons
+# -----------------------------------------------------------------------------
+
+
+def assert_climate_payload_equal(
+    actual: dict[str, Any],
+    expected: dict[str, Any],
+    rtol: float = 1e-3,
+    path: str = "",
+) -> None:
+    """Assert two climate_payload dicts are equal with numeric tolerance.
+
+    Args:
+        actual: The actual climate_payload from the test
+        expected: The expected climate_payload from golden data
+        rtol: Relative tolerance for numeric comparisons
+        path: Current path in the nested structure (for error messages)
+
+    Raises:
+        AssertionError: If the dicts don't match
+    """
+    if type(actual) is not type(expected):
+        raise AssertionError(f"{path}: type mismatch: {type(actual)} != {type(expected)}")
+
+    if isinstance(expected, dict):
+        actual_keys = set(actual.keys())
+        expected_keys = set(expected.keys())
+        if actual_keys != expected_keys:
+            missing = expected_keys - actual_keys
+            extra = actual_keys - expected_keys
+            raise AssertionError(f"{path}: key mismatch. Missing: {missing}, Extra: {extra}")
+
+        for key in expected:
+            assert_climate_payload_equal(
+                actual[key], expected[key], rtol, path=f"{path}.{key}" if path else key
+            )
+
+    elif isinstance(expected, list):
+        if len(actual) != len(expected):
+            raise AssertionError(f"{path}: list length mismatch: {len(actual)} != {len(expected)}")
+        for i, (a, e) in enumerate(zip(actual, expected, strict=True)):
+            assert_climate_payload_equal(a, e, rtol, path=f"{path}[{i}]")
+
+    elif isinstance(expected, float):
+        if math.isnan(expected):
+            if not math.isnan(actual):
+                raise AssertionError(f"{path}: expected NaN, got {actual}")
+        elif expected == 0:
+            if abs(actual) > rtol:
+                raise AssertionError(f"{path}: {actual} != 0 (atol={rtol})")
+        else:
+            rel_diff = abs(actual - expected) / abs(expected)
+            if rel_diff > rtol:
+                raise AssertionError(f"{path}: {actual} != {expected} (rel_diff={rel_diff:.2e})")
+
+    elif isinstance(expected, int):
+        if actual != expected:
+            raise AssertionError(f"{path}: {actual} != {expected}")
+
+    elif isinstance(expected, str):
+        if actual != expected:
+            raise AssertionError(f"{path}: '{actual}' != '{expected}'")
