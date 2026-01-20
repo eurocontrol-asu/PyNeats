@@ -211,12 +211,18 @@ def apply_payload_factor(
     baseline: dict[str, Any],
     factor: float,
 ) -> list[dict[str, Any]]:
-    """Apply perturbed payload_factor to input flights."""
+    """Apply perturbed payload_factor (load_factor) to input flights.
+
+    Note: In NM JSON format, payload_factor is stored as 'load_factor'
+    in aircraft_properties.
+    """
     data = copy.deepcopy(input_data)
     for flight in data:
         flight_id = flight["flight_information"]["flight_identification"]
         base_value = baseline["payload_factor"].get(flight_id, DEFAULT_PAYLOAD_FACTOR)
-        flight["flight_information"]["payload_factor"] = base_value * factor
+        # Ensure aircraft_properties exists
+        ap = flight["flight_information"].setdefault("aircraft_properties", {})
+        ap["load_factor"] = base_value * factor
     return data
 
 
@@ -225,13 +231,18 @@ def apply_takeoff_mass(
     baseline: dict[str, Any],
     factor: float,
 ) -> list[dict[str, Any]]:
-    """Apply perturbed takeoff_mass to input flights."""
+    """Apply perturbed takeoff_mass to input flights.
+
+    Note: In NM JSON format, takeoff_mass is stored in aircraft_properties.
+    """
     data = copy.deepcopy(input_data)
     for flight in data:
         flight_id = flight["flight_information"]["flight_identification"]
         base_value = baseline["takeoff_mass"].get(flight_id)
         if base_value is not None:
-            flight["flight_information"]["takeoff_mass"] = base_value * factor
+            # Ensure aircraft_properties exists
+            ap = flight["flight_information"].setdefault("aircraft_properties", {})
+            ap["takeoff_mass"] = base_value * factor
     return data
 
 
