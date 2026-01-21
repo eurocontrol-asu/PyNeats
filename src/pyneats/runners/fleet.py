@@ -620,7 +620,7 @@ class FleetRunner:
 
         
         # 3. Now safe to create Fleet (all flights have same columns)
-        fleet = Fleet.from_seq(seq)
+        fleet = Fleet.from_seq(seq, broadcast_numeric = False)
         fleet.attrs["_fleet_columns"] = all_columns
         return fleet
     
