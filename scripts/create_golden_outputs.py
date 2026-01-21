@@ -64,6 +64,7 @@ PERTURBATIONS: dict[str, float] = {
     "hydrogen_content": 1.02,  # 102% of default (13.79 -> ~14.07)
     "q_fuel": 0.98,  # 98% of default (42.8M -> ~41.9M)
     "mixed_columns": 1.0,  # Not used, but kept for interface consistency
+    "mixed_attrs": 1.0,  # Not used, but kept for interface consistency
 }
 
 
@@ -439,6 +440,83 @@ def apply_mixed_columns(
     return data
 
 
+def apply_mixed_attrs(
+    input_data: list[dict[str, Any]],
+    baseline: dict[str, Any],
+    factor: float,  # Not used, kept for interface consistency
+) -> list[dict[str, Any]]:
+    """Apply different optional attributes to different flights.
+
+    This creates a heterogeneous input where flights have different optional
+    attributes, testing the FleetRunner's ability to handle varying attrs.
+
+    Attribute assignment pattern:
+    - Flight 0: payload_factor only
+    - Flight 1: takeoff_mass only
+    - Flight 2: hydrogen_content only
+    - Flight 3: q_fuel only
+    - Flight 4+: all optional attrs
+
+    Args:
+        input_data: Original input flight data
+        baseline: Baseline values extracted from default case outputs
+        factor: Perturbation factor (not used, kept for interface consistency)
+
+    Returns:
+        Modified input with heterogeneous attributes across flights
+    """
+    data = copy.deepcopy(input_data)
+
+    # Define which attrs each flight should have
+    # Pattern: [(has_payload_factor, has_takeoff_mass, has_hydrogen_content, has_q_fuel), ...]
+    attr_patterns = [
+        (True, False, False, False),  # Flight 0: payload_factor only
+        (False, True, False, False),  # Flight 1: takeoff_mass only
+        (False, False, True, False),  # Flight 2: hydrogen_content only
+        (False, False, False, True),  # Flight 3: q_fuel only
+        (True, True, True, True),  # Flight 4+: all optional attrs
+    ]
+
+    for idx, flight in enumerate(data):
+        flight_id = flight["flight_information"]["flight_identification"]
+
+        # Get pattern for this flight (cycle if more flights than patterns)
+        pattern_idx = idx % len(attr_patterns)
+        has_pf, has_tom, has_hc, has_qf = attr_patterns[pattern_idx]
+
+        # Get baseline values for this flight
+        pf_value = baseline["payload_factor"].get(flight_id, DEFAULT_PAYLOAD_FACTOR)
+        tom_value = baseline["takeoff_mass"].get(flight_id)
+        hc_value = baseline["hydrogen_content"].get(flight_id, DEFAULT_HYDROGEN_CONTENT)
+        qf_value = baseline["q_fuel"].get(flight_id, DEFAULT_Q_FUEL)
+
+        # Ensure aircraft_properties and fuel_properties exist
+        ap = flight["flight_information"].setdefault("aircraft_properties", {})
+        fp = flight["flight_information"].setdefault("fuel_properties", {})
+
+        # Apply attrs based on pattern
+        if has_pf:
+            ap["load_factor"] = pf_value
+        if has_tom and tom_value is not None:
+            ap["takeoff_mass"] = tom_value
+        if has_hc:
+            fp["hydrogen_content"] = hc_value
+        if has_qf:
+            fp["calorific_value"] = qf_value
+
+        _log.debug(
+            "Flight %d (%s): pf=%s, tom=%s, hc=%s, qf=%s",
+            idx,
+            flight_id,
+            has_pf,
+            has_tom,
+            has_hc,
+            has_qf,
+        )
+
+    return data
+
+
 def filter_input_to_match_outputs(
     input_data: list[dict[str, Any]],
     result: PipelineResult,
@@ -570,8 +648,9 @@ def main() -> int:
         ("engine_efficiency_col", apply_engine_efficiency_column, "engine_efficiency_col"),
         ("hydrogen_content", apply_hydrogen_content, "hydrogen_content"),
         ("q_fuel", apply_q_fuel, "q_fuel"),
-        # Special case: tests FleetRunner's column harmonization with heterogeneous inputs
+        # FleetRunner-only cases: test heterogeneous inputs that require column/attr harmonization
         ("mixed_columns", apply_mixed_columns, "mixed_columns"),
+        ("mixed_attrs", apply_mixed_attrs, "mixed_attrs"),
     ]
 
     for suffix, modifier_fn, perturb_key in test_cases:

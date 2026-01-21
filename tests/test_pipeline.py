@@ -21,6 +21,9 @@ from pyneats.runners.flight import FlightRunner, RunnerConfig
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
 from tests.conftest import assert_climate_payload_equal
 
+# Test cases that require FleetRunner (heterogeneous column/attr handling)
+FLEET_RUNNER_ONLY_CASES = frozenset({"mixed_columns", "mixed_attrs"})
+
 
 @pytest.mark.integration
 @pytest.mark.requires_weather
@@ -37,7 +40,13 @@ def test_flight_runner_golden(
 
     Runs each flight in the golden case through FlightRunner and compares
     the output with expected results.
+
+    Note: Cases with heterogeneous inputs (mixed_columns, mixed_attrs) are
+    skipped as they require FleetRunner's column/attr harmonization.
     """
+    # Skip FleetRunner-only test cases
+    if any(case_suffix in golden_case for case_suffix in FLEET_RUNNER_ONLY_CASES):
+        pytest.skip(f"'{golden_case}' requires FleetRunner (heterogeneous inputs)")
     # Import here to avoid collection errors when pyBADA not installed
     from pyneats.steps.climate_functions.views import FlightWithClimateImpact
 
