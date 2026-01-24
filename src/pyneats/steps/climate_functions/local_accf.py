@@ -33,7 +33,7 @@ from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.climate_functions.climaccf import ACCFParams
 from pyneats.steps.climate_functions.protocol import ClimateStepError, NonCO2Model
-from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
+from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact, FlightWithSegmentATR
 from pyneats.steps.emissions.views import FlightWithEmissions
 
 __all__ = ["LocalACCFParams", "LocalACCFModel"]
@@ -112,7 +112,7 @@ def _fin_rowwise(
 class LocalACCFModel(
     BaseStep[
         FlightWithEmissions,
-        FlightWithNonCO2Impact,
+        FlightWithSegmentATR,
         LocalACCFParams,
     ]
 ):
@@ -272,9 +272,6 @@ class LocalACCFModel(
         # Condition 1: Pressure is too high (Altitude too low)
         bad_pressure = flight[self.params.col_air_pressure] > DEFAULT_ACCF_VALIDITY_PRESSURE
 
-        # Condition 2: Phase is not Cruise
-        # bad_phase = flight[self.params.col_phase] != "Cruise"
-
         mask = bad_pressure
 
         o3[mask] = 0.0
@@ -286,4 +283,4 @@ class LocalACCFModel(
         flight["ATR_20_CH4"] = ch4
         flight["ATR_20_H2O"] = h2o
 
-        return FlightWithNonCO2Impact.from_flight(flight)
+        return FlightWithSegmentATR.from_flight(flight)

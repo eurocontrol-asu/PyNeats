@@ -36,7 +36,7 @@ from pyneats.steps.climate_functions import (
     ClimateStepError,
     ContrailsModel,
     ContrailsStepError,
-    FlightWithContrailsImpact,
+    FlightWithRFContrailsImpact,
     FlightWithNonCO2Impact,
     NonCO2Model,
 )
@@ -169,7 +169,7 @@ class FlightRunner:
         self.flight_with_weather: FlightWithWeather | None = None
         self.flight_with_performance: FlightWithPerformance | None = None
         self.flight_with_emissions: FlightWithEmissions | None = None
-        self.flight_with_contrails: FlightWithContrailsImpact | None = None
+        self.flight_with_contrails: FlightWithRFContrailsImpact | None = None
         self.flight_with_nonco2: FlightWithNonCO2Impact | None = None
         self.flight_with_climate_impact: FlightWithClimateImpact | None = None
 
@@ -329,7 +329,7 @@ class FlightRunner:
 
         # Run the contrails step (COCIP). It returns a base Flight.
         try:
-            enriched: FlightWithContrailsImpact = self.contrails_model(self.flight_with_emissions)
+            enriched: FlightWithRFContrailsImpact = self.contrails_model(self.flight_with_emissions)
         except ContrailsStepError:
             # Already logged inside the model; keep original traceback.
             raise

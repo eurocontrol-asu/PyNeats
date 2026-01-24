@@ -4,7 +4,7 @@ from typing import Protocol, runtime_checkable
 
 from pyneats.core.steps import Step, StepError, VectorizedStep
 from pyneats.steps.climate_functions.views import (
-    FlightWithContrailsImpact,
+    FlightWithRFContrailsImpact,
     FlightWithNonCO2Impact,
 )
 from pyneats.steps.emissions.views import FlightWithEmissions
@@ -19,8 +19,8 @@ __all__ = [
 
 @runtime_checkable
 class ContrailsModel(
-    Step[FlightWithEmissions, FlightWithContrailsImpact],
-    VectorizedStep[FlightWithEmissions, FlightWithContrailsImpact],
+    Step[FlightWithEmissions, FlightWithRFContrailsImpact],
+    VectorizedStep[FlightWithEmissions, FlightWithRFContrailsImpact],
     Protocol,
 ):
     """

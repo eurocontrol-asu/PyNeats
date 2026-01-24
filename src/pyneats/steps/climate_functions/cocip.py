@@ -25,7 +25,7 @@ from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.climate_functions.params import ClimateParams
 from pyneats.steps.climate_functions.protocol import ContrailsModel, ContrailsStepError
-from pyneats.steps.climate_functions.views import FlightWithContrailsImpact
+from pyneats.steps.climate_functions.views import FlightWithRFContrailsImpact
 from pyneats.steps.emissions.views import FlightWithEmissions
 
 __all__ = [
@@ -49,7 +49,7 @@ class ContrailsParams(ClimateParams):
 class CoCiPModel(
     BaseStep[
         FlightWithEmissions,
-        FlightWithContrailsImpact,
+        FlightWithRFContrailsImpact,
         ContrailsParams,
     ]
 ):
@@ -71,7 +71,7 @@ class CoCiPModel(
             self.logger.exception("Failed to initialize COCIP model")
             raise ContrailsStepError(f"COCIP initialization failed: {e}") from e
 
-    def run(self, flight: FlightWithEmissions) -> FlightWithContrailsImpact:
+    def run(self, flight: FlightWithEmissions) -> FlightWithRFContrailsImpact:
         try:
             out: Flight = self._impl.eval(source=flight)
         except Exception as e:
@@ -79,9 +79,9 @@ class CoCiPModel(
             raise ContrailsStepError(f"COCIP evaluation failed: {e}") from e
 
         self.logger.info("COCIP step completed successfully")
-        return FlightWithContrailsImpact.from_flight(out)
+        return FlightWithRFContrailsImpact.from_flight(out)
 
-    def run_fleet(self, flights: list[FlightWithEmissions]) -> list[FlightWithContrailsImpact]:
+    def run_fleet(self, flights: list[FlightWithEmissions]) -> list[FlightWithRFContrailsImpact]:
         """
         Fleet-level vectorized CoCiP evaluation.
 
@@ -113,7 +113,7 @@ class CoCiPModel(
         out = fleet_to_flights(results_fleet)
 
         # Zero-copy validation + type narrowing
-        typed = [FlightWithContrailsImpact.from_flight(f) for f in out]
+        typed = [FlightWithRFContrailsImpact.from_flight(f) for f in out]
 
         self.logger.info("Fleet CoCiP step completed successfully")
         return typed

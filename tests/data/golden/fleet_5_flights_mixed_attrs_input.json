@@ -8,7 +8,8 @@
       "departure_airport": "LZIB",
       "arrival_airport": "LBBG",
       "aircraft_properties": {
-        "aircraft_type": "A320"
+        "aircraft_type": "A320",
+        "load_factor": 1.0
       },
       "fuel_properties": {
         "hydrogen_content": null,
@@ -1166,7 +1167,8 @@
       "departure_airport": "KMEM",
       "arrival_airport": "EBLG",
       "aircraft_properties": {
-        "aircraft_type": "B77L"
+        "aircraft_type": "B77L",
+        "takeoff_mass": 275895.5854474202
       },
       "fuel_properties": {
         "hydrogen_content": null,
@@ -2948,7 +2950,7 @@
         "aircraft_type": "B738"
       },
       "fuel_properties": {
-        "hydrogen_content": null,
+        "hydrogen_content": 13.79,
         "hydrogen_per_carbon_ratio": null,
         "aromatic_content": null,
         "calorific_value": null
@@ -4208,7 +4210,7 @@
         "hydrogen_content": null,
         "hydrogen_per_carbon_ratio": null,
         "aromatic_content": null,
-        "calorific_value": null
+        "calorific_value": 42800000.0
       },
       "trajectory": {
         "trj_data_source": "Actual",
@@ -5999,13 +6001,15 @@
       "departure_airport": "OMDB",
       "arrival_airport": "KBOS",
       "aircraft_properties": {
-        "aircraft_type": "B77W"
+        "aircraft_type": "B77W",
+        "load_factor": 1.0,
+        "takeoff_mass": 351535.0
       },
       "fuel_properties": {
-        "hydrogen_content": null,
+        "hydrogen_content": 13.79,
         "hydrogen_per_carbon_ratio": null,
         "aromatic_content": null,
-        "calorific_value": null
+        "calorific_value": 42800000.0
       },
       "trajectory": {
         "trj_data_source": "Actual",

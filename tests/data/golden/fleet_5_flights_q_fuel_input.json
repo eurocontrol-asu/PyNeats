@@ -14,7 +14,7 @@
         "hydrogen_content": null,
         "hydrogen_per_carbon_ratio": null,
         "aromatic_content": null,
-        "calorific_value": null
+        "calorific_value": 41944000.0
       },
       "trajectory": {
         "trj_data_source": "Actual",
@@ -1172,7 +1172,7 @@
         "hydrogen_content": null,
         "hydrogen_per_carbon_ratio": null,
         "aromatic_content": null,
-        "calorific_value": null
+        "calorific_value": 41944000.0
       },
       "trajectory": {
         "trj_data_source": "Actual",
@@ -2951,7 +2951,7 @@
         "hydrogen_content": null,
         "hydrogen_per_carbon_ratio": null,
         "aromatic_content": null,
-        "calorific_value": null
+        "calorific_value": 41944000.0
       },
       "trajectory": {
         "trj_data_source": "Actual",
@@ -4208,7 +4208,7 @@
         "hydrogen_content": null,
         "hydrogen_per_carbon_ratio": null,
         "aromatic_content": null,
-        "calorific_value": null
+        "calorific_value": 41944000.0
       },
       "trajectory": {
         "trj_data_source": "Actual",
@@ -6005,7 +6005,7 @@
         "hydrogen_content": null,
         "hydrogen_per_carbon_ratio": null,
         "aromatic_content": null,
-        "calorific_value": null
+        "calorific_value": 41944000.0
       },
       "trajectory": {
         "trj_data_source": "Actual",

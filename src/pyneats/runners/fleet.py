@@ -43,7 +43,7 @@ from pyneats.runners.flight import RunnerConfig
 from pyneats.steps.climate_functions.cocip import CoCiPModel, ContrailsParams
 from pyneats.steps.climate_functions.protocol import ContrailsModel, NonCO2Model
 from pyneats.steps.climate_functions.views import (
-    FlightWithContrailsImpact,
+    FlightWithRFContrailsImpact,
     FlightWithNonCO2Impact,
 )
 from pyneats.steps.climate_metrics.protocol import ClimateImpactModel
@@ -171,6 +171,7 @@ class FleetRunnerParams(RunnerConfig):
     cocip_critical_columns: tuple[str, ...] = ()
 
     def validate(self) -> None:
+
         if self.zarr_paths is None:
             raise ValueError("FastFleetRunnerConfig.zarr_paths is required")
 
@@ -191,6 +192,7 @@ class FleetRunnerParams(RunnerConfig):
 # This is intentional for FleetRunner's use case where each step type is created
 # once per process with fixed params. If you need different params for the same
 # step type, consider including a params hash in the key.
+
 _STEP_CACHE: dict[tuple[type[Any], str], Any] = {}
 
 
@@ -355,7 +357,7 @@ class FleetRunner:
         self.fleet_with_weather: list[FlightWithWeather] | None = None
         self.fleet_with_performance: list[FlightWithPerformance] | None = None
         self.fleet_with_emissions: list[FlightWithEmissions] | None = None
-        self.fleet_with_contrails: list[FlightWithContrailsImpact] | None = None
+        self.fleet_with_contrails: list[FlightWithRFContrailsImpact] | None = None
         self.fleet_with_nonco2: list[FlightWithNonCO2Impact] | None = None
         self.fleet_with_climate_impact: list[FlightWithClimateImpact] | None = None
 

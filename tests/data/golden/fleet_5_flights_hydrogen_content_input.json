@@ -11,7 +11,7 @@
         "aircraft_type": "A320"
       },
       "fuel_properties": {
-        "hydrogen_content": null,
+        "hydrogen_content": 14.0658,
         "hydrogen_per_carbon_ratio": null,
         "aromatic_content": null,
         "calorific_value": null
@@ -1169,7 +1169,7 @@
         "aircraft_type": "B77L"
       },
       "fuel_properties": {
-        "hydrogen_content": null,
+        "hydrogen_content": 14.0658,
         "hydrogen_per_carbon_ratio": null,
         "aromatic_content": null,
         "calorific_value": null
@@ -2948,7 +2948,7 @@
         "aircraft_type": "B738"
       },
       "fuel_properties": {
-        "hydrogen_content": null,
+        "hydrogen_content": 14.0658,
         "hydrogen_per_carbon_ratio": null,
         "aromatic_content": null,
         "calorific_value": null
@@ -4205,7 +4205,7 @@
         "aircraft_type": "A333"
       },
       "fuel_properties": {
-        "hydrogen_content": null,
+        "hydrogen_content": 14.0658,
         "hydrogen_per_carbon_ratio": null,
         "aromatic_content": null,
         "calorific_value": null
@@ -6002,7 +6002,7 @@
         "aircraft_type": "B77W"
       },
       "fuel_properties": {
-        "hydrogen_content": null,
+        "hydrogen_content": 14.0658,
         "hydrogen_per_carbon_ratio": null,
         "aromatic_content": null,
         "calorific_value": null

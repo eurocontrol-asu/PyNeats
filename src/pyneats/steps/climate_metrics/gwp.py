@@ -37,7 +37,7 @@ from pyneats.core.physics import (
 from pyneats.core.steps import BaseParams, BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.climate_functions.climaccf import FlightWithNonCO2Impact
-from pyneats.steps.climate_functions.views import FlightWithContrailsImpact
+from pyneats.steps.climate_functions.views import FlightWithRFContrailsImpact
 from pyneats.steps.climate_metrics.protocol import (
     ClimateImpactModel,
     ClimateImpactStepError,
@@ -179,7 +179,7 @@ class GWPMetrics(
     def run(self, flight: FlightWithNonCO2Impact) -> FlightWithClimateImpact:
         # Ensure contrail EF is present
         try:
-            _ = FlightWithContrailsImpact.from_flight(flight)
+            _ = FlightWithRFContrailsImpact.from_flight(flight)
         except KeyError as e:
             self.logger.error("Input missing required contrail columns: %s", e)
             raise ClimateImpactStepError(f"Missing required contrail columns: {e}") from e

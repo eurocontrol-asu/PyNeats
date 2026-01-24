@@ -30,7 +30,7 @@ from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.climate_functions.params import ClimateParams
 from pyneats.steps.climate_functions.protocol import ClimateStepError, NonCO2Model
-from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
+from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact, FlightWithSegmentATR
 from pyneats.steps.emissions.views import FlightWithEmissions
 
 __all__ = [
@@ -102,7 +102,7 @@ def make_accf_surface_view(surface: MetDataset) -> MetDataset:
 class ACCFModel(
     BaseStep[
         FlightWithEmissions,
-        FlightWithNonCO2Impact,
+        FlightWithSegmentATR,
         ACCFParams,
     ]
 ):
@@ -161,4 +161,4 @@ class ACCFModel(
             raise ClimateStepError(f"ACCF output missing required columns: {e}") from e
 
         self.logger.info("ACCF step completed successfully")
-        return FlightWithNonCO2Impact.from_flight(flight)
+        return FlightWithSegmentATR.from_flight(flight)

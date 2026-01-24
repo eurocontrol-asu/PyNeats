@@ -8,7 +8,8 @@
       "departure_airport": "LZIB",
       "arrival_airport": "LBBG",
       "aircraft_properties": {
-        "aircraft_type": "A320"
+        "aircraft_type": "A320",
+        "takeoff_mass": 66561.10914874423
       },
       "fuel_properties": {
         "hydrogen_content": null,
@@ -1166,7 +1167,8 @@
       "departure_airport": "KMEM",
       "arrival_airport": "EBLG",
       "aircraft_properties": {
-        "aircraft_type": "B77L"
+        "aircraft_type": "B77L",
+        "takeoff_mass": 281413.4971563686
       },
       "fuel_properties": {
         "hydrogen_content": null,
@@ -2945,7 +2947,8 @@
       "departure_airport": "LIRF",
       "arrival_airport": "LEZL",
       "aircraft_properties": {
-        "aircraft_type": "B738"
+        "aircraft_type": "B738",
+        "takeoff_mass": 71195.66320320904
       },
       "fuel_properties": {
         "hydrogen_content": null,
@@ -4202,7 +4205,8 @@
       "departure_airport": "CYUL",
       "arrival_airport": "LPPT",
       "aircraft_properties": {
-        "aircraft_type": "A333"
+        "aircraft_type": "A333",
+        "takeoff_mass": 208658.8734571135
       },
       "fuel_properties": {
         "hydrogen_content": null,
@@ -5999,7 +6003,8 @@
       "departure_airport": "OMDB",
       "arrival_airport": "KBOS",
       "aircraft_properties": {
-        "aircraft_type": "B77W"
+        "aircraft_type": "B77W",
+        "takeoff_mass": 358565.7
       },
       "fuel_properties": {
         "hydrogen_content": null,

@@ -47,7 +47,7 @@ def flights_to_fleet(flights: list[Flight]) -> Fleet:
             flight[col] = np.full(len(flight), np.nan)
 
     # 3. Now safe to create Fleet (all flights have same columns)
-    fleet = Fleet.from_seq(flights)
+    fleet = Fleet.from_seq(flights, broadcast_numeric=False)
     fleet.attrs["_fleet_columns"] = all_columns
     return fleet
 

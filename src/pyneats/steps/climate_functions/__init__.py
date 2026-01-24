@@ -11,7 +11,7 @@ from pyneats.steps.climate_functions.cocip import (
     ContrailsModel,
     ContrailsParams,
     ContrailsStepError,
-    FlightWithContrailsImpact,
+    FlightWithRFContrailsImpact,
 )
 from pyneats.steps.climate_functions.local_accf import (
     LocalACCFModel,
@@ -19,7 +19,7 @@ from pyneats.steps.climate_functions.local_accf import (
 )
 
 __all__ = [
-    "FlightWithContrailsImpact",
+    "FlightWithRFContrailsImpact",
     "ContrailsModel",
     "ContrailsParams",
     "CoCiPModel",
