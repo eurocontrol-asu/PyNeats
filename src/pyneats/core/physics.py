@@ -70,3 +70,18 @@ RF_BACKWARD_FACTOR: Final[dict[str, float]] = {
 ACCF_SCALE_03: Final[Mapping[str, float]] = {"V1.0": 1.97, "V1.0A": 11.0}
 ACCF_SCALE_CH4: Final[Mapping[str, float]] = {"V1.0": 2.03, "V1.0A": 35.0}
 ACCF_SCALE_H2O: Final[Mapping[str, float]] = {"V1.0": 1.0, "V1.0A": 1.0}
+
+DEFAULT_PRESSURE_LEVELS_HPA: Final[tuple[float, ...]] = (
+    550,
+    500,
+    450,
+    400,
+    350,
+    300,
+    250,
+    225,
+    200,
+    175,
+    150,
+    125,
+)

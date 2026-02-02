@@ -65,7 +65,6 @@ from pycontrails.models.cocip import Cocip
 from pyneats.core.compute_parameters import (
     DEFAULT_HORIZONTAL_RES_DEG,
     DEFAULT_MET_CHUNKS,
-    DEFAULT_PRESSURE_LEVELS_HPA,
     DEFAULT_RAD_CHUNKS,
     DEFAULT_SDR_ACCUMULATE_DT_S,
     DEFAULT_WEATHER_OFFSET_H,
@@ -73,6 +72,7 @@ from pyneats.core.compute_parameters import (
     DEFAULT_ZARR_CACHING_STRATEGY,
     ZARR_CACHING_STRATEGY,
 )
+from pyneats.core.physics import DEFAULT_PRESSURE_LEVELS_HPA
 from pyneats.steps.weather.weather_provider import (
     WeatherProvider,
     WeatherProviderProtocol,

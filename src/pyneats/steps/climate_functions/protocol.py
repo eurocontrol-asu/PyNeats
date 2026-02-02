@@ -13,7 +13,8 @@ __all__ = [
     "ContrailsModel",
     "NonCO2Model",
     "ContrailsStepError",
-    "ClimateStepError",
+    "ACCFStepError",
+    "OpenAirClimStepError"
 ]
 
 
@@ -40,5 +41,8 @@ class ContrailsStepError(StepError):
     """Raised when contrail impact evaluation fails or yields invalid output."""
 
 
-class ClimateStepError(StepError):
+class ACCFStepError(StepError):
+    """Raised when ACCF evaluation fails or yields invalid output."""
+
+class OpenAirClimStepError(StepError):
     """Raised when ACCF evaluation fails or yields invalid output."""

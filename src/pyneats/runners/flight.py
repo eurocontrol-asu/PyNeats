@@ -1,6 +1,6 @@
 """NEATS Flight Runner Module
 
-This module implements the main execution pipeline for NEATS.
+This module implements the main execution pipeline for NEATS in the case of individual flights
 It orchestrates the sequential processing of flight data through multiple analysis stages:
 
 Pipeline Stages:
@@ -9,13 +9,16 @@ Pipeline Stages:
    - Weather data intersection
    - Aircraft performance computation
    - Emissions calculation
-   - Contrail effects assessment
-   - Other Non-CO2 effects assessment
-   - Climate impact metrics computation
+   - Contrail effects and Other Non-CO2 effects assessment
+   - Non CO2 equivalent computation
+
+   The Climate impact step (contrails & Others depends on the set-up (small or large emitter)
+   This Abstract class therefore doesn't implement the climact impact step which is defines
+   later in the SmallEmitter and LargeEmitter classes
 """
 
 import logging
-import time
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Self
 
@@ -33,10 +36,6 @@ from pyneats.core.neats_default_parameters import (
 )
 from pyneats.core.steps_registry import build
 from pyneats.steps.climate_functions import (
-    ClimateStepError,
-    ContrailsModel,
-    ContrailsStepError,
-    FlightWithRFContrailsImpact,
     FlightWithNonCO2Impact,
     NonCO2Model,
 )
@@ -69,6 +68,7 @@ from pyneats.steps.weather import (
     WeatherProviderProtocol,
     WeatherStepError,
 )
+from pyneats.runners.runner import Runner
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ class RunnerConfig:
     params: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
-class FlightRunner:
+class FlightRunner(Runner, ABC):
     """
     Parses, interpolates, and holds flight trajectory with met data.
     """
@@ -144,18 +144,6 @@ class FlightRunner:
             **self.cfg.params.get("emissions", {}),
         )
 
-        contrail_params = self.cfg.params.get("contrails_model", {})
-        contrail_params.update(
-            {
-                "met": self.weather.met(),
-                "rad": self.weather.rad(),
-            },
-        )
-        self.contrails_model: ContrailsModel = build(
-            ContrailsModel,  # type: ignore[type-abstract]
-            self.cfg.contrails_model,
-            **contrail_params,
-        )
 
         self.climate_impact: ClimateImpactModel = build(
             ClimateImpactModel,  # type: ignore[type-abstract]
@@ -169,7 +157,6 @@ class FlightRunner:
         self.flight_with_weather: FlightWithWeather | None = None
         self.flight_with_performance: FlightWithPerformance | None = None
         self.flight_with_emissions: FlightWithEmissions | None = None
-        self.flight_with_contrails: FlightWithRFContrailsImpact | None = None
         self.flight_with_nonco2: FlightWithNonCO2Impact | None = None
         self.flight_with_climate_impact: FlightWithClimateImpact | None = None
 
@@ -266,7 +253,7 @@ class FlightRunner:
             raise RuntimeError(f"Weather intersection failed: {e}") from e
 
         self.flight_with_weather = enriched
-        self.interpolated_flight = None
+        #self.interpolated_flight = None
 
         # Cache the downsampled met/rad datasets for later use (e.g accfs)
         self._ds_met = self.weather.ds_met()
@@ -294,7 +281,7 @@ class FlightRunner:
             raise RuntimeError(f"Performance evaluation failed: {e}") from e
 
         self.flight_with_performance = enriched
-        self.flight_with_weather = None
+        #self.flight_with_weather = None
         logger.info("Performance step completed successfully")
 
         return self
@@ -315,79 +302,19 @@ class FlightRunner:
 
         # Get the typed, zero-copy view
         self.flight_with_emissions = enriched
-        self.flight_with_performance = None
+        #self.flight_with_performance = None
 
         logger.info("Emissions step completed successfully")
         return self
 
-    # Step 6: Compute Contrails EF
-    def _contrails(self) -> Self:
-        start = time.time()
-        if self.flight_with_emissions is None:
-            logger.error("Missing flight_with_emissions; did you call _emissions() first?")
-            raise RuntimeError("_emissions() must be called before _contrails().")
+    # Step 6 Compute non CO2 climate impact
+    @abstractmethod
+    def _climate_impact(self) -> Self:
+        """Abstract method."""
+    
 
-        # Run the contrails step (COCIP). It returns a base Flight.
-        try:
-            enriched: FlightWithRFContrailsImpact = self.contrails_model(self.flight_with_emissions)
-        except ContrailsStepError:
-            # Already logged inside the model; keep original traceback.
-            raise
-        except Exception as e:
-            logger.exception("Unexpected error during contrails (COCIP) evaluation")
-            raise RuntimeError(f"Contrails evaluation failed: {e}") from e
-
-        # Zero-copy validated view for ergonomic access (e.g., .ef property)
-        self.flight_with_contrails = enriched
-        self.flight_with_emissions = None
-
-        logger.info("Contrails step completed successfully")
-        end = time.time()
-
-        self.flight_with_contrails.attrs["contrails_computation_time"] = end - start
-
-        return self
-
-    # Step 7: Compute other non-CO₂ effects (aCCF)
-    def _nonco2(self) -> Self:
-        start = time.time()
-        if self.flight_with_contrails is None:
-            logger.error("Missing flight_with_contrails; did you call _contrails() first?")
-            raise RuntimeError("_contrails() must be called before.")
-
-        accf_params = self.cfg.params.get("non_co2_model", {})
-        accf_params.update(
-            {
-                "met": self._ds_met,
-                "surface": self._ds_rad,
-            }
-        )
-        self.non_co2_model = build(
-            NonCO2Model,  # type: ignore[type-abstract]
-            self.cfg.non_co2_model,
-            **accf_params,
-        )
-
-        f_in: FlightWithEmissions = self.flight_with_contrails
-
-        try:
-            f_out: FlightWithNonCO2Impact = self.non_co2_model(f_in)
-        except ClimateStepError:
-            raise
-        except Exception as e:
-            logger.exception("Unexpected error during non-CO₂ (ACCF) evaluation")
-            raise RuntimeError(f"Non-CO₂ evaluation failed: {e}") from e
-
-        # Zero-copy validated view
-        self.flight_with_nonco2 = f_out
-        logger.info("Non-CO₂ (ACCF) step completed successfully")
-        end = time.time()
-
-        self.flight_with_nonco2.attrs["non_co2_computation_time"] = end - start
-        return self
-
-    # Step 8: Compute Climate Impact (GWP in the default case)
-    def _gwp(self) -> Self:
+    # Step 7: Compute CO2 equivalent (using GWP for instance)
+    def _climate_metrics(self) -> Self:
         if self.flight_with_nonco2 is None:
             logger.error("Missing flight_with_nonco2; did you call _nonco2() first?")
             raise RuntimeError("_nonco2() must be called before _gwp().")
@@ -404,40 +331,16 @@ class FlightRunner:
 
         # keep the typed, zero-copy view
         self.flight_with_climate_impact = enriched
-        self.flight_with_nonco2 = None
-        self.flight_with_contrails = None
+        #self.flight_with_nonco2 = None
 
         logger.info("Climate impact (GWP) step completed successfully")
 
         return self
+    
+    def _load_data(self) -> Self:
 
-    def eval(self) -> Self:
-        """
-        Run the full NEATS processing pipeline on the current flight.
+        return self
+    
+    def _extract_results(self) -> Self:
 
-        This method executes all processing stages in sequence:
-
-            1. `_parse_flight()` — Parse the raw trajectory data into a validated `Flight` object.
-            2. `_interpolate()` — Interpolate or reconstruct the trajectory to uniform time steps.
-            3. `_intersect_weather()` — Intersect the trajectory with meteorological data.
-            4. `_performance()` — Compute aircraft performance metrics (e.g., fuel flow, thrust).
-            5. `_emissions()` — Estimate non-CO₂ and CO₂ emissions.
-            6. `_contrails()` — Simulate contrail formation and compute energy forcing.
-            7. `_gwp()` — Convert contrail energy forcing into climate impact metrics (e.g., CO₂eq).
-
-        Returns
-        -------
-        Self
-            The `FlightRunner` instance with the final processed flight in `self.current`
-            and all intermediate results available in their respective attributes.
-        """
-        return (
-            self._parse_flight()  # pylint: disable=protected-access
-            ._interpolate()  # pylint: disable=protected-access
-            ._intersect_weather()  # pylint: disable=protected-access
-            ._performance()  # pylint: disable=protected-access
-            ._emissions()  # pylint: disable=protected-access
-            ._contrails()  # pylint: disable=protected-access
-            ._nonco2()  # pylint: disable=protected-access
-            ._gwp()  # pylint: disable=protected-access
-        )
+        return self

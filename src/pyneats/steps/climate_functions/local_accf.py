@@ -32,7 +32,7 @@ from pyneats.core.physics import (
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.climate_functions.climaccf import ACCFParams
-from pyneats.steps.climate_functions.protocol import ClimateStepError, NonCO2Model
+from pyneats.steps.climate_functions.protocol import ACCFStepError, NonCO2Model
 from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact, FlightWithSegmentATR
 from pyneats.steps.emissions.views import FlightWithEmissions
 
@@ -66,15 +66,15 @@ class LocalACCFParams(ACCFParams):
 
     def __post_init__(self) -> None:
         if self.accf_kwargs["accf_v"] not in self.scale_o3:
-            raise ClimateStepError(
+            raise ACCFStepError(
                 f"Unknown ACCF version '{self.accf_kwargs['accf_v']}' for O3 scaling."
             )
         if self.accf_kwargs["accf_v"] not in self.scale_ch4:
-            raise ClimateStepError(
+            raise ACCFStepError(
                 f"Unknown ACCF version '{self.accf_kwargs['accf_v']}' for CH4 scaling."
             )
         if self.accf_kwargs["accf_v"] not in self.scale_h2o:
-            raise ClimateStepError(
+            raise ACCFStepError(
                 f"Unknown ACCF version '{self.accf_kwargs['accf_v']}' for H2O scaling."
             )
 
@@ -140,7 +140,7 @@ class LocalACCFModel(
         columns = list(flight.data.keys())
         missing = [c for c in cols if c not in columns]
         if missing:
-            raise ClimateStepError(f"Missing required flight columns: {missing}")
+            raise ACCFStepError(f"Missing required flight columns: {missing}")
 
     # ---- O3: raw formula & compute ----
     @staticmethod
@@ -172,7 +172,7 @@ class LocalACCFModel(
             accf *= _as_np(flight[self.params.col_fuel_burn])
 
         except KeyError as e:
-            raise ClimateStepError(
+            raise ACCFStepError(
                 f"Unknown ACCF version for O3: {self.params.accf_kwargs['accf_v']}"
             ) from e
 
@@ -211,7 +211,7 @@ class LocalACCFModel(
             accf *= _as_np(flight[self.params.col_fuel_burn])
 
         except KeyError as e:
-            raise ClimateStepError(
+            raise ACCFStepError(
                 f"Unknown ACCF version for CH4: {self.params.accf_kwargs['accf_v']}"
             ) from e
         if self.params.accf_kwargs["PMO"]:
@@ -242,7 +242,7 @@ class LocalACCFModel(
             accf *= _as_np(flight[self.params.col_fuel_burn])
 
         except KeyError as e:
-            raise ClimateStepError(
+            raise ACCFStepError(
                 f"Unknown ACCF version for H2O: {self.params.accf_kwargs['accf_v']}"
             ) from e
 
@@ -261,26 +261,32 @@ class LocalACCFModel(
             ],
         )
 
-        o3 = self.compute_o3(flight)
-        ch4 = self.compute_ch4(flight)
-        h2o = self.compute_h2o(flight)
+        try:
+            o3 = self.compute_o3(flight)
+            ch4 = self.compute_ch4(flight)
+            h2o = self.compute_h2o(flight)
 
-        # Discounting output values from the regression functions on part of the flight
-        # that are outside the validity region of aCCFs formulas
-        # Create the mask for INVALID rows
+            # Discounting output values from the regression functions on part of the flight
+            # that are outside the validity region of aCCFs formulas
+            # Create the mask for INVALID rows
 
-        # Condition 1: Pressure is too high (Altitude too low)
-        bad_pressure = flight[self.params.col_air_pressure] > DEFAULT_ACCF_VALIDITY_PRESSURE
+            # Condition 1: Pressure is too high (Altitude too low)
+            bad_pressure = flight[self.params.col_air_pressure] > DEFAULT_ACCF_VALIDITY_PRESSURE
 
-        mask = bad_pressure
+            mask = bad_pressure
 
-        o3[mask] = 0.0
-        ch4[mask] = 0.0
-        h2o[mask] = 0.0
+            o3[mask] = 0.0
+            ch4[mask] = 0.0
+            h2o[mask] = 0.0
 
-        # Write directly on the flight
-        flight["ATR_20_O3"] = o3
-        flight["ATR_20_CH4"] = ch4
-        flight["ATR_20_H2O"] = h2o
+            # Write directly on the flight
+            flight["ATR_20_O3"] = o3
+            flight["ATR_20_CH4"] = ch4
+            flight["ATR_20_H2O"] = h2o
+
+        except Exception as e:
+            self.logger.exception("local ACCF evaluation failed")
+            raise ACCFStepError(f"local ACCF evaluation failed: {e}") from e
+
 
         return FlightWithSegmentATR.from_flight(flight)

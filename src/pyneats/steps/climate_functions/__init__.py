@@ -1,7 +1,7 @@
 from pyneats.steps.climate_functions.climaccf import (
     ACCFModel,
     ACCFParams,
-    ClimateStepError,
+    ACCFStepError,
     FlightWithNonCO2Impact,
     NonCO2Model,
     make_accf_surface_view,
@@ -18,6 +18,11 @@ from pyneats.steps.climate_functions.local_accf import (
     LocalACCFParams,
 )
 
+from pyneats.steps.climate_functions.open_airclim import(
+    OpenAirClimModel,
+    OpenAirClimParams,
+)
+
 __all__ = [
     "FlightWithRFContrailsImpact",
     "ContrailsModel",
@@ -28,8 +33,10 @@ __all__ = [
     "NonCO2Model",
     "ACCFParams",
     "ACCFModel",
-    "ClimateStepError",
+    "ACCFStepError",
     "make_accf_surface_view",
     "LocalACCFModel",
     "LocalACCFParams",
+    "OpenAirClimModel",
+    "OpenAirClimParams",
 ]

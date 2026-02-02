@@ -17,7 +17,8 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 from pyneats.core.views import FlightView
-from pyneats.runners.flight import FlightRunner, RunnerConfig
+from pyneats.runners.flight import RunnerConfig
+from pyneats.runners.large_emitter import FlightRunnerLargeEmitter
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
 from tests.conftest import assert_climate_payload_equal
 
@@ -48,7 +49,7 @@ def test_flight_runner_golden(
     if any(case_suffix in golden_case for case_suffix in FLEET_RUNNER_ONLY_CASES):
         pytest.skip(f"'{golden_case}' requires FleetRunner (heterogeneous inputs)")
     # Import here to avoid collection errors when pyBADA not installed
-    from pyneats.steps.climate_functions.views import FlightWithClimateImpact
+    from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
 
     # Skip if dependencies not available
     if weather is None:
@@ -82,7 +83,7 @@ def test_flight_runner_golden(
             flight_id = flight_id[0] if flight_id else f"flight_{i}"
 
         # Run pipeline
-        pipeline = FlightRunner(weather, df, cfg=cfg)
+        pipeline = FlightRunnerLargeEmitter(weather, df, cfg=cfg)
         pipeline.eval()
 
         # Get output

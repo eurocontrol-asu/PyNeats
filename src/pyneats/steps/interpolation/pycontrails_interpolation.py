@@ -71,6 +71,8 @@ class PyContrailsInterpolator(
                     interpolated_values = np.interp(t_new_num, t_orig_num, y_orig)
                     interpolated_flight[col] = interpolated_values
 
+            
+
         except Exception as e:
             raise TrajectoryInterpolationStepError(f"resample_and_fill failed: {e}") from e
 

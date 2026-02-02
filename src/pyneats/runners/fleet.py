@@ -36,16 +36,14 @@ from pyneats.core.compute_parameters import (
 from pyneats.core.neats_default_parameters import (
     DEFAULT_COCIP_KWARGS,
     DEFAULT_HUMIDITY_SCALING,
+    DEFAULT_NON_CO2_MODEL_SMALL_EMITTERS,
 )
 from pyneats.core.steps import Step, VectorizedStep
 from pyneats.core.steps_registry import build
 from pyneats.runners.flight import RunnerConfig
 from pyneats.steps.climate_functions.cocip import CoCiPModel, ContrailsParams
-from pyneats.steps.climate_functions.protocol import ContrailsModel, NonCO2Model
-from pyneats.steps.climate_functions.views import (
-    FlightWithRFContrailsImpact,
-    FlightWithNonCO2Impact,
-)
+from pyneats.steps.climate_functions.protocol import NonCO2Model
+from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
 from pyneats.steps.climate_metrics.protocol import ClimateImpactModel
 from pyneats.steps.climate_metrics.report import FleetReport
 from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
@@ -68,6 +66,7 @@ from pyneats.steps.weather.weather_store import (
     clear_dataset_cache,
     get_weather_from_zarr,
 )
+from pyneats.runners.runner import Runner
 
 logger = logging.getLogger(__name__)
 
@@ -183,9 +182,9 @@ class FleetRunnerParams(RunnerConfig):
 # Generic step cache (per-process) built on steps_registry.build()
 # -----------------------------------------------------------------------------
 
-# Each loky worker is a separate Python process => this cache is naturally per-process.
+# Each  worker is a separate Python process => cache is per-process.
 #
-# IMPORTANT: Cache key is (interface, name) only - params are NOT included.
+# Cache key is (interface, name) only - params are NOT included.
 # This means the first params used for a given (interface, name) pair are cached,
 # and subsequent calls with different params will return the cached step.
 #
@@ -319,7 +318,7 @@ def _process_parallel_results(
 # -----------------------------------------------------------------------------
 
 
-class FleetRunner:
+class FleetRunner(Runner):
     """
     Fast fleet pipeline with FlightRunner-like structure.
 
@@ -357,12 +356,15 @@ class FleetRunner:
         self.fleet_with_weather: list[FlightWithWeather] | None = None
         self.fleet_with_performance: list[FlightWithPerformance] | None = None
         self.fleet_with_emissions: list[FlightWithEmissions] | None = None
-        self.fleet_with_contrails: list[FlightWithRFContrailsImpact] | None = None
         self.fleet_with_nonco2: list[FlightWithNonCO2Impact] | None = None
         self.fleet_with_climate_impact: list[FlightWithClimateImpact] | None = None
 
         # Error aggregation (continue-on-error)
         self.error_records: list[dict[str, Any]] = []
+
+        # Pipeline abort flag - set to True when all flights fail at a step
+        # This enables early termination in Runner.eval()
+        self._pipeline_aborted: bool = False
 
         # Final output
         self.results: dict[str, Any] | None = None
@@ -407,7 +409,7 @@ class FleetRunner:
 
         # ---- Vectorized step objects (created in _load_weather) --------------
         self.weather_step: WeatherProvider | None = None
-        self.cocip_step: ContrailsModel | None = None
+        
 
     # -------------------------------------------------------------------------
     # Param handling (FlightRunner-like)
@@ -432,6 +434,12 @@ class FleetRunner:
     # FleetRunner stages (FlightRunner-like step decomposition)
     # -------------------------------------------------------------------------
 
+    def _load_data(self) -> Self:
+        return (
+            self._load_trajectories()  # pylint: disable=protected-access
+            ._load_weather()  # pylint: disable=protected-access
+        )
+     
     def _load_trajectories(self) -> Self:
         if self.cfg.trajectory_json_filepath is not None:
             path = Path(self.cfg.trajectory_json_filepath)
@@ -482,8 +490,7 @@ class FleetRunner:
 
         return self
 
-    def _parse_flights(self) -> Self:
-        start = time.time()
+    def _parse_flight(self) -> Self:
 
         if self.source_fleet is None:
             raise RuntimeError("source_flights must be loaded before _parse_flights()")
@@ -493,12 +500,9 @@ class FleetRunner:
 
         self.source_fleet = None  # free memory (FlightRunner-style)
 
-        end = time.time()
-        logger.debug("_parse_flights completed in %.2fs", end - start)
         return self
 
     def _interpolate(self) -> Self:
-        start = time.time()
 
         if self.parsed_fleet is None:
             raise RuntimeError("parsed_flights must be set before _interpolate()")
@@ -510,13 +514,10 @@ class FleetRunner:
 
         self.parsed_fleet = None  # free memory
 
-        end = time.time()
-        logger.debug("_interpolate completed in %.2fs", end - start)
 
         return self
 
     def _intersect_weather(self) -> Self:
-        start = time.time()
 
         if self.interpolated_fleet is None:
             raise RuntimeError("interpolated_flights must be set before _intersect_weather()")
@@ -542,13 +543,9 @@ class FleetRunner:
         self.fleet_with_weather = flights
         self.interpolated_fleet = None  # free memory
 
-        end = time.time()
-        logger.debug("_intersect_weather completed in %.2fs", end - start)
-
         return self
 
     def _performance(self) -> Self:
-        start = time.time()
 
         if self.fleet_with_weather is None:
             raise RuntimeError("fleet_with_weather must be set before _performance()")
@@ -560,13 +557,10 @@ class FleetRunner:
 
         self.fleet_with_weather = None  # free memory
 
-        end = time.time()
-        logger.debug("_performance completed in %.2fs", end - start)
 
         return self
 
     def _emissions(self) -> Self:
-        start = time.time()
 
         if self.fleet_with_performance is None:
             raise RuntimeError("_performance must be set before _emissions()")
@@ -578,54 +572,14 @@ class FleetRunner:
 
         self.fleet_with_performance = None  # free memory
 
-        end = time.time()
-        logger.debug("_emissions completed in %.2fs", end - start)
 
         return self
-
-    def _contrails(self) -> Self:
-        start = time.time()
-
-        if self.fleet_with_emissions is None:
-            raise RuntimeError("_emissions must be set before _contrails()")
-        if self.cocip_step is None:
-            raise RuntimeError("cocip_step must be initialized before _contrails()")
-
-        # Run vectorized CoCiP
-        flights = self._run_vectorized_step(
-            self.fleet_with_emissions,
-            "CoCiP evaluation",
-            self.cocip_step,
-            self.cfg.cocip_critical_columns,
-        )
-
-        self.fleet_with_contrails = flights
-        self.fleet_with_emissions = None  # free memory
-
-        end = time.time()
-        logger.debug("_contrails completed in %.2fs", end - start)
-        return self
-
-    def _nonco2(self) -> Self:
-        start = time.time()
-
-        if self.fleet_with_contrails is None:
-            raise RuntimeError("_contrails must be set before _nonco2()")
-
-        self.fleet_with_nonco2, errs = self._run_parallel_step(
-            self.fleet_with_contrails, "non_co2_model", self.non_co2_model
-        )
-        self.error_records.extend(errs)
-
-        self.fleet_with_contrails = None  # free memory
-
-        end = time.time()
-        logger.debug("_nonco2 completed in %.2fs", end - start)
-
-        return self
-
+    
+    def _climate_impact(self) -> Self:
+        """Abstract method."""
+        raise NotImplementedError
+    
     def _climate_metrics(self) -> Self:
-        start = time.time()
 
         if self.fleet_with_nonco2 is None:
             raise RuntimeError("_nonco2 must be set before _climate_metrics()")
@@ -637,17 +591,30 @@ class FleetRunner:
 
         self.fleet_with_nonco2 = None  # free memory
 
-        end = time.time()
-        logger.debug("_climate_metrics completed in %.2fs", end - start)
 
         return self
 
     def _extract_results(self) -> Self:
-        start = time.time()
+        # Case 1: Pipeline aborted (all flights failed at some step)
+        # Return only errors in standard format - this is expected behavior
+        if self._pipeline_aborted:
+            logger.warning(
+                "Pipeline aborted - returning %d error records only",
+                len(self.error_records),
+            )
+            self.results = {
+                "fleet_meta_data": FleetReport.collect(),
+                "flight_results": self.error_records,
+            }
+            clear_dataset_cache()
+            return self
 
+        # Case 2: Programming error - _extract_results called without running pipeline
+        # This should never happen in normal flow, so we still raise
         if self.fleet_with_climate_impact is None:
             raise RuntimeError("climate_impact must be set before _extract_results()")
 
+        # Case 3: Normal case - some or all flights succeeded
         successful_results = [f.attrs["climate_impact"] for f in self.fleet_with_climate_impact]
 
         self.results = {
@@ -655,43 +622,10 @@ class FleetRunner:
             "flight_results": successful_results + self.error_records,
         }
 
-        end = time.time()
-        logger.debug("_extract_results completed in %.2fs", end - start)
-
-        return self
-
-    # -------------------------------------------------------------------------
-    # Public API
-    # -------------------------------------------------------------------------
-
-    def eval(self) -> Self:
-        """
-        Run the full fast fleet pipeline.
-
-        Mirrors FlightRunner chaining style, but preserves fleet semantics:
-        - per-flight failures are recorded and filtered rather than raising and aborting.
-        """
-        logger.info("FastFleetRunner: starting pipeline")
-
-        return (
-            self._load_trajectories()  # pylint: disable=protected-access
-            ._load_weather()  # pylint: disable=protected-access
-            ._parse_flights()  # pylint: disable=protected-access
-            ._interpolate()  # pylint: disable=protected-access
-            ._intersect_weather()  # pylint: disable=protected-access
-            ._performance()  # pylint: disable=protected-access
-            ._emissions()  # pylint: disable=protected-access
-            ._contrails()  # pylint: disable=protected-access
-            ._nonco2()  # pylint: disable=protected-access
-            ._climate_metrics()  # pylint: disable=protected-access
-            ._extract_results()  # pylint: disable=protected-access
-            ._clean_memory()  # pylint: disable=protected-access
-        )
-
-    def _clean_memory(self) -> Self:
         clear_dataset_cache()
 
         return self
+    
 
     def results_as_dataframe(self) -> pd.DataFrame:
         """
@@ -759,7 +693,16 @@ class FleetRunner:
 
         Returns:
             List of successful output flights (type-safe, no cast needed)
+
+        Note:
+            Sets `_pipeline_aborted = True` if all flights fail after filtering.
+            Returns empty list if input is empty (prevents Fleet.from_seq crash).
         """
+        # Guard: empty input - skip step to prevent Fleet.from_seq([]) crash
+        if not flights:
+            logger.warning("Skipping %s: no flights to process", step_name)
+            return []
+
         # Call step's run_fleet() method (typed via VectorizedStep protocol)
         result_flights = step.run_fleet(flights)
 
@@ -770,6 +713,15 @@ class FleetRunner:
             step_name,
         )
         self.error_records.extend(errs)
+
+        # Auto-abort if all flights failed
+        if not successful and flights:
+            logger.warning(
+                "All %d flights failed at %s - aborting pipeline",
+                len(flights),
+                step_name,
+            )
+            self._pipeline_aborted = True
 
         return successful
 
@@ -783,7 +735,16 @@ class FleetRunner:
         Run a step in parallel across all items using joblib.
 
         Returns typed results without cast thanks to discriminated union pattern.
+
+        Note:
+            Sets `_pipeline_aborted = True` if all items fail.
+            Returns empty lists if input is empty.
         """
+        # Guard: empty input - skip step
+        if not seq:
+            logger.warning("Skipping %s: no flights to process", step_name)
+            return [], []
+
         t0 = time.time()
         logger.info(
             "%s %d flights (n_jobs=%s)...",
@@ -807,12 +768,18 @@ class FleetRunner:
         if self.cfg.gc_collect_between_steps:
             gc.collect()
 
+        # Auto-abort if all flights failed
+        if not good_seq and seq:
+            logger.warning(
+                "All %d flights failed at %s - aborting pipeline",
+                len(seq),
+                step_name,
+            )
+            self._pipeline_aborted = True
+
         logger.info("%s complete in %.2fs", step_name.capitalize(), time.time() - t0)
         return good_seq, error_records
 
-    # -------------------------------------------------------------------------
-    # Vectorized fleet operations
-    # -------------------------------------------------------------------------
 
     # -------------------------------------------------------------------------
     # Validation / filtering
@@ -859,3 +826,4 @@ class FleetRunner:
             if df[col].isna().all():
                 return f"{col} (all NaN)"
         return None
+

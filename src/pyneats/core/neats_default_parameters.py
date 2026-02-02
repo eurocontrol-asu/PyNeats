@@ -33,6 +33,7 @@ from collections.abc import Mapping
 from typing import Any, Final, Literal
 
 import numpy as np
+import numpy.typing as npt
 from pycontrails.models.humidity_scaling import (
     ExponentialBoostHumidityScaling,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "DEFAULT_EMISSIONS",
     "DEFAULT_CONTRAILS_MODEL",
     "DEFAULT_NON_CO2_MODEL",
+    "DEFAULT_NON_CO2_MODEL_SMALL_EMITTERS",
     "DEFAULT_CLIMATE_IMPACT",
     "DEFAULT_INTERPOLATION_TIME",
     "DEFAULT_BADA4_VERSION",
@@ -63,6 +65,7 @@ DEFAULT_PERFORMANCE: Final[str] = "bada"
 DEFAULT_EMISSIONS: Final[str] = "pycontrails"
 DEFAULT_CONTRAILS_MODEL: Final[str] = "cocip"
 DEFAULT_NON_CO2_MODEL: Final[str] = "local_accf"
+DEFAULT_NON_CO2_MODEL_SMALL_EMITTERS: Final[str] = "open_airclim"
 DEFAULT_CLIMATE_IMPACT: Final[str] = "gwp"
 
 
@@ -79,8 +82,6 @@ DEFAULT_MAX_MASS_ESTIMATION_ITER: Final[int] = 4
 DEFAULT_MAX_REL_MASS_DIFF: Final[float] = 0.01
 
 DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW: Final[int] = 7
-REFERENCE_Q_FUEL: Final[float] = 43_130_000.0  # Baseline Value used in PyContrails/BADA
-DEFAULT_Q_FUEL: Final[float] = 42_800_000.0  # Default value provided by the consortium (DLR/TO70)
 
 DEFAULT_DELTA_TAU_COMPUTE_METHOD: Final[Literal["point", "zero"]] = "point"
 DEFAULT_DELTA_TAU_FILL_METHOD: Final[Literal["bffill", "none", "zero"]] = "bffill"
@@ -108,7 +109,7 @@ DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
     "vpm_activation": False,
 }
 
-# ACCF defaults
+# ACCF Parameters
 
 ACCFS_VERSIONS = Literal["V1.0", "V1.0A"]
 DEFAULT_ACCF_VERSION: Final[ACCFS_VERSIONS] = "V1.0A"
@@ -126,7 +127,6 @@ DEFAULT_CLIMACCF_KWARGS: Final[Mapping[str, Any]] = {
     "horizontal_resolution": None,
     "unit_K_per_kg_fuel": False,
 }
-
 DEFAULT_ACCF_VALIDITY_PRESSURE = 40000
 
 # Weather interpolation defaults
@@ -154,7 +154,13 @@ DEFAULT_NAPHTHALEN_CONTENT: Final[float] = 0.03  # default value - Not used in c
 DEFAULT_HYDROGEN_CONTENT: Final[float] = (
     13.79  # default value provided by the consortium (DLR/TO70)
 )
+REFERENCE_Q_FUEL: Final[float] = 43_130_000.0  # Baseline Value used in PyContrails/BADA
+DEFAULT_Q_FUEL: Final[float] = 42_800_000.0  # Default value provided by the consortium (DLR/TO70)
 
-# Zarr Chunking
-ZARR_CACHING_STRATEGY = Literal["all_variables", "by_variable"]
-DEFAULT_ZARR_CACHING_STRATEGY: Final[ZARR_CACHING_STRATEGY] = "all_variables"
+
+# Open Air Clim Parameters
+OPEN_AIRCLIM_LEVELS: Final[tuple[int, ...]] = (
+    1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100
+)
+OPEN_AIRCLIM_GRID_RES: Final[float] = 1.0
+OPEN_AIRCLIM_COMPUTATION_HORIZON: Final[int] = 100

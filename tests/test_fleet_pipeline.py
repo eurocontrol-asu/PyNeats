@@ -17,7 +17,8 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 from pyneats.core.views import FlightView
-from pyneats.runners.fleet import FleetRunner, FleetRunnerParams
+from pyneats.runners.fleet import FleetRunnerParams
+from pyneats.runners.large_emitter import FleetRunnerLargeEmitter
 from pyneats.steps.weather.weather_store import ZarrPaths
 from tests.conftest import assert_climate_payload_equal
 
@@ -40,7 +41,7 @@ def test_fleet_runner_golden(
     the outputs with expected results.
     """
     # Import here to avoid collection errors when pyBADA not installed
-    from pyneats.steps.climate_functions.views import FlightWithClimateImpact
+    from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
 
     # Skip if dependencies not available
     if weather is None:
@@ -73,7 +74,7 @@ def test_fleet_runner_golden(
     )
 
     # Run FleetRunner
-    runner = FleetRunner(cfg)
+    runner = FleetRunnerLargeEmitter(cfg)
     runner.eval()
 
     # Verify we got results

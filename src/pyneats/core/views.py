@@ -122,7 +122,7 @@ class FlightView(Flight):
         return tuple(out)
 
     # --- construction / validation -----------------------------------
-
+    
     @classmethod
     def from_flight(
         cls: type[TView],
@@ -130,7 +130,7 @@ class FlightView(Flight):
         *,
         require: Iterable[str] | None = None,
     ) -> TView:
-        """Validate that the flight satisfies this view's requirements."""
+        """Validate requirements and convert to the specific View class at RUNTIME."""
 
         required_cols = cls._all_required(require)
         required_attrs = cls._all_attrs_required()
@@ -139,7 +139,8 @@ class FlightView(Flight):
         missing_attrs = [a for a in required_attrs if a not in flight.attrs]
 
         if missing_cols or missing_attrs:
-            messages = []
+            # FIX 1: Define the list before using it
+            messages = [] 
 
             if missing_cols:
                 messages.append(f"missing columns: {', '.join(missing_cols)}")
@@ -149,8 +150,16 @@ class FlightView(Flight):
 
             raise ValidationError(cls.__name__, "; ".join(messages))
 
-        # Zero-copy: we only *narrow the type* for the caller
-        return cast(TView, flight)
+        # FIX 2: Actually instantiate the class!
+        # This changes the runtime type so isinstance() works correctly.
+        # copy=False ensures efficiency (Zero-Copy)
+        view_instance = cls(flight.data, attrs=flight.attrs, copy=False)
+
+        # Preserve fuel wrapper if present
+        if hasattr(flight, "fuel") and flight.fuel is not None:
+            view_instance.fuel = flight.fuel
+
+        return view_instance
 
     # --- convenience --------------------------------------------------
 

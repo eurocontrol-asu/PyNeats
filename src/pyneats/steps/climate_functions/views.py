@@ -23,6 +23,15 @@ REQUIRED_AGWP_ATTRS: Final[tuple[str, ...]] = (
     "AGWP_20_CH4",
     "AGWP_20_O3",
     "AGWP_20_H2O",
+    "AGWP_20_CONT",
+    "AGWP_50_CH4",
+    "AGWP_50_O3",
+    "AGWP_50_H2O",
+    "AGWP_50_CONT",
+    "AGWP_100_CH4",
+    "AGWP_100_O3",
+    "AGWP_100_H2O",
+    "AGWP_100_CONT",
 )
 
 REQUIRED_CONTRAIL_COLS: Final[tuple[str, ...]] = ("ef",)

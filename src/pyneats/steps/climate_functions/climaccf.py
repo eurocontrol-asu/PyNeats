@@ -29,7 +29,7 @@ from pyneats.core.neats_default_parameters import DEFAULT_CLIMACCF_KWARGS
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.climate_functions.params import ClimateParams
-from pyneats.steps.climate_functions.protocol import ClimateStepError, NonCO2Model
+from pyneats.steps.climate_functions.protocol import ACCFStepError, NonCO2Model
 from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact, FlightWithSegmentATR
 from pyneats.steps.emissions.views import FlightWithEmissions
 
@@ -118,14 +118,14 @@ class ACCFModel(
 
     def _post_init(self) -> None:
         if self.params.met is None or self.params.surface is None:
-            raise ClimateStepError("ACCF requires both 'met' and 'surface' datasets.")
+            raise ACCFStepError("ACCF requires both 'met' and 'surface' datasets.")
 
         # Build a non-mutating view of surface for ACCF (Cocip can still use the base surface as-is)
         try:
             accf_surface = make_accf_surface_view(self.params.surface)
         except Exception as e:
             self.logger.exception("Failed to adapt surface dataset for ACCF")
-            raise ClimateStepError(f"Surface adaptation failed: {e}") from e
+            raise ACCFStepError(f"Surface adaptation failed: {e}") from e
 
         # Defaults you used in your snippet
         try:
@@ -136,7 +136,7 @@ class ACCFModel(
             )
         except Exception as e:
             self.logger.exception("Failed to initialize ACCF model")
-            raise ClimateStepError(f"ACCF initialization failed: {e}") from e
+            raise ACCFStepError(f"ACCF initialization failed: {e}") from e
 
     def run(self, flight: FlightWithEmissions) -> FlightWithNonCO2Impact:
         try:
@@ -158,7 +158,7 @@ class ACCFModel(
 
         except KeyError as e:
             self.logger.error("ACCFbackend: %s", e)
-            raise ClimateStepError(f"ACCF output missing required columns: {e}") from e
+            raise ACCFStepError(f"ACCF output missing required columns: {e}") from e
 
         self.logger.info("ACCF step completed successfully")
         return FlightWithSegmentATR.from_flight(flight)
