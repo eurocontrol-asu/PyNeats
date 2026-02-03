@@ -1,45 +1,83 @@
 """
+Weather Data Storage and Retrieval Utilities
 
-Weather data storage and retrieval utilities 
-for handling weather data storage and retrieval (Zarr/NetCDF)
-
+Utilities for handling weather data storage and retrieval (Zarr/NetCDF).
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Optional, Mapping, Tuple, Dict
+
+import contextlib
 import os
+from collections.abc import Mapping
+from dataclasses import dataclass
+
 import xarray as xr
 from pycontrails import MetDataset
+
 from .weather_provider import WeatherProvider
 
 
 # Stores paths to Zarr datasets for meteorological, radiative, and wind data
 @dataclass(frozen=True)
 class ZarrPaths:
-    """Paths to Zarr stores for weather data."""
+    """
+    Paths to Zarr stores for weather data.
+
+    Attributes
+    ----------
+    met_store : str
+        Path to meteorological data store.
+    rad_store : str
+        Path to radiative data store.
+    wind_store : str or None
+        Path to wind data store (optional).
+    """
     met_store: str
     rad_store: str
-    wind_store: Optional[str] = None
+    wind_store: str | None = None
 
 
 # Check if a Zarr store is consolidated (has .zmetadata)
 def _is_consolidated(path: str) -> bool:
+    """
+    Check if a Zarr store is consolidated (has .zmetadata).
+
+    Parameters
+    ----------
+    path : str
+        Path to Zarr store.
+
+    Returns
+    -------
+    bool
+        True if consolidated, False otherwise.
+    """
     return os.path.exists(os.path.join(path, ".zmetadata"))
 
 
 # Normalize chunk mapping to a sorted tuple for cache keying
-def _norm_chunks(
-    ch: Optional[Mapping[str, int]]
-) -> Optional[Tuple[Tuple[str, int], ...]]:
+def _norm_chunks(ch: Mapping[str, int] | None) -> tuple[tuple[str, int], ...] | None:
+    """
+    Normalize chunk mapping to a sorted tuple for cache keying.
+
+    Parameters
+    ----------
+    ch : Mapping[str, int] or None
+        Chunk mapping.
+
+    Returns
+    -------
+    tuple[tuple[str, int], ...] or None
+        Normalized chunk mapping or None.
+    """
     if not ch:
         return None
     return tuple(sorted((k, int(v)) for k, v in ch.items()))
 
 
 # In-memory cache for opened MetDataset objects (per process)
-_DATASET_CACHE: Dict[
-    Tuple[str, Optional[str], Optional[str], Optional[Tuple[Tuple[str, int], ...]]],
+_DATASET_CACHE: dict[
+    tuple[str, str | None, str | None, tuple[tuple[str, int], ...] | None],
     MetDataset,
 ] = {}
 
@@ -48,9 +86,9 @@ _DATASET_CACHE: Dict[
 def _open_metdataset_from_zarr(
     path: str,
     *,
-    t0: Optional[str],
-    t1: Optional[str],
-    chunks: Optional[Mapping[str, int]],
+    t0: str | None,
+    t1: str | None,
+    chunks: Mapping[str, int] | None,
     provider: str = "DWD",
 ) -> MetDataset:
     """
@@ -62,7 +100,7 @@ def _open_metdataset_from_zarr(
         return _DATASET_CACHE[key]
 
     ds = xr.open_zarr(path, consolidated=_is_consolidated(path))
-    ds.attrs['provider'] = provider  # Set provider attribute
+    ds.attrs["provider"] = provider  # Set provider attribute
     if t0 and t1:
         ds = ds.sel(time=slice(t0, t1))
     if chunks:
@@ -73,8 +111,10 @@ def _open_metdataset_from_zarr(
 
     return md
 
+
 def clear_dataset_cache() -> None:
-    """Clear in-memory MetDataset cache and close underlying datasets.
+    """
+    Clear in-memory MetDataset cache and close underlying datasets.
 
     Call this after processing a zarr group when you no longer need
     the cached weather data and want to reclaim memory.
@@ -83,21 +123,19 @@ def clear_dataset_cache() -> None:
         ds = getattr(md, "data", None)
         close = getattr(ds, "close", None)
         if callable(close):
-            try:
+            with contextlib.suppress(Exception):
                 close()
-            except Exception:
-                pass
     _DATASET_CACHE.clear()
 
-    
+
 # Open wind MetDataset, or fall back to met if wind store is not provided
 def _open_wind_metdataset(
-    wind_path: Optional[str],
+    wind_path: str | None,
     met_fallback: MetDataset,
     *,
-    t0: Optional[str],
-    t1: Optional[str],
-    chunks: Optional[Mapping[str, int]],
+    t0: str | None,
+    t1: str | None,
+    chunks: Mapping[str, int] | None,
 ) -> MetDataset:
     """
     Open wind MetDataset from Zarr, or reuse met_fallback if wind_path is None.
@@ -111,9 +149,9 @@ def _open_wind_metdataset(
 def get_weather_from_zarr(
     zp: ZarrPaths,
     *,
-    t0: Optional[str] = None,
-    t1: Optional[str] = None,
-    chunks: Optional[Mapping[str, int]] = None,
+    t0: str | None = None,
+    t1: str | None = None,
+    chunks: Mapping[str, int] | None = None,
 ) -> WeatherProvider:
     """
     Load meteorological, radiative, and wind data from Zarr stores and return a WeatherProvider.

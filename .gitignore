@@ -2,10 +2,16 @@
 __pycache__/
 *.py[cod]
 *$py.class
-*.pyc 
+*.pyc
 
 # Notebooks examples
 notebooks/
+
+# Claude AI session file
+CLAUDE.md
+
+# Clustering module (work in progress)
+src/pyneats/clustering/
 
 # BADA private files
 tests/data/BADA/

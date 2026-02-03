@@ -1,45 +1,99 @@
+import argparse
 import os
+import sys
 
+from pyneats.runners.large_emitter import FleetRunnerLargeEmitter
+from pyneats.runners.fleet import FleetRunnerParams
 from pyneats.steps.weather.weather_store import ZarrPaths
-from pyneats.runners.fleet import FleetRunnerParams, FleetRunner
 
 
-# Read recipe inputs
+def main():
+    """
+    Run fleet-level climate impact computations from JSON trajectories.
 
-ZARR_PATH = "/path/to/zarr/files"
-met_store  = os.path.join(ZARR_PATH, "met_cache", "icon_met.zarr")
-rad_store  = os.path.join(ZARR_PATH, "met_cache", "icon_rad.zarr")
-wind_store = os.path.join(ZARR_PATH, "met_cache", "icon_wind.zarr") 
-zarr_paths=ZarrPaths(met_store=met_store,
-                     rad_store=rad_store,
-                     wind_store=wind_store)
+    This example demonstrates how to use the FleetRunnerLargeEmitter to compute
+    climate impacts for a fleet of flights loaded from a JSON file.
+    """
+    parser = argparse.ArgumentParser(
+        description="Fleet-level climate impact computation from JSON trajectories"
+    )
+    parser.add_argument(
+        "--json-file",
+        required=True,
+        help="Path to JSON file containing flight trajectories",
+    )
+    parser.add_argument(
+        "--weather-path",
+        required=True,
+        help="Path to meteorological data directory (containing icon_met.zarr, icon_rad.zarr, etc.)",
+    )
+    parser.add_argument(
+        "--bada-path", required=True, help="Path to BADA (Base of Aircraft Data) directory"
+    )
+    parser.add_argument(
+        "--njobs", type=int, default=2, help="Number of parallel jobs (default: 2)"
+    )
 
-JSON_FILEPATH = "/path/to/trajectories.json"
+    args = parser.parse_args()
 
-BADA_PATH = "/path/to/bada/files/"
+    # Validate paths
+    if not os.path.isfile(args.json_file):
+        print(f"ERROR: JSON file does not exist: {args.json_file}", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.isdir(args.weather_path):
+        print(f"ERROR: Weather path does not exist: {args.weather_path}", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.isdir(args.bada_path):
+        print(f"ERROR: BADA path does not exist: {args.bada_path}", file=sys.stderr)
+        sys.exit(1)
 
-n_jobs = 30
-flight_chunk = 16
+    # Set up meteorological data paths
+    met_store = os.path.join(args.weather_path, "icon_met.zarr")
+    rad_store = os.path.join(args.weather_path, "icon_rad.zarr")
+    wind_store = os.path.join(args.weather_path, "icon_wind.zarr")
 
-#Instantiate Fleet Object
-params = FleetRunnerParams(    
-    trajectory_json_filepath = JSON_FILEPATH,
-    zarr_paths=zarr_paths,
-    njobs=n_jobs,
-    bada_path=BADA_PATH,
-)
+    if not os.path.isdir(met_store):
+        print(f"ERROR: Met store not found: {met_store}", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.isdir(rad_store):
+        print(f"ERROR: Rad store not found: {rad_store}", file=sys.stderr)
+        sys.exit(1)
 
-runner = FleetRunner(params)
-runner.eval()
+    # Note: wind_store is optional, but will use it if it exists
+    if not os.path.isdir(wind_store):
+        print(f"WARNING: Wind store not found: {wind_store}. Setting to None.", file=sys.stderr)
+        wind_store = None
 
-# Print results for the Fleet sample
-print('*************')
-print('************* Fleet Meta-data **************')
-print(runner.results['fleet_meta_data'])
-print('*************')
+    zarr_paths = ZarrPaths(met_store=met_store, rad_store=rad_store, wind_store=wind_store)
+
+    # Instantiate Fleet Runner for Large Emitters
+    params = FleetRunnerParams(
+        trajectory_json_filepath=args.json_file,
+        zarr_paths=zarr_paths,
+        njobs=args.njobs,
+        bada_path=args.bada_path,
+    )
+
+    print("Starting fleet-level climate impact computation for large emitters...")
+    print(f"Loading trajectories from: {args.json_file}")
+    runner = FleetRunnerLargeEmitter(params)
+    runner.eval()
+
+    # Print results for the Fleet sample
+    print("\n" + "=" * 60)
+    print("Fleet Computation Complete")
+    print("=" * 60)
+    print("\nFleet Meta-data:")
+    print(runner.results["fleet_meta_data"])
+
+    print("\n" + "-" * 60)
+    print(f"Number of flights processed: {len(runner.results['flight_results'])}")
+    print("-" * 60)
+
+    for i, flight_result in enumerate(runner.results["flight_results"], 1):
+        print(f"\nFlight {i}:")
+        print(flight_result)
 
 
-for elem in runner.results['flight_results']:
-    
-    print('*************')
-    print(elem)
+if __name__ == "__main__":
+    main()

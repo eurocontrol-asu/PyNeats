@@ -1,6 +1,12 @@
+"""
+Emissions Views Module
+
+Defines zero-copy typed views for emissions-enriched flights.
+"""
 from __future__ import annotations
 
-from typing import Final, ClassVar, Tuple
+from typing import ClassVar, Final
+
 from pyneats.steps.performance.views import FlightWithPerformance
 
 __all__ = [
@@ -8,10 +14,16 @@ __all__ = [
     "FlightWithEmissions",
 ]
 
-REQUIRED_EMISSION_COLS: Final[Tuple[str, ...]] = ("nvpm_ei_m","nox_ei")
+REQUIRED_EMISSION_COLS: Final[tuple[str, ...]] = ("nvpm_ei_m", "nox_ei")
 
 
 class FlightWithEmissions(FlightWithPerformance):
-    """Zero-copy typed view for emissions-enriched flights."""
+    """
+    Zero-copy typed view for emissions-enriched flights.
 
-    REQUIRED: ClassVar[Tuple[str, ...]] = REQUIRED_EMISSION_COLS
+    Attributes
+    ----------
+    REQUIRED : ClassVar[tuple[str, ...]]
+        Required emission columns.
+    """
+    REQUIRED: ClassVar[tuple[str, ...]] = REQUIRED_EMISSION_COLS

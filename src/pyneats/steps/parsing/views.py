@@ -1,6 +1,13 @@
+"""
+Flight4D View Module
+
+Defines the zero-copy, typed view for 4D flight data (latitude, longitude, altitude, time).
+"""
+
 from __future__ import annotations
 
-from typing import Final, ClassVar, Tuple
+from typing import ClassVar, Final
+
 from pyneats.core.views import FlightView
 
 __all__ = [
@@ -11,19 +18,19 @@ __all__ = [
     "Flight4D",
 ]
 
-REQUIRED_4D_COLS: Final[Tuple[str, ...]] = (
+REQUIRED_4D_COLS: Final[tuple[str, ...]] = (
     "latitude",
     "longitude",
     "altitude",
     "time",
 )
-OPTIONAL_COLS: Final[Tuple[str, ...]] = (
+OPTIONAL_COLS: Final[tuple[str, ...]] = (
     "fuel_flow",
     "aircraft_mass",
     "engine_efficiency",
     "true_airspeed",
 )
-ATTRS_OPTIONAL: Final[Tuple[str, ...]] = (
+ATTRS_OPTIONAL: Final[tuple[str, ...]] = (
     "takeoff_weight",
     "payload_factor",
     "hydrogen_content",
@@ -36,7 +43,7 @@ ATTRS_OPTIONAL: Final[Tuple[str, ...]] = (
     "naphtalene",
 )
 
-ATTS_REQUIRED: Final[Tuple[str, ...]] = (
+ATTS_REQUIRED: Final[tuple[str, ...]] = (
     "flight_id",
     "aircraft_type",
     "departure_airport",
@@ -47,9 +54,21 @@ ATTS_REQUIRED: Final[Tuple[str, ...]] = (
 
 
 class Flight4D(FlightView):
-    """Zero-copy, typed view ensuring ('latitude','longitude','altitude','time') exist."""
+    """
+    Zero-copy, typed view ensuring ('latitude','longitude','altitude','time') exist.
 
-    REQUIRED: ClassVar[Tuple[str, ...]] = REQUIRED_4D_COLS
-    OPTIONAL: ClassVar[Tuple[str, ...]] = OPTIONAL_COLS
-    ATTRS_OPTIONAL: ClassVar[Tuple[str, ...]] = ATTRS_OPTIONAL
-    ATTRS_REQUIRED: ClassVar[Tuple[str, ...]] = ATTS_REQUIRED
+    Attributes
+    ----------
+    REQUIRED : ClassVar[tuple[str, ...]]
+        Required columns for a 4D flight.
+    OPTIONAL : ClassVar[tuple[str, ...]]
+        Optional columns for a 4D flight.
+    ATTRS_OPTIONAL : ClassVar[tuple[str, ...]]
+        Optional attributes for a 4D flight.
+    ATTRS_REQUIRED : ClassVar[tuple[str, ...]]
+        Required attributes for a 4D flight.
+    """
+    REQUIRED: ClassVar[tuple[str, ...]] = REQUIRED_4D_COLS
+    OPTIONAL: ClassVar[tuple[str, ...]] = OPTIONAL_COLS
+    ATTRS_OPTIONAL: ClassVar[tuple[str, ...]] = ATTRS_OPTIONAL
+    ATTRS_REQUIRED: ClassVar[tuple[str, ...]] = ATTS_REQUIRED

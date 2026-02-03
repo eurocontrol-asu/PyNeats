@@ -1,10 +1,12 @@
-from typing import Protocol, List, Any
+from typing import Any, Protocol
+
 import pandas as pd
 
 
 class ClusteringProtocol(Protocol):
     """
-    A Protocol defining the required interface for any traffic clustering implementation.
+    A Protocol defining the required interface for any traffic clustering
+    implementation.
 
     Any class or function that implements this protocol must accept a list of
     pandas DataFrames (trajectories) and return a list of lists of pandas
@@ -13,11 +15,11 @@ class ClusteringProtocol(Protocol):
 
     def __call__(
         self,
-        list_of_df: List[pd.DataFrame],
+        list_of_df: list[pd.DataFrame],
         # Optional parameters for resolution, binning, etc., can be added here
         # to ensure all implementations support the same configuration arguments.
         **kwargs: Any,
-    ) -> List[List[pd.DataFrame]]:
+    ) -> list[list[pd.DataFrame]]:
         """
         The main method to execute the clustering logic.
 

@@ -1,39 +1,30 @@
-"""NEATS Flight Views Module
+"""
+NEATS Flight Views Module
 
 This module implements a type-safe view system over pycontrails Flight objects,
 providing schema validation and zero-copy data access. It serves as the foundation
 for all flight data representations in the NEATS pipeline.
 
-Key Components:
-
-1. FlightView Base Class:
-   - Zero-copy wrapper around pycontrails Flight objects
-   - Declarative column and attribute requirements
-   - Runtime schema validation
-   - Type-safe access patterns
-   - Inheritance-aware requirement gathering
-
-2. Schema Management:
-   - REQUIRED: Mandatory columns for flight data
-   - OPTIONAL: Optional columns that may be present
-   - ATTRS_REQUIRED: Mandatory flight attributes
-   - ATTRS_OPTIONAL: Optional flight attributes
-
-3. Validation System:
-   - Strict schema checking on view creation
-   - Clear error messages for missing data
-   - Runtime validation helpers
-   - JSON serialization support
+Classes
+-------
+ValidationError : StepError
+     Raised when a validated Flight view cannot guarantee its schema.
+FlightView : Flight
+     Zero-copy, typed view over a Flight with declarative column requirements and validation.
 """
 
 from __future__ import annotations
+
 import warnings
-from typing import ClassVar, Iterable, TypeVar, Tuple, cast, Any
+from collections.abc import Iterable
+from typing import Any, ClassVar, TypeVar, cast
+
+import numpy as np
 from pycontrails import Flight
 from pycontrails.utils import json as json_utils
-from pyneats.core.steps import StepError
+
 from pyneats.core.neats_fuel import NEATSFuel
-import numpy as np
+from pyneats.core.steps import StepError
 
 __all__ = [
     "ValidationError",
@@ -41,28 +32,69 @@ __all__ = [
 ]
 
 
+
 class ValidationError(StepError):
-    """Raised when a validated Flight view cannot guarantee its schema."""
+    """
+    Raised when a validated Flight view cannot guarantee its schema.
+
+    Raised if required columns or attributes are missing in a FlightView.
+    """
 
 
 TView = TypeVar("TView", bound="FlightView")
 
 
+
 class FlightView(Flight):
-    """Zero-copy, typed *view* over a Flight with declarative column requirements."""
+    """
+    Zero-copy, typed *view* over a Flight with declarative column requirements.
+
+    This class provides runtime schema validation, type-safe access patterns,
+    and inheritance-aware requirement gathering for flight data.
+
+    Class Attributes
+    ----------------
+    REQUIRED : tuple of str
+        Mandatory columns for flight data.
+    OPTIONAL : tuple of str
+        Optional columns that may be present.
+    ATTRS_REQUIRED : tuple of str
+        Mandatory flight attributes.
+    ATTRS_OPTIONAL : tuple of str
+        Optional flight attributes.
+
+    Methods
+    -------
+    from_flight(flight, require=None)
+        Validate requirements and convert to the specific View class at runtime.
+    has(*cols)
+        Check if all specified columns are present in the flight.
+    ensure(*cols)
+        Raise ValidationError if any specified columns are missing.
+    has_attrs(*attrs)
+        Check if all specified attrs are present in the flight.attrs.
+    ensure_attrs(*attrs)
+        Raise ValidationError if any specified attrs are missing.
+    matches(flight)
+        Runtime check that the flight satisfies this view.
+    to_dict()
+        Convert the FlightView to a dictionary, encoding numpy and pandas objects.
+    from_dict(d)
+        Build a FlightView from a dictionary, restoring fuel and attributes.
+    """
 
     # Column requirements
-    REQUIRED: ClassVar[Tuple[str, ...]] = ()
-    OPTIONAL: ClassVar[Tuple[str, ...]] = ()
+    REQUIRED: ClassVar[tuple[str, ...]] = ()
+    OPTIONAL: ClassVar[tuple[str, ...]] = ()
 
     # Attribute (Flight.attrs) requirements
-    ATTRS_REQUIRED: ClassVar[Tuple[str, ...]] = ()
-    ATTRS_OPTIONAL: ClassVar[Tuple[str, ...]] = ()
+    ATTRS_REQUIRED: ClassVar[tuple[str, ...]] = ()
+    ATTRS_OPTIONAL: ClassVar[tuple[str, ...]] = ()
 
     # --- helpers ------------------------------------------------------
 
     @classmethod
-    def _all_required(cls, extra: Iterable[str] | None = None) -> Tuple[str, ...]:
+    def _all_required(cls, extra: Iterable[str] | None = None) -> tuple[str, ...]:
         # Merge REQUIRED across the whole MRO, dedup while preserving order
         seen: set[str] = set()
         out: list[str] = []
@@ -94,7 +126,7 @@ class FlightView(Flight):
         return tuple(out)
 
     @classmethod
-    def _all_attrs_required(cls) -> Tuple[str, ...]:
+    def _all_attrs_required(cls) -> tuple[str, ...]:
         seen: set[str] = set()
         out: list[str] = []
         for base in reversed(cls.__mro__):
@@ -106,7 +138,7 @@ class FlightView(Flight):
         return tuple(out)
 
     @classmethod
-    def _all_attrs_optional(cls) -> Tuple[str, ...]:
+    def _all_attrs_optional(cls) -> tuple[str, ...]:
         seen: set[str] = set()
         out: list[str] = []
         for base in reversed(cls.__mro__):
@@ -118,7 +150,7 @@ class FlightView(Flight):
         return tuple(out)
 
     # --- construction / validation -----------------------------------
-
+    
     @classmethod
     def from_flight(
         cls: type[TView],
@@ -126,7 +158,7 @@ class FlightView(Flight):
         *,
         require: Iterable[str] | None = None,
     ) -> TView:
-        """Validate that the flight satisfies this view's requirements."""
+        """Validate requirements and convert to the specific View class at RUNTIME."""
 
         required_cols = cls._all_required(require)
         required_attrs = cls._all_attrs_required()
@@ -135,7 +167,8 @@ class FlightView(Flight):
         missing_attrs = [a for a in required_attrs if a not in flight.attrs]
 
         if missing_cols or missing_attrs:
-            messages = []
+            # FIX 1: Define the list before using it
+            messages = [] 
 
             if missing_cols:
                 messages.append(f"missing columns: {', '.join(missing_cols)}")
@@ -145,8 +178,16 @@ class FlightView(Flight):
 
             raise ValidationError(cls.__name__, "; ".join(messages))
 
-        # Zero-copy: we only *narrow the type* for the caller
-        return cast(TView, flight)
+        # FIX 2: Actually instantiate the class!
+        # This changes the runtime type so isinstance() works correctly.
+        # copy=False ensures efficiency (Zero-Copy)
+        view_instance = cls(flight.data, attrs=flight.attrs, copy=False)
+
+        # Preserve fuel wrapper if present
+        if hasattr(flight, "fuel") and flight.fuel is not None:
+            view_instance.fuel = flight.fuel
+
+        return view_instance
 
     # --- convenience --------------------------------------------------
 
@@ -206,7 +247,8 @@ class FlightView(Flight):
         if common_keys:
             warnings.warn(
                 f"Found duplicate keys in data and attrs: {common_keys}. "
-                "Data keys will overwrite attrs keys in returned dictionary."
+                "Data keys will overwrite attrs keys in returned dictionary.",
+                stacklevel=2,
             )
 
         return {**attrs, **data}
@@ -214,14 +256,14 @@ class FlightView(Flight):
     @classmethod
     def from_dict(cls, d: dict) -> FlightView:
         # Build the fuel object first
-        
+
         fuel_obj: NEATSFuel = NEATSFuel.from_attrs(d)
 
         # Call the pycontrails from dict
         f = Flight.from_dict(d)
 
         # This is needed because it forces it as column instead of attribute when reading from dict
-        # We should force overloaded to_dict to save flight_id as single value (so that is parsed as an attribute) or
+        # We should force overloaded to_dict to save flight_id as single value (so that is parsed as an attribute) or # noqa: E501
         # also overload the from_dict
         f["altitude"] = f.altitude
         f.attrs["flight_id"] = f["flight_id"][0]

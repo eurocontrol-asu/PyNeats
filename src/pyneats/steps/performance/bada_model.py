@@ -1,84 +1,76 @@
-"""BADA Performance Model Module
 
-This module implements aircraft performance calculations using EUROCONTROL's Base of
-Aircraft Data (BADA) models. It provides:
+"""
+BADA Performance Model Module
 
-1. Aircraft Performance Computation:
-   - Thrust and fuel flow calculation
-   - Aircraft mass estimation
-   - Flight phase detection
-   - Engine efficiency computation
-   - Aircraft-specific parameter lookups
+Implements aircraft performance calculations using EUROCONTROL's Base of Aircraft Data (BADA) models.
 
-2. BADA Model Integration:
-   - BADA3 and BADA4 model support
-   - Automatic model selection based on aircraft type
-   - Fallback mechanisms between versions
-   - Engine type resolution
+Features
+--------
+- Thrust and fuel flow calculation
+- Aircraft mass estimation
+- Flight phase detection
+- Engine efficiency computation
+- Aircraft-specific parameter lookups
+- BADA3 and BADA4 model support with automatic selection and fallback
+- Iterative mass estimation for unknown initial mass
+- Flexible engine efficiency computation
+- Multiple delta-tau computation methods
+- True airspeed smoothing
+- Comprehensive error handling
 
-3. Key Features:
-   - Iterative mass estimation for unknown initial mass
-   - Conservative mass estimation with payload factor
-   - Flexible engine efficiency computation
-   - Multiple delta-tau computation methods
-   - True airspeed smoothing
-   - Comprehensive error handling
-
-4. Data Sources:
-   - BADA3/4 coefficient files
-   - Aircraft mapping tables
-   - Engine type databases
-   - Default parameters from RSTS
+Classes
+-------
+BADAPerformanceModel
+     Main step for BADA-based performance computation.
+BADAPerformanceModelParams
+     Parameters for the BADA performance model calculation.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Literal, TypedDict, Optional, Tuple
 from dataclasses import dataclass
 from importlib.resources import files
+from pathlib import Path
+from typing import Any, Literal, TypedDict
+
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-
-
 from pycontrails import Flight
-from pycontrails.physics.units import m_to_T_isa, ft_to_m
 from pycontrails.physics.jet import (
     acceleration as pc_acceleration,
+)
+from pycontrails.physics.jet import (
     overall_propulsion_efficiency,
 )
+from pycontrails.physics.units import ft_to_m, m_to_T_isa
 
 from pyneats.core.neats_default_parameters import (
-    DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW,
-    REFERENCE_Q_FUEL,
+    DEFAULT_BADA3_VERSION,
+    DEFAULT_BADA4_VERSION,
     DEFAULT_DELTA_TAU_COMPUTE_METHOD,
     DEFAULT_DELTA_TAU_FILL_METHOD,
-    DEFAULT_PAYLOAD_FACTOR,
     DEFAULT_FUEL_RESERVE_FRACTION,
     DEFAULT_MAX_MASS_ESTIMATION_ITER,
     DEFAULT_MAX_REL_MASS_DIFF,
-    DEFAULT_BADA4_VERSION,
-    DEFAULT_BADA3_VERSION,
+    DEFAULT_PAYLOAD_FACTOR,
     DEFAULT_ROCD_PHASE_THRESHOLD,
+    DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW,
+    REFERENCE_Q_FUEL,
 )
-
-from pyneats.core.steps_registry import register
 from pyneats.core.steps import BaseStep
-from pyneats.steps.weather.weather_provider import FlightWithWeather
-from pyneats.steps.performance.views import FlightWithPerformance
-from pyneats.steps.performance.protocol import PerformanceModel, PerformanceStepError
-from pyneats.steps.performance.params import PerformanceModelParams
-
+from pyneats.core.steps_registry import register
 from pyneats.steps.performance.bada_adapters import (
-    BaseBADAAdapter,
     BADA3Adapter,
     BADA4Adapter,
+    BaseBADAAdapter,
     FlightPhase,
 )
-
-from pyneats.steps.performance.bada_mapper import BadaMappingPaths, BadaMapper
-
+from pyneats.steps.performance.bada_mapper import BadaMapper, BadaMappingPaths
+from pyneats.steps.performance.params import PerformanceModelParams
+from pyneats.steps.performance.protocol import PerformanceModel, PerformanceStepError
+from pyneats.steps.performance.views import FlightWithPerformance
+from pyneats.steps.weather.weather_provider import FlightWithWeather
 
 __all__ = [
     "BADAPerformanceModel",
@@ -90,9 +82,24 @@ __all__ = [
 # -----------------------------
 
 
-class PerfOutput(TypedDict):
-    """Output of performance calculation step."""
 
+class PerfOutput(TypedDict):
+    """
+    Output of performance calculation step.
+
+    Attributes
+    ----------
+    mass : list of float
+        Estimated aircraft mass at each trajectory point.
+    fuel_flow : list of float
+        Fuel flow at each trajectory point.
+    thrust : list of float
+        Thrust at each trajectory point.
+    phase : list of FlightPhase
+        Flight phase at each trajectory point.
+    segment : list of str
+        Segment label at each trajectory point.
+    """
     mass: list[float]
     fuel_flow: list[float]
     thrust: list[float]
@@ -109,7 +116,7 @@ def _as_float(x: Any) -> float:
     return float(np.asarray(x, dtype=float))
 
 
-def _normalize_code_or_none(code: Optional[str]) -> Optional[str]:
+def _normalize_code_or_none(code: str | None) -> str | None:
     if code is None:
         return None
     s = str(code).strip()
@@ -126,9 +133,41 @@ def _normalize_code_or_none(code: Optional[str]) -> Optional[str]:
 # -----------------------------
 
 
+
 @dataclass(frozen=True)
 class BADAPerformanceModelParams(PerformanceModelParams):
-    """Parameters for the BADA performance model calculation."""
+    """
+    Parameters for the BADA performance model calculation.
+
+    Attributes
+    ----------
+    true_air_speed_smoothing_window : int
+        Window size for true airspeed smoothing.
+    reference_q_fuel : float
+        Reference fuel heat value.
+    delta_tau_compute_method : {"point", "zero"}
+        Method for delta-tau computation.
+    delta_tau_fill_method : {"bffill", "none", "zero"}
+        Method for filling delta-tau values.
+    bada4_version : str
+        Version of BADA4 to use.
+    bada3_version : str
+        Version of BADA3 to use.
+    bada4_root_path : str
+        Root path for BADA4 data.
+    bada3_root_path : str
+        Root path for BADA3 data.
+    payload_factor : float
+        Payload factor for mass estimation.
+    fuel_reserve_fraction : float
+        Fuel reserve fraction for mass estimation.
+    max_rel_mass_diff : float
+        Maximum relative mass difference for convergence.
+    max_mass_estimation_iter : int
+        Maximum number of mass estimation iterations.
+    rocd_phase_threshold : float
+        Threshold for rate of climb/descent phase detection.
+    """
 
     true_air_speed_smoothing_window: int = DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW
     reference_q_fuel: float = REFERENCE_Q_FUEL
@@ -189,7 +228,8 @@ class BADAPerformanceModelParams(PerformanceModelParams):
         return self.mapper.bada_type(icao, series, engine_id)
 
 
-@register(PerformanceModel, "bada")
+@register(PerformanceModel, "bada")  # type: ignore[type-abstract]
+
 class BADAPerformanceModel(
     BaseStep[
         FlightWithWeather,
@@ -198,7 +238,16 @@ class BADAPerformanceModel(
     ]
 ):
     """
-    Thin wrapper over BADA adapters with a refactored, testable structure.
+    Step for BADA-based aircraft performance computation.
+
+    Wraps BADA adapters and provides a testable structure for performance calculation.
+
+    Methods
+    -------
+    run(flight)
+        Run BADA performance model on the given flight data.
+    run_by_bada_version(...)
+        Run BADA performance model with optional BADA3 enforcement.
     """
 
     default_params = BADAPerformanceModelParams
@@ -231,11 +280,11 @@ class BADAPerformanceModel(
 
         except Exception as e:
             self.logger.info(
-                "Preprocessing and aircraft attribute extraction failed during Performance evaluation"
+                "Preprocessing and aircraft attribute extraction failed during Performance evaluation"  # noqa: E501
             )
 
             raise PerformanceStepError(
-                f"Preprocessing and aircraft attribute extraction failed during Performance evaluation: {e}"
+                f"Preprocessing and aircraft attribute extraction failed during Performance evaluation: {e}"  # noqa: E501
             ) from e
 
         # --- First attempt: normal BADA (3 or 4) execution ---
@@ -244,7 +293,7 @@ class BADAPerformanceModel(
 
         except PerformanceStepError as exc:
             self.logger.info(
-                "BADA performance evaluation failed. Retrying BADA performance evaluation with BADA3 enforced",
+                "BADA performance evaluation failed. Retrying BADA performance evaluation with BADA3 enforced",  # noqa: E501
                 extra={"icao": icao, "series": series, "engine_id": engine_id_attr},
             )
 
@@ -257,11 +306,15 @@ class BADAPerformanceModel(
 
                 if bada4_code is None:
                     self.logger.info(
-                        "BADA performance evaluation already performed with BADA3, no need to retry with BADA3 again",
-                        extra={"icao": icao, "series": series, "engine_id": engine_id_attr},
+                        "BADA performance evaluation already performed with BADA3, no need to retry with BADA3 again",  # noqa: E501
+                        extra={
+                            "icao": icao,
+                            "series": series,
+                            "engine_id": engine_id_attr,
+                        },
                     )
                     raise PerformanceStepError(
-                        "BADA performance evaluation already performed with BADA3, no need to retry with BADA3 again"
+                        "BADA performance evaluation already performed with BADA3, no need to retry with BADA3 again"  # noqa: E501
                     ) from exc
 
                 return self.run_by_bada_version(
@@ -333,30 +386,26 @@ class BADAPerformanceModel(
     # ---------- adapter & attrs ----------
     def _extract_aircraft_attrs(
         self, flight: Flight
-    ) -> Tuple[str, Optional[str], Optional[str], Optional[float]]:
+    ) -> tuple[str, str | None, str | None, float | None]:
         """Extract required aircraft attributes from flight.attrs."""
-        icao: Optional[str] = (
-            flight.attrs.get("aircraft_type") if hasattr(flight, "attrs") else None
-        )
+        icao: str | None = flight.attrs.get("aircraft_type") if hasattr(flight, "attrs") else None
         if not icao:
             raise KeyError("Flight attrs missing 'aircraft_type'")
 
-        series: Optional[str] = (
+        series: str | None = (
             flight.attrs.get("aircraft_series") if hasattr(flight, "attrs") else None
         )
 
-        engine_id: Optional[str] = (
-            flight.attrs.get("engine_uid") if hasattr(flight, "attrs") else None
-        )
-        q_fuel: Optional[float] = flight.fuel.q_fuel
+        engine_id: str | None = flight.attrs.get("engine_uid") if hasattr(flight, "attrs") else None
+        q_fuel: float | None = flight.fuel.q_fuel
 
         return icao, series, engine_id, q_fuel
 
     def _resolve_bada_adapter(
         self,
         icao: str,
-        series: Optional[str],
-        engine_id: Optional[str],
+        series: str | None,
+        engine_id: str | None,
         force_bada3: bool = False,
     ) -> tuple[BaseBADAAdapter, str, int, str]:
         """Resolve BADA adapter based on aircraft type and available info."""
@@ -453,7 +502,7 @@ class BADAPerformanceModel(
         adapter: BaseBADAAdapter,
         engine_id: str,
         flight: Flight,
-    ) -> Optional[FlightWithPerformance]:
+    ) -> FlightWithPerformance | None:
         """If AO provided fuel_flow and engine_efficiency, skip BADA model."""
         if "fuel_flow" in df.columns and "engine_efficiency" in df.columns:
             self.logger.debug(
@@ -479,9 +528,9 @@ class BADAPerformanceModel(
         df: pd.DataFrame,
         flight: Flight,
         icao: str,
-        q_fuel_attr: Optional[float],
+        q_fuel_attr: float | None,
         reference_q_fuel: float,
-    ) -> Tuple[PerfOutput, float]:
+    ) -> tuple[PerfOutput, float]:
         """Choose mass estimation strategy and use iterative estimation with the performance
         model if needed. Returns both perf output and q_fuel_used."""
 
@@ -518,7 +567,7 @@ class BADAPerformanceModel(
             )
             return perf, q_fuel_used
 
-        initial_mass: Optional[float] = flight.attrs.get("takeoff_weight")
+        initial_mass: float | None = flight.attrs.get("takeoff_weight")
         if initial_mass is not None:
             self.logger.debug("'takeoff_weight' attribute provided, using it")
             perf = self._single_pass_performance(
@@ -540,7 +589,7 @@ class BADAPerformanceModel(
         self,
         adapter: BaseBADAAdapter,
         df: pd.DataFrame,
-        initial_mass: Optional[float],
+        initial_mass: float | None,
         q_fuel_used: float,
         default_q_fuel: float,
     ) -> PerfOutput:
@@ -611,7 +660,7 @@ class BADAPerformanceModel(
     ) -> PerfOutput:
         """Iterative initial mass estimation using BADA performance model."""
 
-        payload_factor: Optional[float] = flight.attrs.get("payload_factor")
+        payload_factor: float | None = flight.attrs.get("payload_factor")
 
         if payload_factor is None:
             payload_factor = self.params.payload_factor
@@ -627,7 +676,7 @@ class BADAPerformanceModel(
 
         if adapter.MPL is None:
             self.logger.warning(
-                "BADA adapter for ICAO '%s' does not provide MPL, assuming MPL = MTOW - OEW. Conservative case",
+                "BADA adapter for ICAO '%s' does not provide MPL, assuming MPL = MTOW - OEW. Conservative case",  # noqa: E501
                 icao,
             )
             maximum_payload = maximum_takeoff_weight - operating_empty_weight

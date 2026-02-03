@@ -1,9 +1,15 @@
-from __future__ import annotations
-from typing import Protocol, runtime_checkable
-from pyneats.core.steps import Step, StepError
+"""
+Climate Functions Protocol Module
 
+Defines protocols and error classes for contrail and non-CO2 climate function steps.
+"""
+from __future__ import annotations
+
+from typing import Protocol, runtime_checkable
+
+from pyneats.core.steps import Step, StepError, VectorizedStep
 from pyneats.steps.climate_functions.views import (
-    FlightWithContrailsImpact,
+    FlightWithRFContrailsImpact,
     FlightWithNonCO2Impact,
 )
 from pyneats.steps.emissions.views import FlightWithEmissions
@@ -12,26 +18,46 @@ __all__ = [
     "ContrailsModel",
     "NonCO2Model",
     "ContrailsStepError",
-    "ClimateStepError",
+    "ACCFStepError",
+    "OpenAirClimStepError"
 ]
 
 
 @runtime_checkable
-class ContrailsModel(Step[FlightWithEmissions, FlightWithContrailsImpact], Protocol):
-    """A climate step that enriches a Flight with contrail impact columns."""
+class ContrailsModel(
+    Step[FlightWithEmissions, FlightWithRFContrailsImpact],
+    VectorizedStep[FlightWithEmissions, FlightWithRFContrailsImpact],
+    Protocol,
+):
+    """
+    Protocol for contrail climate function steps.
+
+    A climate step that enriches a Flight with contrail impact columns.
+    Requires both single-flight (__call__) and fleet-level (run_fleet) execution capabilities.
+    """
 
 
 @runtime_checkable
 class NonCO2Model(Step[FlightWithEmissions, FlightWithNonCO2Impact], Protocol):
-    """A climate step that enriches a Flight with non-CO₂ impact columns."""
+    """
+    Protocol for non-CO2 climate function steps.
 
+    A climate step that enriches a Flight with non-CO2 impact columns.
+    """
 
 
 class ContrailsStepError(StepError):
-    """Raised when contrail impact evaluation fails or yields invalid output."""
+    """
+    Raised when contrail impact evaluation fails or yields invalid output.
+    """
 
 
-class ClimateStepError(StepError):
-    """Raised when ACCF evaluation fails or yields invalid output."""
+class ACCFStepError(StepError):
+    """
+    Raised when ACCF evaluation fails or yields invalid output.
+    """
 
-
+class OpenAirClimStepError(StepError):
+    """
+    Raised when OpenAirClim evaluation fails or yields invalid output.
+    """

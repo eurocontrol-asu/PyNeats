@@ -1,18 +1,25 @@
+"""
+Climate Metrics Views Module
+
+Defines zero-copy views for climate-metrics-enriched flights.
+"""
 from __future__ import annotations
 
 from typing import Any
-from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
 
+from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact, FlightWithEmissions
 
 __all__ = ["FlightWithClimateImpact"]
 
-class FlightWithClimateImpact(FlightWithNonCO2Impact):
+
+class FlightWithClimateImpact(FlightWithEmissions):
     """
     Zero-copy view guaranteeing that attrs['climate_impact'] exists.
 
     Provides convenient accessors for the climate impact metadata and results.
     """
 
+    '''
     @property
     def climate_payload(self) -> dict[str, Any]:
         return self.attrs["climate_impact"]
@@ -31,3 +38,4 @@ class FlightWithClimateImpact(FlightWithNonCO2Impact):
             if block.get("species") == species:
                 return block.get("value", [])
         return []
+    '''

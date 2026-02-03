@@ -1,15 +1,15 @@
 [build-system]
-requires = ["setuptools>=70", "wheel", "setuptools-scm[toml]>=8"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 [project]
 name = "pyneats"
 description = "NEATS: aviation non-CO₂ climate metrics pipeline (PyNeats)."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 license = { file = "LICENSE" }
-authors = [{ name = "Philippe VERY", email = "philippe.very@eurocontrol.int" }, 
-           { name = "Ramon DALMAU", email = "ramon.dalmau-codina@eurocontrol.int" }, 
+authors = [{ name = "Philippe VERY", email = "philippe.very@eurocontrol.int" },
+           { name = "Ramon DALMAU", email = "ramon.dalmau-codina@eurocontrol.int" },
            { name = "Ana-Maria PELIN", email = "ana-maria.pelin.ext@eurocontrol.int" },
            {name = "Gabriel JARRY", email = "gabriel.jarry@eurocontrol.int"}]
 
@@ -34,45 +34,104 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Keep optional-dependencies for backward compatibility
+bada = []  # left empty intentionally; docs explain manual install
+
+[dependency-groups]
 dev = [
   "pytest>=8",
   "pytest-cov",
   "ruff>=0.5",
   "mypy>=1.10",
+  "pre-commit>=3.0",
+  "pip-audit>=2.6",
 ]
 
-bada = []  # left empty intentionally; docs explain manual install
+docs = [
+  "mkdocs-material>=9.0",
+  "mkdocstrings[python]>=0.24",
+]
 
-accf = ["climaccf @ git+https://github.com/dlr-pa/climaccf.git@018471922764b649ef23285f64919243b68a19b6"]
+[tool.hatch.version]
+source = "vcs"
 
-[tool.setuptools]
-package-dir = {"" = "src"}
+[tool.hatch.build.hooks.vcs]
+version-file = "src/pyneats/_version.py"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/pyneats"]
 
-[tool.setuptools.package-data]
-pyneats = ["py.typed", "resources/**/*"]
-
-[tool.setuptools_scm]
-version_file = "src/pyneats/_version.py"
-fallback_version = "0.0.0-dev"   # optional safety net
-local_scheme = "no-local-version"
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/tests",
+  "/README.md",
+  "/LICENSE",
+]
 
 [tool.pytest.ini_options]
 pythonpath = "src"
 testpaths = ["tests"]
-# addopts = "-q"
+addopts = "-ra --strict-markers"
 filterwarnings = [
     "ignore::Warning",
+]
+markers = [
+    "requires_bada: tests that require BADA coefficients data",
+    "requires_weather: tests that require weather data",
+    "slow: tests that take more than 10 seconds to run",
+    "integration: integration tests",
+    "benchmark: performance benchmark tests",
+]
+
+[tool.coverage.run]
+source = ["pyneats"]
+omit = [
+    "*/tests/*",
+    "*/_version.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
 ]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"src/pyneats/steps/climate_metrics/gwp.py" = ["N802", "N803", "N806"]  # Scientific notation (J, K units)
+"src/pyneats/steps/performance/bada_*.py" = ["N802", "N806"]  # Aviation acronyms (MTOW, MPL, OEW, M, TAS, CAS)
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 color_output = true
 pretty = true
 show_column_numbers = true
@@ -83,3 +142,4 @@ warn_no_return = true
 warn_redundant_casts = true
 warn_unused_configs = true
 warn_unused_ignores = true
+files = ["src/pyneats"]

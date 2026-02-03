@@ -1,8 +1,17 @@
+"""
+Trajectory Parser Protocol Module
+
+Defines the protocol and error class for trajectory parser steps.
+"""
+
 from __future__ import annotations
+
 from typing import Protocol, runtime_checkable
+
 import pandas as pd
-from pyneats.steps.parsing.views import Flight4D
+
 from pyneats.core.steps import Step, StepError
+from pyneats.steps.parsing.views import Flight4D
 
 __all__ = [
     "TrajectoryParser",
@@ -12,8 +21,14 @@ __all__ = [
 
 @runtime_checkable
 class TrajectoryParser(Step[pd.DataFrame, Flight4D], Protocol):
-    """Parses a tabular source into a validated `Flight4D` (zero-copy view)."""
+    """
+    Protocol for trajectory parser steps.
+
+    Parses a tabular source into a validated `Flight4D` (zero-copy view).
+    """
 
 
 class TrajectoryParserStepError(StepError):
-    """Raised when a trajectory table cannot be parsed into a valid Flight."""
+    """
+    Raised when a trajectory table cannot be parsed into a valid Flight.
+    """

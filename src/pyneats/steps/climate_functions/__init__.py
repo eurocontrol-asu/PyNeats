@@ -1,37 +1,47 @@
-from pyneats.steps.climate_functions.cocip import (
-    FlightWithContrailsImpact,
-    ContrailsParams,
-    ContrailsStepError,
-    CoCiPModel,
-    ContrailsModel,
-)
+"""
+Climate functions step package for NEATS.
 
+Exposes all contrail and non-CO2 climate function models, protocols, and views.
+"""
 from pyneats.steps.climate_functions.climaccf import (
+    ACCFModel,
+    ACCFParams,
+    ACCFStepError,
     FlightWithNonCO2Impact,
     NonCO2Model,
-    aCCFParams,
-    ACCFModel,
-    ClimateStepError,
     make_accf_surface_view,
 )
-
+from pyneats.steps.climate_functions.cocip import (
+    CoCiPModel,
+    ContrailsModel,
+    ContrailsParams,
+    ContrailsStepError,
+    FlightWithRFContrailsImpact,
+)
 from pyneats.steps.climate_functions.local_accf import (
     LocalACCFModel,
     LocalACCFParams,
 )
 
+from pyneats.steps.climate_functions.open_airclim import(
+    OpenAirClimModel,
+    OpenAirClimParams,
+)
+
 __all__ = [
-    "FlightWithContrailsImpact",
+    "FlightWithRFContrailsImpact",
     "ContrailsModel",
     "ContrailsParams",
     "CoCiPModel",
     "ContrailsStepError",
     "FlightWithNonCO2Impact",
     "NonCO2Model",
-    "aCCFParams",
+    "ACCFParams",
     "ACCFModel",
-    "ClimateStepError",
+    "ACCFStepError",
     "make_accf_surface_view",
     "LocalACCFModel",
     "LocalACCFParams",
+    "OpenAirClimModel",
+    "OpenAirClimParams",
 ]

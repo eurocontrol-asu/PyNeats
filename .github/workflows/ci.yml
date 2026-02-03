@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+    paths-ignore:
+      - "**.md"
+      - "**.bib"
+      - "LICENSE"
+      - ".gitignore"
+      - "**.ipynb"
+  pull_request:
+    branches: [main, dev]
+    types: [opened, reopened, synchronize]
+    paths-ignore:
+      - "**.md"
+      - "**.bib"
+      - "LICENSE"
+      - ".gitignore"
+      - "**.ipynb"
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Run ruff format check
+        run: uv run ruff format --check src/pyneats tests/
+
+      - name: Run ruff linter
+        run: uv run ruff check src/pyneats tests/
+
+      - name: Run mypy
+        run: uv run mypy src/pyneats
+        continue-on-error: true  # Allow mypy errors (66 known type issues in complex code)
+
+  test:
+    name: Test Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Install pybada and OpenAirClim manually
+        run: |
+          uv run pip install pybada --no-deps --ignore-requires-python
+          uv run pip install git+https://github.com/dlr-pa/oac.git
+
+      - name: Checkout BADA data repo
+        uses: actions/checkout@v4
+        with:
+          repository: eurocontrol-asu/bada-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: bada_data
+
+      - name: Set up BADA data directories
+        run: |
+          mkdir -p ${{ github.workspace }}/tests/data/BADA
+          cp -r bada_data/* ${{ github.workspace }}/tests/data/BADA/
+
+      - name: Set BADA environment variables
+        run: |
+          echo "BADA_ROOT_PATH=${{ github.workspace }}/tests/data/BADA" >> $GITHUB_ENV
+
+      - name: Run tests with coverage
+        run: uv run pytest tests/ -v --cov=pyneats --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage to Coveralls
+        if: matrix.python-version == '3.12'
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: coverage.xml
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Run pip-audit
+        run: uv run pip-audit --skip-editable
+        continue-on-error: true

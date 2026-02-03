@@ -1,44 +1,44 @@
-"""BADA Adapters Module
 
-This module provides a unified interface to EUROCONTROL's Base of Aircraft Data (BADA) 
-models through adapter classes. It handles both BADA3 and BADA4 implementations with
-consistent error handling and unit conversions.
+"""
+BADA Adapters Module
 
-Key Components:
+Provides a unified interface to EUROCONTROL's Base of Aircraft Data (BADA) models through adapter classes.
+Handles both BADA3 and BADA4 implementations with consistent error handling and unit conversions.
 
-1. Base Structures:
-   - State: Encapsulates flight state (velocity, altitude, mass, etc.)
-   - Atmosphere: Holds atmospheric properties (temperature, pressure ratios)
-   - AircraftProtocol: Defines common aircraft metadata interface
-   - BaseBADAAdapter: Abstract base for BADA implementations
+Features
+--------
+- Unified interface for BADA3 and BADA4 models
+- Thrust and fuel flow calculations
+- Flight phase detection
+- Configuration management
+- Unit conversions
+- Consistent error handling
 
-2. Adapter Classes:
-   - BADA3Adapter: Wrapper for BADA3 aircraft performance model
-   - BADA4Adapter: Wrapper for BADA4 aircraft performance model
-   Both provide:
-   - Thrust and fuel flow calculations
-   - Flight phase detection
-   - Configuration management
-   - Unit conversions
-
-3. Implementation Notes:
-   All calculations follow BADA specifications for:
-   - Drag computation
-   - Thrust levels (idle, climb, total)
-   - Fuel flow rates
-   - Configuration management
-   - Atmospheric corrections
+Classes
+-------
+State
+    Encapsulates flight state (velocity, altitude, mass, etc.).
+Atmosphere
+    Holds atmospheric properties (temperature, pressure ratios).
+AircraftProtocol
+    Defines common aircraft metadata interface.
+BaseBADAAdapter
+    Abstract base for BADA implementations.
+BADA3Adapter
+    Wrapper for BADA3 aircraft performance model.
+BADA4Adapter
+    Wrapper for BADA4 aircraft performance model.
 """
 
-
 from __future__ import annotations
+
 from abc import abstractmethod
-from typing import Protocol, Tuple, cast, Literal, TypeVar, Generic
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Generic, Literal, Protocol, TypeVar, cast
 
 from packaging import version
-from pycontrails.physics.units import m_per_s_to_knots, ft_to_m
+from pycontrails.physics.units import ft_to_m, m_per_s_to_knots
 
 try:
     import pyBADA.atmosphere as atm
@@ -54,7 +54,6 @@ except ImportError as e:
 
 
 from pyneats.steps.performance.protocol import PerformanceStepError
-
 
 __all__ = [
     "AircraftProtocol",
@@ -75,7 +74,8 @@ FlightPhase = Literal["Climb", "Cruise", "Descent"]
 
 @dataclass
 class State:
-    """ Flight state needed by BADA performance methods."""
+    """Flight state needed by BADA performance methods."""
+
     v: float
     h: float
     m: float
@@ -86,7 +86,8 @@ class State:
 
 @dataclass
 class Atmosphere:
-    """ Atmosphere properties needed by BADA performance methods."""
+    """Atmosphere properties needed by BADA performance methods."""
+
     delta_tau: float
     delta: float
     theta: float
@@ -95,6 +96,7 @@ class Atmosphere:
 
 class AircraftProtocol(Protocol):
     """Common aircraft metadata accessors."""
+
     @property
     def nb_eng(self) -> int | None: ...
 
@@ -134,7 +136,7 @@ class BaseBADAAdapter(AircraftProtocol, Protocol):
         rocd_mps: float,
         accel_mps2: float,
         delta_tau: float,
-    ) -> Tuple[float, float, FlightPhase, str]: ...
+    ) -> tuple[float, float, FlightPhase, str]: ...
 
 
 # -----------------------------------------------------------------------------
@@ -142,6 +144,7 @@ class BaseBADAAdapter(AircraftProtocol, Protocol):
 # -----------------------------------------------------------------------------
 
 TObj = TypeVar("TObj", Bada3Aircraft, Bada4Aircraft)
+
 
 class _PyBADAAdapterBase(Generic[TObj]):
     """Mixin with shared behaviors and accessors for BADA3/4 adapters."""
@@ -168,9 +171,9 @@ class _PyBADAAdapterBase(Generic[TObj]):
         rocd_mps: float,
         accel_mps2: float,
         delta_tau: float,
-    ) -> Tuple[float, float, FlightPhase, str]:
-        """ Compute thrust and fuel flow for a flight segment."""
-        
+    ) -> tuple[float, float, FlightPhase, str]:
+        """Compute thrust and fuel flow for a flight segment."""
+
         # Get atmosphere properites
         theta, delta, sigma = atm.atmosphereProperties(altitude_m, delta_tau)
 
@@ -186,7 +189,7 @@ class _PyBADAAdapterBase(Generic[TObj]):
         )
 
         # delta temperature constant used by BADA 4
-        tau_const: float = theta * const.temp_0 / (theta * const.temp_0 - delta_tau)  # type: ignore
+        tau_const: float = theta * const.temp_0 / (theta * const.temp_0 - delta_tau)
 
         # Get phase
         phase = self._phase_from_rocd(rocd_mps)
@@ -203,30 +206,30 @@ class _PyBADAAdapterBase(Generic[TObj]):
 
         # Define TEM state and atmosphere
         state = State(
-            v=TAS,  # type: ignore
+            v=TAS,
             h=altitude_m,
             m=mass,
-            M=M,  # type: ignore
+            M=M,
             config=cfg,
             phase=phase,
         )
 
         atmosphere = Atmosphere(
             delta_tau=delta_tau,
-            delta=delta,  # type: ignore
-            theta=theta,  # type: ignore
-            sigma=sigma,  # type: ignore
+            delta=delta,
+            theta=theta,
+            sigma=sigma,
         )
 
         # Compute drag from state and atmosphere
-        drag = self.drag(state, atmosphere)  # type: ignore
+        drag = self.drag(state, atmosphere)
 
         # Compute thrust
         thrust = self.required_thrust(
             rocd_mps=rocd_mps,
             mass=mass,
             tau_const=tau_const,
-            TAS=TAS,  # type: ignore
+            TAS=TAS,
             accel_mps2=accel_mps2,
             drag=drag,
         )
@@ -252,11 +255,11 @@ class _PyBADAAdapterBase(Generic[TObj]):
         rocd_mps: float,
         mass: float,
         tau_const: float,
-        TAS: float,
+        TAS: float,  # noqa: N803 (aviation acronym: True Airspeed)
         accel_mps2: float,
         drag: float,
     ) -> float:
-        """  Compute required thrust from flight parameters."""
+        """Compute required thrust from flight parameters."""
 
         return rocd_mps * mass * const.g * tau_const / TAS + mass * accel_mps2 + drag  # type: ignore
 
@@ -287,7 +290,7 @@ class _PyBADAAdapterBase(Generic[TObj]):
         ff_mcmb: float | None,
         thrust_mcmb: float | None,
         phase: FlightPhase,
-    ) -> Tuple[float, float, FlightPhase, str]:
+    ) -> tuple[float, float, FlightPhase, str]:
         if (
             ff is None
             or thrust is None
@@ -319,6 +322,7 @@ class _PyBADAAdapterBase(Generic[TObj]):
 
 class BADA4Adapter(_PyBADAAdapterBase[Bada4Aircraft], BaseBADAAdapter):
     """BADA 4 Adapter implementation."""
+
     def __init__(
         self,
         config_path: str,
@@ -331,7 +335,7 @@ class BADA4Adapter(_PyBADAAdapterBase[Bada4Aircraft], BaseBADAAdapter):
         v = version.parse(bada_version)
         short_version = f"{v.major}.{v.minor}"  # e.g. "4.2"
 
-        self._obj: Bada4Aircraft  = Bada4Aircraft(
+        self._obj: Bada4Aircraft = Bada4Aircraft(
             short_version,
             bada4_code,
             filePath=config_path,
@@ -463,6 +467,7 @@ class BADA4Adapter(_PyBADAAdapterBase[Bada4Aircraft], BaseBADAAdapter):
 
 class BADA3Adapter(_PyBADAAdapterBase[Bada3Aircraft], BaseBADAAdapter):
     """BADA 3 Adapter implementation."""
+
     def __init__(
         self,
         config_path: str,

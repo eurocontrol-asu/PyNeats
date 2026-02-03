@@ -1,47 +1,56 @@
-"""BADA Aircraft Type Mapping Module
 
-This module implements a hierarchical mapping system for resolving aircraft performance 
-model types from BADA. It provides:
+"""
+BADA Aircraft Type Mapping Module
 
-1. Mapping Resolution:
-   Hierarchical resolution of BADA aircraft types using:
-   - ICAO aircraft type designator
-   - Aircraft series
-   - Engine identifier
-   The system follows a fallback chain to ensure maximum coverage.
+Implements a hierarchical mapping system for resolving aircraft performance model types from BADA.
 
-2. Resolution Chain:
-   a) Full match: ICAO + Series + Engine ID
-   b) Partial match: ICAO + Series
-   c) Partial match: ICAO + Engine ID
-   d) Default engine lookup by ICAO, then retry (c)
-   e) Fallback: ICAO only
+Features
+--------
+- Hierarchical resolution of BADA aircraft types using ICAO, series, and engine ID
+- Fallback chain for maximum coverage
+- CSV caching system for performance optimization
 
-3. Key Components:
-   - BadaMappingPaths: Configuration for CSV mapping file locations
-   - BadaMapper: Main resolver implementing the fallback chain
-   - CSV caching system for performance optimization
-
+Classes
+-------
+BadaMappingPaths
+     Configuration for CSV mapping file locations.
+BadaMapper
+     Main resolver implementing the fallback chain for BADA type resolution.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache, cached_property
+from functools import cached_property, lru_cache
 from pathlib import Path
-from typing import Optional, Tuple
 
 import pandas as pd
 
 
+
 @dataclass(frozen=True)
 class BadaMappingPaths:
-    """Paths to CSV files for BADA aircraft type mapping."""
-    icao_series_engine: Path  # 1) triple key: ICAO + SERIES + ENGINE_ID
-    icao_series: Path  # 2) double key: ICAO + SERIES
-    icao_engine: Path  # 3) double key: ICAO + ENGINE_ID
-    default_engine_by_icao: Path  # 4) default engine by ICAO
-    icao_only: Path  # 5) fallback by ICAO only
+    """
+    Paths to CSV files for BADA aircraft type mapping.
+
+    Attributes
+    ----------
+    icao_series_engine : Path
+        Path to CSV for ICAO + SERIES + ENGINE_ID mapping.
+    icao_series : Path
+        Path to CSV for ICAO + SERIES mapping.
+    icao_engine : Path
+        Path to CSV for ICAO + ENGINE_ID mapping.
+    default_engine_by_icao : Path
+        Path to CSV for default engine by ICAO.
+    icao_only : Path
+        Path to CSV for ICAO-only fallback mapping.
+    """
+    icao_series_engine: Path
+    icao_series: Path
+    icao_engine: Path
+    default_engine_by_icao: Path
+    icao_only: Path
 
 
 # ------ Shared, cross-instance CSV cache -------------------------------------
@@ -70,9 +79,17 @@ def _load_df(path: Path, col_icao: str, col_series: str, col_engine: str) -> pd.
 # ------ BadaMapper ------------------------------------------------------------
 
 
+
 class BadaMapper:
-    """Resolves BADA aircraft types using hierarchical CSV mappings."""
-    
+    """
+    Resolves BADA aircraft types using hierarchical CSV mappings.
+
+    Methods
+    -------
+    bada_type(icao, series, engine_id)
+        Resolve BADA info using a fallback chain of keys.
+    """
+
     COL_ICAO = "ICAO"
     COL_SERIES = "ACFT_SERIES"
     COL_ENGINE_ID = "ENGINE_ID"
@@ -87,7 +104,10 @@ class BadaMapper:
     @cached_property
     def _df_icao_series_engine(self) -> pd.DataFrame:
         return _load_df(
-            self.paths.icao_series_engine, self.COL_ICAO, self.COL_SERIES, self.COL_ENGINE_ID
+            self.paths.icao_series_engine,
+            self.COL_ICAO,
+            self.COL_SERIES,
+            self.COL_ENGINE_ID,
         )
 
     @cached_property
@@ -101,7 +121,10 @@ class BadaMapper:
     @cached_property
     def _df_default_engine_by_icao(self) -> pd.DataFrame:
         return _load_df(
-            self.paths.default_engine_by_icao, self.COL_ICAO, self.COL_SERIES, self.COL_ENGINE_ID
+            self.paths.default_engine_by_icao,
+            self.COL_ICAO,
+            self.COL_SERIES,
+            self.COL_ENGINE_ID,
         )
 
     @cached_property
@@ -110,8 +133,8 @@ class BadaMapper:
 
     # --- Helpers -------------------------------------------------------------
     def _coerce_return(
-        self, row: pd.Series, engine_id_override: Optional[str] = None
-    ) -> Tuple[int, str, str, str]:
+        self, row: pd.Series, engine_id_override: str | None = None
+    ) -> tuple[int, str, str, str]:
         missing = [
             c for c in (self.COL_NB_ENG, self.COL_BADA3, self.COL_BADA4) if c not in row.index
         ]
@@ -129,7 +152,7 @@ class BadaMapper:
 
         return nb_eng, bada3, bada4, engine_id
 
-    def _find_one(self, df: pd.DataFrame, **filters: str) -> Optional[pd.Series]:
+    def _find_one(self, df: pd.DataFrame, **filters: str) -> pd.Series | None:
         if df.empty:
             return None
         mask = pd.Series(True, index=df.index)
@@ -141,7 +164,7 @@ class BadaMapper:
             return None
         return df.loc[mask].iloc[0]
 
-    def _default_engine_for_icao(self, icao: str) -> Optional[str]:
+    def _default_engine_for_icao(self, icao: str) -> str | None:
         row = self._find_one(self._df_default_engine_by_icao, **{self.COL_ICAO: icao})
         if row is None or self.COL_ENGINE_ID not in row.index:
             return None
@@ -152,9 +175,9 @@ class BadaMapper:
     def bada_type(
         self,
         icao: str,
-        series: Optional[str] = None,
-        engine_id: Optional[str] = None,
-    ) -> Tuple[int, str, str, str]:
+        series: str | None = None,
+        engine_id: str | None = None,
+    ) -> tuple[int, str, str, str]:
         """
         Resolve BADA info using:
           1) (ICAO, SERIES, ENGINE_ID)
@@ -182,7 +205,11 @@ class BadaMapper:
         if series_n and engine_n:
             row = self._find_one(
                 self._df_icao_series_engine,
-                **{self.COL_ICAO: icao_n, self.COL_SERIES: series_n, self.COL_ENGINE_ID: engine_n},
+                **{
+                    self.COL_ICAO: icao_n,
+                    self.COL_SERIES: series_n,
+                    self.COL_ENGINE_ID: engine_n,
+                },
             )
             if row is not None:
                 return self._coerce_return(row, engine_id_override=engine_n)
