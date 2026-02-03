@@ -1,29 +1,16 @@
-"""NEATS Flight Views Module
+"""
+NEATS Flight Views Module
 
 This module implements a type-safe view system over pycontrails Flight objects,
 providing schema validation and zero-copy data access. It serves as the foundation
 for all flight data representations in the NEATS pipeline.
 
-Key Components:
-
-1. FlightView Base Class:
-   - Zero-copy wrapper around pycontrails Flight objects
-   - Declarative column and attribute requirements
-   - Runtime schema validation
-   - Type-safe access patterns
-   - Inheritance-aware requirement gathering
-
-2. Schema Management:
-   - REQUIRED: Mandatory columns for flight data
-   - OPTIONAL: Optional columns that may be present
-   - ATTRS_REQUIRED: Mandatory flight attributes
-   - ATTRS_OPTIONAL: Optional flight attributes
-
-3. Validation System:
-   - Strict schema checking on view creation
-   - Clear error messages for missing data
-   - Runtime validation helpers
-   - JSON serialization support
+Classes
+-------
+ValidationError : StepError
+     Raised when a validated Flight view cannot guarantee its schema.
+FlightView : Flight
+     Zero-copy, typed view over a Flight with declarative column requirements and validation.
 """
 
 from __future__ import annotations
@@ -45,15 +32,56 @@ __all__ = [
 ]
 
 
+
 class ValidationError(StepError):
-    """Raised when a validated Flight view cannot guarantee its schema."""
+    """
+    Raised when a validated Flight view cannot guarantee its schema.
+
+    Raised if required columns or attributes are missing in a FlightView.
+    """
 
 
 TView = TypeVar("TView", bound="FlightView")
 
 
+
 class FlightView(Flight):
-    """Zero-copy, typed *view* over a Flight with declarative column requirements."""
+    """
+    Zero-copy, typed *view* over a Flight with declarative column requirements.
+
+    This class provides runtime schema validation, type-safe access patterns,
+    and inheritance-aware requirement gathering for flight data.
+
+    Class Attributes
+    ----------------
+    REQUIRED : tuple of str
+        Mandatory columns for flight data.
+    OPTIONAL : tuple of str
+        Optional columns that may be present.
+    ATTRS_REQUIRED : tuple of str
+        Mandatory flight attributes.
+    ATTRS_OPTIONAL : tuple of str
+        Optional flight attributes.
+
+    Methods
+    -------
+    from_flight(flight, require=None)
+        Validate requirements and convert to the specific View class at runtime.
+    has(*cols)
+        Check if all specified columns are present in the flight.
+    ensure(*cols)
+        Raise ValidationError if any specified columns are missing.
+    has_attrs(*attrs)
+        Check if all specified attrs are present in the flight.attrs.
+    ensure_attrs(*attrs)
+        Raise ValidationError if any specified attrs are missing.
+    matches(flight)
+        Runtime check that the flight satisfies this view.
+    to_dict()
+        Convert the FlightView to a dictionary, encoding numpy and pandas objects.
+    from_dict(d)
+        Build a FlightView from a dictionary, restoring fuel and attributes.
+    """
 
     # Column requirements
     REQUIRED: ClassVar[tuple[str, ...]] = ()

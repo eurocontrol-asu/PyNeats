@@ -4,20 +4,21 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class Runner(ABC):
     """
-    Abstract base class the defines the backbone structure for both flight and fleet computations pipeline
+    Abstract base class for NEATS computation pipelines (flight and fleet).
 
-    It orchestrates the sequential processing of flight data through multiple computational components:
+    Orchestrates sequential processing of flight data through multiple computational steps:
 
     - Flight parsing (NM/ADS-B data)
     - Trajectory interpolation
     - Weather data intersection
     - Aircraft performance computation
     - Emissions calculation
-    - Contrail effects and Other Non-CO2 effects assessment
-    - Non CO2 equivalent computation
-        
+    - Contrail and other Non-CO2 effects assessment
+    - Non-CO2 equivalent computation
+
     Subclasses must implement the individual data processing steps.
     The `eval` method provides the standardized template for the execution flow.
     """

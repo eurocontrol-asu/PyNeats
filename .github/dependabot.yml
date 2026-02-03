@@ -1,47 +1,51 @@
-# Dependabot configuration for automated dependency updates
-# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# Dependabot configuration
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
 
 version: 2
 updates:
-  # Python dependencies
+  # Python dependencies (uv/pip)
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    open-pull-requests-limit: 10
-    groups:
-      # Group all patch and minor updates together
-      development-dependencies:
-        dependency-type: "development"
-        update-types:
-          - "minor"
-          - "patch"
-      production-dependencies:
-        dependency-type: "production"
-        update-types:
-          - "patch"
+      interval: "monthly"  # Changed from weekly to reduce noise
+    open-pull-requests-limit: 5  # Reduced from 10
+    commit-message:
+      prefix: "deps"
+      include: "scope"
     labels:
       - "dependencies"
       - "python"
     reviewers:
       - "eurocontrol-asu"
-    commit-message:
-      prefix: "chore(deps)"
-      include: "scope"
+    groups:
+      # Group all minor/patch updates into one PR
+      python-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Keep major updates separate for review
+      python-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    open-pull-requests-limit: 5
+      interval: "monthly"  # Changed from weekly
+    open-pull-requests-limit: 3  # Reduced from 5
+    commit-message:
+      prefix: "ci"
+      include: "scope"
     labels:
       - "dependencies"
       - "github-actions"
-    commit-message:
-      prefix: "ci(deps)"
-      include: "scope"
+    groups:
+      # Group all GitHub Actions updates into one PR
+      github-actions:
+        patterns:
+          - "*"

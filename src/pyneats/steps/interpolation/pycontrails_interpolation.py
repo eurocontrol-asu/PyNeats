@@ -1,3 +1,8 @@
+"""
+PyContrails Trajectory Interpolation Module
+
+Implements trajectory interpolation using pycontrails' resample_and_fill method.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -23,7 +28,9 @@ __all__ = [
 
 @dataclass(frozen=True)
 class PyContrailsInterpolationParams(TrajectoryInterpolationParams):
-    """Parameters for trajectory interpolation/resampling."""
+    """
+    Parameters for trajectory interpolation/resampling using pycontrails.
+    """
 
 
 @register(TrajectoryInterpolator, "pycontrails")  # type: ignore[type-abstract]
@@ -35,25 +42,51 @@ class PyContrailsInterpolator(
     ]
 ):
     """
-    Interpolates flight trajectory data
+    Interpolates flight trajectory data using pycontrails.
 
-    This class provides trajectory interpolation functionality . It handles:
-    - Resampling of mandatory flight parameters wrapping
-    pycontrails' resample_and_fill method
+    This class provides trajectory interpolation functionality. It handles:
+    - Resampling of mandatory flight parameters (wrapping pycontrails' resample_and_fill)
     - Linear interpolation of optional columns
     - Input/output validation
     - Error handling
 
-    Attributes:
-        default_params (PyContrailsInterpolationParams): Default interpolation parameters
+    Parameters
+    ----------
+    flight : Flight4D
+        Input flight trajectory data (validated upstream).
 
-    - input:  Flight4D (validated upstream)
-    - output: Flight4D (validated here, zero-copy)
+    Returns
+    -------
+    Flight4D
+        Interpolated and validated flight trajectory (zero-copy).
+
+    Raises
+    ------
+    TrajectoryInterpolationStepError
+        If interpolation or validation fails.
     """
 
     default_params = PyContrailsInterpolationParams
 
     def run(self, flight: Flight4D) -> Flight4D:
+        """
+        Interpolate a flight trajectory using pycontrails and linear interpolation for optional columns.
+
+        Parameters
+        ----------
+        flight : Flight4D
+            Input flight trajectory data.
+
+        Returns
+        -------
+        Flight4D
+            Interpolated and validated flight trajectory.
+
+        Raises
+        ------
+        TrajectoryInterpolationStepError
+            If interpolation or validation fails.
+        """
         try:
             # Keep original dataframe for interpolation of optional columns
             original = flight.dataframe
@@ -70,8 +103,6 @@ class PyContrailsInterpolator(
                     y_orig = original[col].astype(float)
                     interpolated_values = np.interp(t_new_num, t_orig_num, y_orig)
                     interpolated_flight[col] = interpolated_values
-
-            
 
         except Exception as e:
             raise TrajectoryInterpolationStepError(f"resample_and_fill failed: {e}") from e

@@ -1,33 +1,33 @@
-"""BADA Adapters Module
 
-This module provides a unified interface to EUROCONTROL's Base of Aircraft Data (BADA)
-models through adapter classes. It handles both BADA3 and BADA4 implementations with
-consistent error handling and unit conversions.
+"""
+BADA Adapters Module
 
-Key Components:
+Provides a unified interface to EUROCONTROL's Base of Aircraft Data (BADA) models through adapter classes.
+Handles both BADA3 and BADA4 implementations with consistent error handling and unit conversions.
 
-1. Base Structures:
-   - State: Encapsulates flight state (velocity, altitude, mass, etc.)
-   - Atmosphere: Holds atmospheric properties (temperature, pressure ratios)
-   - AircraftProtocol: Defines common aircraft metadata interface
-   - BaseBADAAdapter: Abstract base for BADA implementations
+Features
+--------
+- Unified interface for BADA3 and BADA4 models
+- Thrust and fuel flow calculations
+- Flight phase detection
+- Configuration management
+- Unit conversions
+- Consistent error handling
 
-2. Adapter Classes:
-   - BADA3Adapter: Wrapper for BADA3 aircraft performance model
-   - BADA4Adapter: Wrapper for BADA4 aircraft performance model
-   Both provide:
-   - Thrust and fuel flow calculations
-   - Flight phase detection
-   - Configuration management
-   - Unit conversions
-
-3. Implementation Notes:
-   All calculations follow BADA specifications for:
-   - Drag computation
-   - Thrust levels (idle, climb, total)
-   - Fuel flow rates
-   - Configuration management
-   - Atmospheric corrections
+Classes
+-------
+State
+    Encapsulates flight state (velocity, altitude, mass, etc.).
+Atmosphere
+    Holds atmospheric properties (temperature, pressure ratios).
+AircraftProtocol
+    Defines common aircraft metadata interface.
+BaseBADAAdapter
+    Abstract base for BADA implementations.
+BADA3Adapter
+    Wrapper for BADA3 aircraft performance model.
+BADA4Adapter
+    Wrapper for BADA4 aircraft performance model.
 """
 
 from __future__ import annotations

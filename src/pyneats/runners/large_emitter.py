@@ -1,13 +1,16 @@
+
 """
 Large Emitter Runner Module
 
-This module implements the sequential "Standard" pipeline for NEATS:
-    Emissions -> Contrails (CoCiP) -> Other Non-CO2 (ACCF) -> Metrics
+Implements the sequential "Standard" pipeline for NEATS:
+    Emissions → Contrails (CoCiP) → Other Non-CO2 (ACCF) → Metrics
 
-It contains:
-- Configuration presets for Large Emitters
-- FlightRunnerLargeEmitter: For processing single trajectories with detailed physics
-- FleetRunnerLargeEmitter: For processing fleets with vectorized CoCiP execution
+Classes
+-------
+FlightRunnerLargeEmitter
+    Processes single trajectories with detailed physics for large emitters.
+FleetRunnerLargeEmitter
+    Processes fleets with vectorized CoCiP execution for large emitters.
 """
 
 from __future__ import annotations
@@ -46,14 +49,22 @@ __all__ = [
 # Single Flight Runner (Sequential Logic)
 # -----------------------------------------------------------------------------
 
+
 class FlightRunnerLargeEmitter(FlightRunner):
     """
-    The Large Emitter setup allows the use of weather based models
-    Lagragian models can then be used for Contrails modelling
-    This introduces a different computation step for contrails
+    Runner for large emitters using weather-based models and Lagrangian contrails modeling.
 
-    Pipeline: Emissions -> Contrails (ex: CoCiP) -> Other Non CO2 (ex: ACCF) -> Metrics
+    Pipeline:
+        Emissions -> Contrails (e.g., CoCiP) -> Other Non-CO2 (e.g., ACCF) -> Metrics
 
+    Methods
+    -------
+    _climate_impact()
+        Compute contrails and other non-CO2 effects.
+    _contrails()
+        Compute contrail effects using the configured contrails model.
+    _other_nonco2()
+        Compute other non-CO2 effects using the configured non-CO2 model.
     """
 
     
@@ -88,7 +99,14 @@ class FlightRunnerLargeEmitter(FlightRunner):
 
     # Compute non CO2 climate impact
     def _climate_impact(self) -> Self:
-        
+        """
+        Compute climate impact by running contrails and other non-CO2 steps sequentially.
+
+        Returns
+        -------
+        Self
+            The runner instance after processing.
+        """
         return (
             self._contrails()  # pylint: disable=protected-access
             ._other_nonco2()  # pylint: disable=protected-access
@@ -96,36 +114,51 @@ class FlightRunnerLargeEmitter(FlightRunner):
     
     # Compute Contrails EF
     def _contrails(self) -> Self:
+        """
+        Compute contrail effects using the configured contrails model.
 
+        Returns
+        -------
+        Self
+            The runner instance after processing.
+
+        Raises
+        ------
+        RuntimeError
+            If emissions step was not run first or if contrails evaluation fails.
+        """
         if self.flight_with_emissions is None:
             logger.error("Missing flight_with_emissions; did you call _emissions() first?")
             raise RuntimeError("_emissions() must be called before _contrails().")
-
-        # Run the contrails step (COCIP). It returns a base Flight.
         try:
             enriched: FlightWithRFContrailsImpact = self.contrails_model(self.flight_with_emissions)
         except ContrailsStepError:
-            # Already logged inside the model; keep original traceback.
             raise
         except Exception as e:
             logger.exception("Unexpected error during contrails (COCIP) evaluation")
             raise RuntimeError(f"Contrails evaluation failed: {e}") from e
-
-        # Zero-copy validated view for ergonomic access (e.g., .ef property)
         self.flight_with_contrails = enriched
-        #self.flight_with_emissions = None
-
         logger.info("Contrails step completed successfully")
-
         return self
 
     # Compute other non-CO₂ effects (aCCF)
     def _other_nonco2(self) -> Self:
+        """
+        Compute other non-CO2 effects using the configured non-CO2 model.
 
+        Returns
+        -------
+        Self
+            The runner instance after processing.
+
+        Raises
+        ------
+        RuntimeError
+            If contrails step was not run first or if non-CO2 evaluation fails.
+        """
         if self.flight_with_contrails is None:
             logger.error("Missing flight_with_contrails; did you call _contrails() first?")
             raise RuntimeError("_contrails() must be called before.")
-
         other_params = self.cfg.params.get("non_co2_model", {})
         other_params.update(
             {
@@ -133,15 +166,12 @@ class FlightRunnerLargeEmitter(FlightRunner):
                 "surface": self._ds_rad,
             }
         )
-
         self.non_co2_model = build(
             NonCO2Model,  # type: ignore[type-abstract]
             self.cfg.non_co2_model,
             **other_params,
         )
-
         f_in: FlightWithEmissions = self.flight_with_contrails
-
         try:
             f_out: FlightWithNonCO2Impact = self.non_co2_model(f_in)
         except ACCFStepError:
@@ -149,11 +179,8 @@ class FlightRunnerLargeEmitter(FlightRunner):
         except Exception as e:
             logger.exception("Unexpected error during non-CO₂ (ACCF) evaluation")
             raise RuntimeError(f"Non-CO₂ evaluation failed: {e}") from e
-
-        # Zero-copy validated view
         self.flight_with_nonco2 = f_out
         logger.info("Other Non-CO₂step completed successfully")
-
         return self
     
 
@@ -163,7 +190,20 @@ class FlightRunnerLargeEmitter(FlightRunner):
 # Fleet Runner (Vectorized Logic)
 # -----------------------------------------------------------------------------
 
+
 class FleetRunnerLargeEmitter(FleetRunner):
+    """
+    Fleet runner for large emitters using vectorized CoCiP execution.
+
+    Methods
+    -------
+    _contrails()
+        Run vectorized CoCiP for the fleet.
+    _climate_impact()
+        Compute contrails and other non-CO2 effects for the fleet.
+    _other_nonco2()
+        Compute other non-CO2 effects for the fleet.
+    """
 
     def __init__(self, cfg: FleetRunnerParams) -> None:
 

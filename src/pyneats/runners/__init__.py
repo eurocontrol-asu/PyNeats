@@ -1,5 +1,8 @@
+
 """
-PyNeats runners for fleet-level climate impact calculations.
+PyNeats Runners Package
+
+Exposes all runner classes for both small and large emitter pipelines, for flight and fleet-level climate impact calculations.
 """
 
 from pyneats.runners.fleet import (

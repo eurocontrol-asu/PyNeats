@@ -1,6 +1,8 @@
 """
-Custom Fuel Class for inheriting from PyContrail's Fuel classes
-that implement requirements defined for NEATS
+Custom Fuel Class for NEATS
+
+This module defines NEATSFuel, a custom fuel class inheriting from PyContrails' SAFBlend,
+with configurable hydrogen content and q_fuel, and utility methods for attribute-based construction.
 """
 
 from __future__ import annotations
@@ -23,10 +25,30 @@ __all__ = [
 ]
 
 
+
 class NEATSFuel(SAFBlend):
     """
     SAF-like type (passes isinstance(..., SAFBlend) and truthy pct_blend) with
     configurable hydrogen content and/or q_fuel. Independent of pct_blend physics.
+
+    Parameters
+    ----------
+    hydrogen_content : float, optional
+        Hydrogen content in weight percent (wt.% H).
+    h_c_ratio : float, optional
+        Atomic H/C ratio.
+    q_fuel : float, optional
+        Lower heating value (J/kg).
+    pct_blend_gate : float, optional
+        Blend gate for SAFBlend compatibility.
+    sulphur_content : float, optional
+        Sulphur content (not used in calculations).
+    aromatics_content : float, optional
+        Aromatics content (not used in calculations).
+    naphthalene : float, optional
+        Naphthalene content (not used in calculations).
+    name : str, optional
+        Name of the fuel.
     """
 
     aromatics_content: float = DEFAULT_AROMATICS_CONTENT  # default value - Not used in calculations
@@ -99,11 +121,22 @@ class NEATSFuel(SAFBlend):
 
     @staticmethod
     def _to_scalar(val: Any) -> Any:
-        """Convert list/array to scalar if needed.
+        """
+        Convert list/array to scalar if needed.
 
         When loading from JSON, fuel properties may be stored as arrays (columns)
         rather than scalars (attrs) due to FlightView.to_dict() merging behavior.
         This extracts the first element if the value is a list/array.
+
+        Parameters
+        ----------
+        val : Any
+            Value to convert.
+
+        Returns
+        -------
+        Any
+            Scalar value or original value if not a sequence.
         """
         if val is None:
             return None
@@ -122,10 +155,20 @@ class NEATSFuel(SAFBlend):
     def from_attrs(cls, attrs: Mapping[str, Any]) -> NEATSFuel:
         """
         Build a NEATSFuel instance from a generic attributes dictionary.
-        Accepts both None and missing values; applies NEATS defaults.
 
-        Note: Handles the case where fuel properties are stored as arrays
-        (from column serialization) by extracting the first element.
+        Accepts both None and missing values; applies NEATS defaults.
+        Handles the case where fuel properties are stored as arrays (from column serialization)
+        by extracting the first element.
+
+        Parameters
+        ----------
+        attrs : Mapping[str, Any]
+            Attributes dictionary containing fuel properties.
+
+        Returns
+        -------
+        NEATSFuel
+            Constructed NEATSFuel instance.
         """
         return cls(
             q_fuel=cls._to_scalar(attrs.get("q_fuel")),

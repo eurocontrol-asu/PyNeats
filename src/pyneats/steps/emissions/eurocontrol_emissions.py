@@ -1,3 +1,8 @@
+"""
+Eurocontrol Emissions Model Module
+
+Defines a placeholder for the Eurocontrol emissions model.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,6 +22,9 @@ __all__ = [
 
 @dataclass(frozen=True)
 class EurocontrolEmissionParams(EmissionParams):
+    """
+    Parameters for the Eurocontrol emissions model.
+    """
     pass
 
 
@@ -28,7 +36,28 @@ class EurocontrolEmissionModel(
         EurocontrolEmissionParams,
     ]
 ):
+    """
+    Placeholder for the Eurocontrol emissions model.
+    """
     default_params = EurocontrolEmissionParams
 
     def run(self, flight: FlightWithPerformance) -> FlightWithEmissions:
+        """
+        Not implemented.
+
+        Parameters
+        ----------
+        flight : FlightWithPerformance
+            Input flight with performance data.
+
+        Returns
+        -------
+        FlightWithEmissions
+            Flight with emissions columns (not implemented).
+
+        Raises
+        ------
+        NotImplementedError
+            Always raised.
+        """
         raise NotImplementedError("EurocontrolEmissionModel is not yet implemented")

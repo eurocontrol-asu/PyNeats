@@ -1,3 +1,18 @@
+"""
+OpenAirClim Climate Function Module.
+
+Implements the Method D climate function based on OpenAirClim for computing non-CO₂
+aviation climate impacts including ozone (O₃), methane (CH₄), water vapor (H₂O),
+and contrail cirrus effects across multiple time horizons (20, 50, 100 years).
+
+The module wraps the open-airclim library to compute Absolute Global Warming Potential
+(AGWP) metrics for flight emissions, using a grid-based inventory approach with
+temporary workspace management.
+
+See Also
+--------
+open_airclim : https://github.com/openclimatefix/open-airclim
+"""
 from __future__ import annotations
 
 from importlib.resources import files
@@ -26,9 +41,31 @@ from pyneats.core.neats_default_parameters import (
 
 @dataclass(frozen=True)
 class OpenAirClimParams(ClimateParams):
-    """Parameters for the Flight based OpenAirClim model.
-    
-    
+    """
+    Configuration parameters for OpenAirClim climate impact computation.
+
+    Parameters
+    ----------
+    tmp_base_dir_path : str
+        Base directory for temporary workspace creation (default: current temp directory)
+    repo_dir_path : str
+        Path to OpenAirClim repository containing background datasets and response functions
+    base_toml_path : str
+        Path to base TOML configuration file for OpenAirClim
+    grid_res : float
+        Grid resolution (degrees) for spatial aggregation of emissions
+    oac_levels : tuple[int, ...]
+        Pressure levels (hPa) for vertical binning of emissions inventory
+    computation_horizon : int
+        Time horizon (years) for AGWP computation
+    horizons : tuple[int, ...]
+        Time horizons (years) for which to extract AGWP metrics (default: 20, 50, 100)
+
+    Notes
+    -----
+    - Grid resolution determines the spatial granularity of the emissions inventory
+    - Pressure levels are matched to nearest available level in the input data
+    - AGWP metrics are computed for each species and time horizon
     """
     tmp_base_dir_path: str = ""
     repo_dir_path: str = str(files("pyneats.resources").joinpath("repository"))
@@ -41,7 +78,36 @@ class OpenAirClimParams(ClimateParams):
 
 def _create_worker_toml(base_toml_path, input_dir_name, output_dir_name, inventory_filename, horizon, year):
     """
-    
+    Generate OpenAirClim configuration file for a computation worker.
+
+    Creates a TOML configuration file that specifies input/output directories,
+    inventory files, and time range for OpenAirClim execution.
+
+    Parameters
+    ----------
+    base_toml_path : str
+        Path to the base TOML configuration template to modify
+    input_dir_name : str
+        Directory name containing input inventory files (relative path)
+    output_dir_name : str
+        Directory name for output results (relative path)
+    inventory_filename : str
+        Filename of the emissions inventory (e.g., 'emissions.nc')
+    horizon : int
+        Time horizon (years) for AGWP computation
+    year : int
+        Reference year for inventory (start of time range)
+
+    Returns
+    -------
+    str
+        Path to the generated TOML configuration file
+
+    Notes
+    -----
+    - Modifies time range to [year, year + horizon + 1, 1]
+    - Removes 'file' key from time settings if present
+    - Creates local symlink reference to repository directory
     """
     with open(base_toml_path, 'r') as f:
         config = toml.load(f)
@@ -74,16 +140,31 @@ def _create_worker_toml(base_toml_path, input_dir_name, output_dir_name, invento
     return toml_path # Return relative path "inputs/worker_config.toml"
 
 def _save_inventory(ds, filepath):
-        # Calculate the absolute path based on the current working directory
-        abs_path = os.path.abspath(filepath)
-        
-        print(f"DEBUG: Saving inventory to: {abs_path}")
-        
-        ds.to_netcdf(
-            filepath, 
-            engine="netcdf4", 
-            encoding={v: {'zlib': True, 'complevel': 5} for v in ds.data_vars}
-        )
+    """
+    Save emissions inventory dataset to NetCDF file.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Emissions inventory dataset with variables (fuel, NOx, CO2, H2O, distance)
+    filepath : str
+        Output file path for NetCDF inventory
+
+    Notes
+    -----
+    - Uses NetCDF4 engine with zlib compression (level 5)
+    - Converts relative paths to absolute paths for file system operations
+    """
+    # Calculate the absolute path based on the current working directory
+    abs_path = os.path.abspath(filepath)
+    
+    print(f"DEBUG: Saving inventory to: {abs_path}")
+    
+    ds.to_netcdf(
+        filepath, 
+        engine="netcdf4", 
+        encoding={v: {'zlib': True, 'complevel': 5} for v in ds.data_vars}
+    )
 
 
 @register(NonCO2Model, "open_airclim") 
@@ -94,16 +175,73 @@ class OpenAirClimModel(
         OpenAirClimParams,
     ]
 ):
-    """ implementation of the Method D climate function based on OpenAirClim
+    """
+    Compute non-CO₂ aviation climate impacts using OpenAirClim (Method D).
+
+    This step calculates Absolute Global Warming Potential (AGWP) metrics for
+    aircraft emissions across multiple species and time horizons by:
+
+    1. Converting flight data to spatial/altitude grid emissions inventory
+    2. Generating OpenAirClim configuration in temporary workspace
+    3. Running OpenAirClim to compute climate response functions
+    4. Extracting AGWP metrics for O₃, CH₄, H₂O, and contrail cirrus effects
+
+    The computation uses a temporary directory for workspace management and
+    creates a symbolic link to the OpenAirClim repository for data access.
+
+    Attributes
+    ----------
+    default_params : OpenAirClimParams
+        Configuration parameters for the computation
+
+    Raises
+    ------
+    OpenAirClimStepError
+        If OpenAirClim execution fails or required output files are missing
+
+    Notes
+    -----
+    - Requires both meteorological ('met') and surface datasets in OpenAirClim
+    - AGWP metrics are computed for horizons: 20, 50, 100 years
+    - Methane AGWP includes both CH₄ and PMO (particulate matter) contributions
+    - Grid resolution and pressure levels are configurable via params
     """
 
     default_params = OpenAirClimParams
 
 
-    def _flight_to_inventory(self,
-                              flight: Flight):
+    def _flight_to_inventory(self, flight: Flight) -> xr.Dataset:
         """
-        
+        Convert flight trajectory to gridded emissions inventory.
+
+        Aggregates flight emissions (fuel, NOx, CO2, H2O) into a spatial/altitude
+        grid using configurable resolution and pressure levels. Computes segment
+        distances and assigns grid cells based on latitude, longitude, and
+        pressure level proximity.
+
+        Parameters
+        ----------
+        flight : Flight
+            PyContrails Flight object with trajectory data and emissions
+
+        Returns
+        -------
+        xarray.Dataset
+            Gridded inventory with dimensions (lat, lon, plev) and variables:
+            - fuel : Total fuel burn (kg)
+            - NOx : Total NOx emissions (kg)
+            - CO2 : Total CO2 emissions (kg)
+            - H2O : Total H2O emissions (kg)
+            - distance : Total segment distance (km)
+
+        Notes
+        -----
+        - Missing NOx, CO2, H2O values are filled with 0
+        - Pressure converted from Pa to hPa
+        - Distance converted from m to km
+        - Lat/lon bins centered at grid_res/2 offsets
+        - Pressure levels matched to nearest available level
+        - Dataset attributes include inventory year
         """
 
         grid_res = self.default_params.grid_res
@@ -120,6 +258,19 @@ class OpenAirClimModel(
         
         
         def get_nearest_level(p):
+            """
+            Find nearest pressure level for each waypoint.
+
+            Parameters
+            ----------
+            p : pandas.Series
+                Pressure values in hPa for all waypoints
+
+            Returns
+            -------
+            numpy.ndarray
+                Nearest available pressure levels
+            """
             # Ensure levels are a numpy array for math and multi-element indexing
             levels_arr = np.asarray(self.default_params.oac_levels)
             
@@ -157,8 +308,39 @@ class OpenAirClimModel(
         return ds
 
     def run(self, flight: FlightWithEmissions) -> FlightWithGlobalAGWP:
+        """
+        Execute OpenAirClim computation for flight emissions.
 
+        Orchestrates the complete workflow:
+        1. Create temporary workspace (sandbox)
+        2. Set up symbolic link to OpenAirClim repository
+        3. Generate emissions inventory from flight data
+        4. Create configuration file for OpenAirClim
+        5. Execute OpenAirClim computation
+        6. Extract AGWP metrics for all species and horizons
 
+        Parameters
+        ----------
+        flight : FlightWithEmissions
+            Flight with emissions data (fuel_burn, nox, co2, h2o)
+
+        Returns
+        -------
+        FlightWithGlobalAGWP
+            Flight with AGWP attributes added for all species and horizons
+
+        Raises
+        ------
+        OpenAirClimStepError
+            If computation fails or required output datasets are missing
+
+        Notes
+        -----
+        - Uses temporary directory for workspace isolation
+        - Restores original working directory in all cases (try/finally)
+        - AGWP metrics extracted for horizons: 20, 50, 100 years
+        - Species: O3, CH4 (+ PMO), H2O, contrail cirrus
+        """
         # 1. Create Sandbox
         with tempfile.TemporaryDirectory(dir=self.default_params.tmp_base_dir_path) as temp_dir:
 
@@ -208,18 +390,18 @@ class OpenAirClimModel(
                     raise OpenAirClimStepError("ACCF requires both 'met' and 'surface' datasets.")
 
                 with xr.load_dataset(result_nc) as metrics_ds:
-                
-                    # Define the horizons you want to extract
+                    # Extract AGWP metrics for all species and horizons
+                    # Dataset contains variables like 'AGWP_20_2025', 'AGWP_50_2025', etc.
                     results = {}
 
                     for h in self.default_params.horizons:
                         var_name = f'AGWP_{h}_2025'
 
-                        # Ensure the variable exists in the dataset to avoid KeyErrors
+                        # Extract AGWP metrics for this time horizon if available
                         if var_name in metrics_ds:
                             raw_results = metrics_ds[var_name]
 
-                            # Create a sub-dictionary for this horizon
+                            # Organize species results by horizon
                             results[f'AGWP_{h}'] = {
                                 str(k): float(v)
                                 for k, v in zip(raw_results["species"].values, raw_results.values)

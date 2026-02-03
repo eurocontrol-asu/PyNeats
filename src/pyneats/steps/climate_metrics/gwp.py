@@ -1,4 +1,8 @@
-"""Global Warming Potential (GWP) Metrics Module"""
+"""
+Global Warming Potential (GWP) Metrics Module
+
+Implements GWP and ATR climate metrics for aviation.
+"""
 
 from __future__ import annotations
 
@@ -55,7 +59,9 @@ ATR_COL_TEMPLATE: Final[str] = "ATR_20_{spec}"
 
 @dataclass(frozen=True)
 class GWPParams(BaseParams):
-    """Parameters for GWP climate metrics computation."""
+    """
+    Parameters for GWP climate metrics computation.
+    """
     horizons: tuple[int, ...] = METRICS_HORIZONS
     surface_earth: float = SURFACE_EARTH
     seconds_per_year: int = SECONDS_PER_YEAR
@@ -85,19 +91,49 @@ class GWPMetrics(
         GWPParams,
     ]
 ):
+    """
+    Computes GWP and ATR climate metrics for aviation.
+
+    This class implements the Global Warming Potential (GWP) and Absolute Temperature Response (ATR)
+    metrics for aviation climate impact assessment.
+    """
     default_params = GWPParams
 
     # ---------- Helpers (Math) ----------
 
     def _agwp_co2_J_per_m2(self, m_co2: float) -> dict[int, float]:
-        """AGWP_CO2(H) = C(H) * m_CO2 * s_yr"""
+        """
+        Compute AGWP_CO2(H) = C(H) * m_CO2 * s_yr.
+
+        Parameters
+        ----------
+        m_co2 : float
+            Mass of CO2 emitted (kg).
+
+        Returns
+        -------
+        dict[int, float]
+            AGWP for each time horizon.
+        """
         s_yr = self.params.seconds_per_year
         return {
             h: self.params.agwp_coeff_wm2yr_per_kg[h] * m_co2 * s_yr for h in self.params.horizons
         }
 
     def _eagwp_contrails_J_per_m2(self, total_ef_J: float) -> dict[int, float]:
-        """EAGWP_Con(H) = EF * ε_Con / S_Earth"""
+        """
+        Compute EAGWP_Con(H) = EF * ε_Con / S_Earth.
+
+        Parameters
+        ----------
+        total_ef_J : float
+            Total energy forcing from contrails (J).
+
+        Returns
+        -------
+        dict[int, float]
+            EAGWP for each time horizon.
+        """
         eps = float(self.params.efficacy.get("Contrails", 1.0))
         s = self.params.surface_earth
         return dict.fromkeys(self.params.horizons, total_ef_J * eps / s)

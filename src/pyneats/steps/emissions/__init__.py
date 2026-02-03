@@ -1,3 +1,8 @@
+"""
+Emissions step package for NEATS.
+
+Exposes all emissions models, protocols, and views.
+"""
 from pyneats.steps.emissions.dlr_emissions import (
     DLREmissionModel,
     DLREmissionParams,

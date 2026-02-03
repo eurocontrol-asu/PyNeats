@@ -1,12 +1,13 @@
 """
+Weather Provider Module
 
-This module defines WeatherProvider that integrates meteorological data into flight trajectories.
-It allows downselecting meteorological datasets to the flight envelope, interpolating required
-weather variables, and optionally applying humidity scaling.
+Defines WeatherProvider and related classes for integrating meteorological data into flight trajectories.
+Allows downselecting meteorological datasets to the flight envelope, interpolating required weather variables, and optionally applying humidity scaling.
 
-Key Components:
-- `WeatherProviderParams`: Configuration for WeatherProvider such as long, lat, time buffers, etc.
-- `WeatherProvider`: The main class that processes flight data and integrates weather information.
+Key Components
+--------------
+- WeatherProviderParams: Configuration for WeatherProvider (lon/lat/time buffers, etc.)
+- WeatherProvider: Main class for processing flight data and integrating weather information
 """
 
 from __future__ import annotations
@@ -69,8 +70,16 @@ WIND_VARS: Final[tuple[str, ...]] = ("eastward_wind", "northward_wind")
 
 
 class FlightWithWeather(Flight4D):
-    """Typed, zero-copy view asserting required weather columns exist."""
+    """
+    Typed, zero-copy view asserting required weather columns exist.
 
+    Attributes
+    ----------
+    REQUIRED : tuple[str, ...]
+        Required weather columns.
+    OPTIONAL : tuple[str, ...]
+        Optional weather columns.
+    """
     REQUIRED = DEFAULT_REQUIRED_WEATHER_COLS
     OPTIONAL = DEFAULT_OPTIONAL_WEATHER_COLS
 
@@ -79,7 +88,9 @@ class FlightWithWeather(Flight4D):
 
 
 class WeatherStepError(StepError):
-    """Normalized domain error for the weather step."""
+    """
+    Normalized domain error for the weather step.
+    """
 
 
 # ------------------------- Contracts (Option A) ----------------------
@@ -87,15 +98,22 @@ class WeatherStepError(StepError):
 
 @runtime_checkable
 class HumidityScalingModel(Protocol):
-    """Strict contract: humidity scaling *must* return a Flight."""
+    """
+    Strict contract: humidity scaling *must* return a Flight.
 
+    Methods
+    -------
+    eval(source: Flight) -> Flight
+        Evaluate humidity scaling on a Flight.
+    """
     def eval(self, source: Flight) -> Flight: ...
 
 
 class PcHumidityScalingAdapter(HumidityScalingModel):
     """
     Adapter to wrap pycontrails' HumidityScaling so that `.eval()` returns a Flight.
-    If pycontrails returns None (in-place) we pass back the input Flight.
+
+    If pycontrails returns None (in-place), the input Flight is returned.
     """
 
     def __init__(self, humidity_scaling: HumidityScaling) -> None:
@@ -140,6 +158,8 @@ class WeatherProviderParams(BaseParams):
     # Strict contract: either None, or a model that returns a Flight
     humidity_scaling: HumidityScalingModel | None = field(
         default_factory=lambda: PcHumidityScalingAdapter(humidity_scaling=DEFAULT_HUMIDITY_SCALING)
+        if DEFAULT_HUMIDITY_SCALING is not None
+        else None
     )
 
     # Mapping: met variable → output column name on Flight

@@ -1,12 +1,12 @@
 """
-This module builds a wrapper around PyContrail's CoCip to allow for the computation
-of contrail climate functions on a flight, adding the results as new columns to the flight data.
+CoCiP Contrail Climate Function Module
 
-Key components:
-- `ContrailsParams`: Parameters for the CoCiP model, including meteorological and
-  radiative datasets.
-- `CoCiPModel`: A class that implements the CoCiP model.
+Builds a wrapper around PyContrails' CoCiP to allow for the computation of contrail climate functions on a flight, adding the results as new columns to the flight data.
 
+Key Components
+--------------
+- ContrailsParams: Parameters for the CoCiP model, including meteorological and radiative datasets.
+- CoCiPModel: A class that implements the CoCiP model.
 """
 
 from __future__ import annotations

@@ -1,3 +1,10 @@
+
+"""
+Performance step package for NEATS.
+
+Exposes all performance model interfaces, adapters, and views.
+"""
+
 from pyneats.steps.performance.bada_adapters import (
     AircraftProtocol,
     BADA3Adapter,

@@ -1,30 +1,17 @@
-"""Weather Factory Module
+"""
+Weather Factory Module
 
-This module provides factory classes for creating weather providers from different
-meteorological data sources. It supports both ERA5 reanalysis and DWD ICON-2mom
-forecast data with flexible caching strategies.
+Provides factory classes for creating weather providers from different meteorological data sources.
+Supports both ERA5 reanalysis and DWD ICON-2mom forecast data with flexible caching strategies.
 
-1. Data Sources:
-   - ERA5: ECMWF's fifth generation reanalysis
-   - DWD ICON-2mom: German Weather Service's forecast model
-   Both provide:
-   - 3D meteorological fields (temperature, winds, humidity)
-   - Radiation data (surface and TOA fluxes)
-   - Derived quantities (potential vorticity)
-
-2. Key Components:
-   - WeatherFactoryParams: Configuration for data access and caching
-   - ERA5Factory: Factory for ERA5 reanalysis data
-   - DWDFactory: Factory for DWD ICON-2mom forecast data
-   - Cache specifications for both disk (ERA5) and Zarr (DWD) storage
-
-3. Features:
-   - Flexible caching strategies (disk/Zarr)
-   - Automatic unit conversions
-   - Variable standardization
-   - Chunked data access
-   - Thread-safe operations
-   - Comprehensive error handling
+Features
+--------
+- Flexible caching strategies (disk/Zarr)
+- Automatic unit conversions
+- Variable standardization
+- Chunked data access
+- Thread-safe operations
+- Comprehensive error handling
 """
 
 from __future__ import annotations
@@ -98,6 +85,9 @@ __all__ = [
 
 # ---------------- error ----------------
 class WeatherFactoryError(RuntimeError):
+    """
+    Raised for errors in weather factory operations.
+    """
     """Raised when a weather factory fails to load or standardize datasets."""
 
 

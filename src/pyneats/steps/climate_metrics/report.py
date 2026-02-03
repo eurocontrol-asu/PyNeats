@@ -1,3 +1,8 @@
+"""
+Flight and Fleet Report Module
+
+Provides reporting utilities for flight and fleet-level metadata and version resolution.
+"""
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -42,8 +47,23 @@ def dist_version(
       1) importlib.metadata.version(dist_name)
       2) (optional) module.__version__
 
-    Notes:
-      - For pyBADA, only (1) is reliable; it does NOT expose __version__.
+    Notes
+    -----
+    For pyBADA, only (1) is reliable; it does NOT expose __version__.
+
+    Parameters
+    ----------
+    dist_name : str
+        Name of the distribution.
+    module_name : str, optional
+        Name of the module to check for __version__.
+    allow_module_dunder_version : bool, optional
+        Whether to allow checking module.__version__ (default True).
+
+    Returns
+    -------
+    str
+        Version string or "unknown" if not found.
     """
     # 1) Canonical
     try:
@@ -75,7 +95,35 @@ def dist_version(
 class FlightReport:
     """
     Subset of PyContrails Flight.attrs relevant for *per-flight* reporting.
+
     This class defines the keys you care about; extraction returns a dict.
+
+    Attributes
+    ----------
+    flight_id : str or None
+        Flight identifier.
+    registration : str or None
+        Aircraft registration.
+    departure_airport : str or None
+        Departure airport code.
+    arrival_airport : str or None
+        Arrival airport code.
+    aircraft_id : str or None
+        Aircraft identifier.
+    aobt : Any
+        Actual off-block time (datetime or str).
+    model_type : str or None
+        Model type.
+    aircraft_type : str or None
+        Aircraft type.
+    engine_uid : str or None
+        Engine unique identifier.
+    aircraft_series : str or None
+        Aircraft series.
+    bada_version : str or None
+        BADA version.
+    bada_code : str or None
+        BADA code.
     """
 
     flight_id: str | None = None
@@ -94,7 +142,7 @@ class FlightReport:
     @classmethod
     def extract(cls, flight: Flight, include_fleet_metadata: bool = False) -> dict[str, Any]:
         """
-        Extract *only* flight-level fields from Flight.attrs (ignoring missing keys).
+        Extract only flight-level fields from Flight.attrs (ignoring missing keys).
 
         Parameters
         ----------

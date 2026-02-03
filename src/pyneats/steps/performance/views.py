@@ -9,6 +9,13 @@ __all__ = [
     "FlightWithPerformance",
 ]
 
+
+"""
+Performance-Enriched Flight View Module
+
+Defines the zero-copy typed view for flights enriched with performance data.
+"""
+
 REQUIRED_PERF_COLS: Final[tuple[str, ...]] = (
     "true_airspeed",
     "fuel_flow",
@@ -16,7 +23,14 @@ REQUIRED_PERF_COLS: Final[tuple[str, ...]] = (
 )
 
 
-class FlightWithPerformance(FlightWithWeather):
-    """Zero-copy typed view for performance-enriched flights."""
 
+class FlightWithPerformance(FlightWithWeather):
+    """
+    Zero-copy typed view for performance-enriched flights.
+
+    Attributes
+    ----------
+    REQUIRED : ClassVar[tuple[str, ...]]
+        Required columns for a performance-enriched flight.
+    """
     REQUIRED: ClassVar[tuple[str, ...]] = REQUIRED_PERF_COLS

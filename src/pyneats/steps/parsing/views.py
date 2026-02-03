@@ -1,3 +1,9 @@
+"""
+Flight4D View Module
+
+Defines the zero-copy, typed view for 4D flight data (latitude, longitude, altitude, time).
+"""
+
 from __future__ import annotations
 
 from typing import ClassVar, Final
@@ -48,8 +54,20 @@ ATTS_REQUIRED: Final[tuple[str, ...]] = (
 
 
 class Flight4D(FlightView):
-    """Zero-copy, typed view ensuring ('latitude','longitude','altitude','time') exist."""
+    """
+    Zero-copy, typed view ensuring ('latitude','longitude','altitude','time') exist.
 
+    Attributes
+    ----------
+    REQUIRED : ClassVar[tuple[str, ...]]
+        Required columns for a 4D flight.
+    OPTIONAL : ClassVar[tuple[str, ...]]
+        Optional columns for a 4D flight.
+    ATTRS_OPTIONAL : ClassVar[tuple[str, ...]]
+        Optional attributes for a 4D flight.
+    ATTRS_REQUIRED : ClassVar[tuple[str, ...]]
+        Required attributes for a 4D flight.
+    """
     REQUIRED: ClassVar[tuple[str, ...]] = REQUIRED_4D_COLS
     OPTIONAL: ClassVar[tuple[str, ...]] = OPTIONAL_COLS
     ATTRS_OPTIONAL: ClassVar[tuple[str, ...]] = ATTRS_OPTIONAL

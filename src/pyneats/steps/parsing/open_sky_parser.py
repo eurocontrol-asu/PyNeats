@@ -1,3 +1,9 @@
+"""
+OpenSky ADS-B Trajectory Parser Module
+
+Defines a placeholder for an ADS-B specific parser yielding Flight4D.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,9 +26,11 @@ __all__ = [
 
 @dataclass(frozen=True)
 class OpenSkyParserParams(TrajectoryParserParams):
-    """Parameters for parsing ADS-B trajectory data."""
+    """
+    Parameters for parsing ADS-B trajectory data.
 
-    # Placeholder for future parameters
+    Extend this class to define specific parameters for ADS-B parsers.
+    """
     pass
 
 
@@ -34,9 +42,28 @@ class OpenSkyParser(
         OpenSkyParserParams,
     ]
 ):
-    """Placeholder for an ADS-B specific parser yielding `Flight4D`."""
-
+    """
+    Placeholder for an ADS-B specific parser yielding `Flight4D`.
+    """
     default_params = OpenSkyParserParams
 
     def run(self, flight: pd.DataFrame) -> Flight4D:
+        """
+        Not implemented.
+
+        Parameters
+        ----------
+        flight : pd.DataFrame
+            Input ADS-B trajectory data.
+
+        Returns
+        -------
+        Flight4D
+            Parsed flight data (not implemented).
+
+        Raises
+        ------
+        NotImplementedError
+            Always raised.
+        """
         raise NotImplementedError("ADSBParser is not yet implemented")

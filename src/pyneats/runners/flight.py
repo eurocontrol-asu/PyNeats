@@ -1,20 +1,23 @@
-"""NEATS Flight Runner Module
 
-This module implements the main execution pipeline for NEATS in the case of individual flights
-It orchestrates the sequential processing of flight data through multiple analysis stages:
+"""
+NEATS Flight Runner Module
 
-Pipeline Stages:
-   - Flight parsing (NM/ADS-B data)
-   - Trajectory interpolation
-   - Weather data intersection
-   - Aircraft performance computation
-   - Emissions calculation
-   - Contrail effects and Other Non-CO2 effects assessment
-   - Non CO2 equivalent computation
+Implements the main execution pipeline for NEATS in the case of individual flights.
+Orchestrates the sequential processing of flight data through multiple analysis stages:
 
-   The Climate impact step (contrails & Others depends on the set-up (small or large emitter)
-   This Abstract class therefore doesn't implement the climact impact step which is defines
-   later in the SmallEmitter and LargeEmitter classes
+Pipeline Stages
+---------------
+    - Flight parsing (NM/ADS-B data)
+    - Trajectory interpolation
+    - Weather data intersection
+    - Aircraft performance computation
+    - Emissions calculation
+    - Contrail effects and Other Non-CO2 effects assessment
+    - Non-CO2 equivalent computation
+
+The climate impact step (contrails & others) depends on the set-up (small or large emitter).
+This abstract class does not implement the climate impact step, which is defined
+in the SmallEmitter and LargeEmitter classes.
 """
 
 import logging

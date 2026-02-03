@@ -1,3 +1,9 @@
+"""
+NEATS Trajectory Parser Module
+
+Implements parsing of NM (Network Manager) and AO trajectory data in NEATS JSON format into Flight4D format.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -27,8 +33,16 @@ __all__ = [
 
 @dataclass(frozen=True)
 class NeatsTrajectoryParserParams(TrajectoryParserParams):
-    """Parameters for parsing NM (Network Manager) trajectory data."""
+    """
+    Parameters for parsing NM (Network Manager) trajectory data.
 
+    Attributes
+    ----------
+    date_format : str
+        Format string for parsing dates.
+    timezone : str
+        Output timezone; parsing is done as UTC then converted.
+    """
     date_format: str = "%Y-%m-%d %H:%M:%S"
     timezone: str = "UTC"  # output tz; parsing is done as UTC then converted
 
@@ -42,35 +56,23 @@ class NeatsTrajectoryParser(
     ]
 ):
     """
-    Parse NM trajectory data or AO trajectory data that follows NEATS Json format
-    into Flight4D format.
+    Step for parsing NM or AO trajectory data (NEATS JSON format) into Flight4D format.
 
-    It performs:
-
-
+    Performs:
     - Data cleaning and validation
     - Custom fuel properties handling
     - Schema validation
 
-    The parser ensures:
+    Ensures:
     - All required columns are present
     - Numeric values are valid
     - Timestamps are properly formatted and timezone-aware
     - No duplicate timestamps exist
     - No missing values in required columns
-
-    Attributes:
-        default_params (NMTrajectoryParserParams): Default parameters for parsing
-
-
-    Raises:
-        TrajectoryParserStepError: If parsing fails due to:
-            - Missing required columns
-            - Invalid numeric values
-            - Timestamp parsing errors
-            - Empty trajectory after cleaning
-            - Schema validation failures
     """
+
+
+    # ...existing code...
 
     default_params = NeatsTrajectoryParserParams
 

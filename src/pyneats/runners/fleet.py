@@ -1,9 +1,12 @@
-"""
-Optimized fleet-level orchestration of NEATS climate computations
-that leverages vectorized operations for significant performance improvements.
 
-- Single cfg object holding step names + params (RunnerConfig) + fleet settings
-  (FastFleetRunnerConfig)
+"""
+Optimized Fleet Runner Module
+
+Orchestrates fleet-level NEATS climate computations with vectorized operations for significant performance improvements.
+
+Features
+--------
+- Single config object holding step names and params (RunnerConfig) plus fleet settings (FleetRunnerParams)
 - Explicit, typed intermediate pipeline attributes (like FlightRunner)
 - Decomposed pipeline into intermediate steps (like FlightRunner)
 - Generic, registry-based step construction with per-process caching for joblib workers
@@ -36,7 +39,6 @@ from pyneats.core.compute_parameters import (
 from pyneats.core.neats_default_parameters import (
     DEFAULT_COCIP_KWARGS,
     DEFAULT_HUMIDITY_SCALING,
-    DEFAULT_NON_CO2_MODEL_SMALL_EMITTERS,
 )
 from pyneats.core.steps import Step, VectorizedStep
 from pyneats.core.steps_registry import build

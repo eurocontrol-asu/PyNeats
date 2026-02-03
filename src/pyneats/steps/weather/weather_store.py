@@ -1,8 +1,7 @@
 """
+Weather Data Storage and Retrieval Utilities
 
-Weather data storage and retrieval utilities
-for handling weather data storage and retrieval (Zarr/NetCDF)
-
+Utilities for handling weather data storage and retrieval (Zarr/NetCDF).
 """
 
 from __future__ import annotations
@@ -21,8 +20,18 @@ from .weather_provider import WeatherProvider
 # Stores paths to Zarr datasets for meteorological, radiative, and wind data
 @dataclass(frozen=True)
 class ZarrPaths:
-    """Paths to Zarr stores for weather data."""
+    """
+    Paths to Zarr stores for weather data.
 
+    Attributes
+    ----------
+    met_store : str
+        Path to meteorological data store.
+    rad_store : str
+        Path to radiative data store.
+    wind_store : str or None
+        Path to wind data store (optional).
+    """
     met_store: str
     rad_store: str
     wind_store: str | None = None
@@ -30,11 +39,37 @@ class ZarrPaths:
 
 # Check if a Zarr store is consolidated (has .zmetadata)
 def _is_consolidated(path: str) -> bool:
+    """
+    Check if a Zarr store is consolidated (has .zmetadata).
+
+    Parameters
+    ----------
+    path : str
+        Path to Zarr store.
+
+    Returns
+    -------
+    bool
+        True if consolidated, False otherwise.
+    """
     return os.path.exists(os.path.join(path, ".zmetadata"))
 
 
 # Normalize chunk mapping to a sorted tuple for cache keying
 def _norm_chunks(ch: Mapping[str, int] | None) -> tuple[tuple[str, int], ...] | None:
+    """
+    Normalize chunk mapping to a sorted tuple for cache keying.
+
+    Parameters
+    ----------
+    ch : Mapping[str, int] or None
+        Chunk mapping.
+
+    Returns
+    -------
+    tuple[tuple[str, int], ...] or None
+        Normalized chunk mapping or None.
+    """
     if not ch:
         return None
     return tuple(sorted((k, int(v)) for k, v in ch.items()))
@@ -78,7 +113,8 @@ def _open_metdataset_from_zarr(
 
 
 def clear_dataset_cache() -> None:
-    """Clear in-memory MetDataset cache and close underlying datasets.
+    """
+    Clear in-memory MetDataset cache and close underlying datasets.
 
     Call this after processing a zarr group when you no longer need
     the cached weather data and want to reclaim memory.

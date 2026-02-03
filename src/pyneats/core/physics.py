@@ -1,4 +1,38 @@
-"""Physical and Radiative Constants for Climate Impact Calculations"""
+"""
+Physical and Radiative Constants for Climate Impact Calculations
+
+This module defines constants used in climate impact calculations, including
+metrics horizons, surface area, radiative forcing coefficients, and scaling factors.
+
+Attributes
+----------
+METRICS_HORIZONS : tuple of int
+    Supported time horizons for metrics.
+SURFACE_EARTH : float
+    Surface area of the Earth in m².
+SECONDS_PER_YEAR : int
+    Number of seconds in a year.
+SOLAR_CONSTANT : float
+    Solar constant in W m^-2.
+CO2_AGWP_COEFF_WM2YR_PER_KG : Mapping[int, float]
+    CO2 GWP coefficients in W·m⁻²·yr·kg⁻¹.
+CONVERSION_FACTORS_AGWP_TO_RF : dict
+    Conversion factors from AGWP to RF for various species and horizons.
+CONVERSION_FACTORS_ATR_TO_RF : dict
+    Conversion factors from ATR to RF for various species and horizons.
+EFFICACY : dict
+    Efficacy values for different species.
+RF_BACKWARD_FACTOR : dict
+    Backward calculation factors for radiative forcing.
+ACCF_SCALE_03 : Mapping[str, float]
+    Scaling factors for O3 ACCFs.
+ACCF_SCALE_CH4 : Mapping[str, float]
+    Scaling factors for CH4 ACCFs.
+ACCF_SCALE_H2O : Mapping[str, float]
+    Scaling factors for H2O ACCFs.
+DEFAULT_PRESSURE_LEVELS_HPA : tuple of float
+    Default pressure levels in hPa.
+"""
 
 from collections.abc import Mapping
 from typing import Final

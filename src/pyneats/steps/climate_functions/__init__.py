@@ -1,3 +1,8 @@
+"""
+Climate functions step package for NEATS.
+
+Exposes all contrail and non-CO2 climate function models, protocols, and views.
+"""
 from pyneats.steps.climate_functions.climaccf import (
     ACCFModel,
     ACCFParams,

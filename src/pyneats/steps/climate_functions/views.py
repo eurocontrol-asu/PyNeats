@@ -1,3 +1,8 @@
+"""
+Climate Functions Views Module
+
+Defines zero-copy typed views for contrail and non-CO2 climate impact enrichment.
+"""
 from __future__ import annotations
 
 from typing import ClassVar, Final, Union

@@ -1,3 +1,9 @@
+"""
+Parsing step package for NEATS.
+
+Exposes all trajectory parser classes, protocols, and views.
+"""
+
 from pyneats.steps.parsing.neats_parser import (
     NeatsTrajectoryParser,
     NeatsTrajectoryParserParams,

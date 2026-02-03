@@ -1,3 +1,8 @@
+"""
+Small Emitter Runner Module
+
+Implements the OpenAirClim pipeline for small emitters, handling non-weather-based climate impact calculations.
+"""
 from __future__ import annotations
 from dataclasses import dataclass
 import logging
@@ -21,27 +26,36 @@ logger = logging.getLogger(__name__)
 
 # --- CONFIGURATIONS ---
 
+
 @dataclass
 class SmallEmitterConfig(RunnerConfig):
-    """Configuration Preset for Small Emitters (OpenAirClim Pipeline)
-    
-
     """
-    # contrails_model is ignored by the SmallEmitter runner
+    Configuration preset for Small Emitters (OpenAirClim Pipeline).
+
+    Attributes
+    ----------
+    non_co2_model : str
+        Name of the non-CO2 model to use (default: open_airclim).
+    """
     non_co2_model: str = DEFAULT_NON_CO2_MODEL_SMALL_EMITTERS
+
 
 
 @dataclass(kw_only=True)
 class SmallFleetRunnerParams(FleetRunnerParams):
     """
-    Configuration Preset for Small Emitters (OpenAirClim Pipeline).
-    
+    Fleet runner configuration for Small Emitters (OpenAirClim Pipeline).
+
     Adds the required 'tmp_base_dir_path' field for OpenAirClim file I/O.
+
+    Attributes
+    ----------
+    non_co2_model : str
+        Name of the non-CO2 model to use (default: open_airclim).
+    tmp_base_dir_path : str
+        Path for temporary file I/O required by OpenAirClim.
     """
-    # Override the default model name
     non_co2_model: str = DEFAULT_NON_CO2_MODEL_SMALL_EMITTERS
-    
-    # New required field for this pipeline type
     tmp_base_dir_path: str
 
 
@@ -49,12 +63,15 @@ class SmallFleetRunnerParams(FleetRunnerParams):
 
 class FlightRunnerSmallEmitter(FlightRunner):
     """
+    Runner for small emitters using non-weather-based models (OpenAirClim pipeline).
 
-    Small Emitters don't use weather based models. 
-    An unified modelling set-up can be applied for both contrails and NOx
-    
-    Lightweight Pipeline: Emissions -> All Non CO2 without weather (ex: OpenAirClim) -> Metrics
-    
+    Pipeline:
+        Emissions -> All Non-CO2 without weather (e.g., OpenAirClim) -> Metrics
+
+    Methods
+    -------
+    _climate_impact()
+        Compute non-CO2 effects using the configured non-CO2 model.
     """
     def __init__(
         self,
@@ -109,10 +126,9 @@ class FlightRunnerSmallEmitter(FlightRunner):
 
 class FleetRunnerSmallEmitter(FleetRunner):
     """
-    Small Emitters Pipeline: Emissions -> Integrated Non-CO2 -> Metrics.
-    
-    This runner injects the 'tmp_base_dir_path' from the config into the 
-    model parameters automatically.
+    Fleet runner for small emitters: Emissions -> Integrated Non-CO2 -> Metrics.
+
+    Injects the 'tmp_base_dir_path' from the config into the model parameters automatically.
     """
 
     def __init__(self, cfg: SmallFleetRunnerParams) -> None:

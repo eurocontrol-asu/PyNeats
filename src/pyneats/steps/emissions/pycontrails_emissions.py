@@ -1,3 +1,8 @@
+"""
+PyContrails Emissions Model Module
+
+Implements aircraft emissions calculation using pycontrails.
+"""
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -23,7 +28,9 @@ __all__ = [
 
 @dataclass(frozen=True)
 class PyContrailsEmissionParams(EmissionParams):
-    """Parameters for the PyContrails emission model calculation."""
+    """
+    Parameters for the PyContrails emission model calculation.
+    """
 
     emissions_kwargs: Mapping[str, Any] = field(default_factory=lambda: DEFAULT_EMISSIONS_KWARGS)
 
@@ -36,7 +43,8 @@ class PyContrailsEmissionModel(
         PyContrailsEmissionParams,
     ]
 ):
-    """Calculates aircraft emissions using the pycontrails emissions model.
+    """
+    Calculates aircraft emissions using the pycontrails emissions model.
 
     This class wraps the pycontrails.Emissions calculator to compute
     aircraft emissions based on performance data. It handles:
@@ -44,19 +52,42 @@ class PyContrailsEmissionModel(
     - Error handling
     - Output validation
 
-    Attributes:
-        default_params: Default parameters for emissions calculations
-        _impl: The underlying pycontrails.Emissions calculator instance
+    Attributes
+    ----------
+    default_params : PyContrailsEmissionParams
+        Default parameters for emissions calculations.
+    _impl : Emissions
+        The underlying pycontrails.Emissions calculator instance.
     """
 
     default_params = PyContrailsEmissionParams
     _impl: Emissions
 
     def _post_init(self) -> None:
+        """
+        Initialize the underlying pycontrails.Emissions calculator.
+        """
         self._impl = Emissions(**self.params.emissions_kwargs)
 
     def run(self, flight: FlightWithPerformance) -> FlightWithEmissions:
-        """Calculate emissions for a flight using pycontrails."""
+        """
+        Calculate emissions for a flight using pycontrails.
+
+        Parameters
+        ----------
+        flight : FlightWithPerformance
+            Input flight with performance data.
+
+        Returns
+        -------
+        FlightWithEmissions
+            Flight with emissions columns added.
+
+        Raises
+        ------
+        EmissionStepError
+            If the backend evaluation fails.
+        """
         try:
             out: Flight = self._impl.eval(flight)
         except Exception as e:

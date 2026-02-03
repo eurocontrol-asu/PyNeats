@@ -1,15 +1,13 @@
-"""Local Implementation of Algorithmic Climate Change Functions (ACCF)
+"""
+Local Implementation of Algorithmic Climate Change Functions (ACCF)
 
-This module provides a local implementation of the ACCF approach for computing non-CO2
-climate impacts of aviation outside of contrails impacts.
-It calculates temperature responses in K at 20 years horizon for three key species:
+Provides a local implementation of the ACCF approach for computing non-CO2 climate impacts of aviation outside of contrails impacts.
+Calculates temperature responses in K at 20 years horizon for three key species:
+    - Ozone (O3) formation from NOx emissions
+    - Methane (CH4) depletion from NOx emissions
+    - Water vapor (H2O) direct effects
 
-   - Ozone (O3) formation from NOx emissions
-   - Methane (CH4) depletion from NOx emissions
-   - Water vapor (H2O) direct effects
-
-The use of a local implementation allows for a more efficient computation
-avoiding heavy weather data transfers and overheads between PyContrails and ClimaCCF
+The use of a local implementation allows for a more efficient computation, avoiding heavy weather data transfers and overheads between PyContrails and ClimaCCF.
 """
 
 from __future__ import annotations
@@ -269,11 +267,8 @@ class LocalACCFModel(
             # Discounting output values from the regression functions on part of the flight
             # that are outside the validity region of aCCFs formulas
             # Create the mask for INVALID rows
-
-            # Condition 1: Pressure is too high (Altitude too low)
-            bad_pressure = flight[self.params.col_air_pressure] > DEFAULT_ACCF_VALIDITY_PRESSURE
-
-            mask = bad_pressure
+            # Condition: Pressure is too high (Altitude too low)
+            mask = flight[self.params.col_air_pressure] > DEFAULT_ACCF_VALIDITY_PRESSURE
 
             o3[mask] = 0.0
             ch4[mask] = 0.0

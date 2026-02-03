@@ -1,3 +1,8 @@
+"""
+Climate Metrics Views Module
+
+Defines zero-copy views for climate-metrics-enriched flights.
+"""
 from __future__ import annotations
 
 from typing import Any

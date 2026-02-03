@@ -1,3 +1,8 @@
+"""
+Interpolation step package for NEATS.
+
+Exposes all trajectory interpolation classes, protocols, and parameters.
+"""
 from pyneats.steps.interpolation.bada_interpolation import (
     BADAInterpolationParams,
     BADATrajectoryPredictor,

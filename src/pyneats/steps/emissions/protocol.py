@@ -1,3 +1,8 @@
+"""
+Emissions Protocol Module
+
+Defines the protocol and error class for emissions steps.
+"""
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
@@ -12,13 +17,18 @@ __all__ = [
 ]
 
 
+
 @runtime_checkable
 class EmissionModel(Step[FlightWithPerformance, FlightWithEmissions], Protocol):
     """
+    Protocol for emissions steps.
+
     Emission steps consume a performance-enriched flight and produce
     an emissions-enriched flight (zero-copy typed view).
     """
 
 
 class EmissionStepError(StepError):
-    """Normalized domain error for the emissions step."""
+    """
+    Normalized domain error for the emissions step.
+    """

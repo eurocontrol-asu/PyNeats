@@ -12,13 +12,19 @@ __all__ = [
 ]
 
 
+
 @runtime_checkable
 class PerformanceModel(Step[FlightWithWeather, FlightWithPerformance], Protocol):
     """
+    Protocol for performance model steps.
+
     Performance steps consume a weather-enriched flight and produce a
     performance-enriched flight (zero-copy view).
     """
 
 
+
 class PerformanceStepError(StepError):
-    """Raised when the performance step fails to evaluate or validate outputs."""
+    """
+    Raised when the performance step fails to evaluate or validate outputs.
+    """

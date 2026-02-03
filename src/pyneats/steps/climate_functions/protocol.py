@@ -1,3 +1,8 @@
+"""
+Climate Functions Protocol Module
+
+Defines protocols and error classes for contrail and non-CO2 climate function steps.
+"""
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
@@ -25,24 +30,34 @@ class ContrailsModel(
     Protocol,
 ):
     """
-    A climate step that enriches a Flight with contrail impact columns.
+    Protocol for contrail climate function steps.
 
-    This protocol requires both single-flight (__call__) and fleet-level
-    (run_fleet) execution capabilities.
+    A climate step that enriches a Flight with contrail impact columns.
+    Requires both single-flight (__call__) and fleet-level (run_fleet) execution capabilities.
     """
 
 
 @runtime_checkable
 class NonCO2Model(Step[FlightWithEmissions, FlightWithNonCO2Impact], Protocol):
-    """A climate step that enriches a Flight with non-CO₂ impact columns."""
+    """
+    Protocol for non-CO2 climate function steps.
+
+    A climate step that enriches a Flight with non-CO2 impact columns.
+    """
 
 
 class ContrailsStepError(StepError):
-    """Raised when contrail impact evaluation fails or yields invalid output."""
+    """
+    Raised when contrail impact evaluation fails or yields invalid output.
+    """
 
 
 class ACCFStepError(StepError):
-    """Raised when ACCF evaluation fails or yields invalid output."""
+    """
+    Raised when ACCF evaluation fails or yields invalid output.
+    """
 
 class OpenAirClimStepError(StepError):
-    """Raised when ACCF evaluation fails or yields invalid output."""
+    """
+    Raised when OpenAirClim evaluation fails or yields invalid output.
+    """

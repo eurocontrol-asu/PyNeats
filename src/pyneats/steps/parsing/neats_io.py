@@ -1,3 +1,10 @@
+
+"""
+NEATS JSON to Flight DataFrame Conversion Module
+
+Converts NEATS/NM JSON flight objects into a list of per-flight DataFrames in the canonical Flight4D schema.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -10,7 +17,7 @@ from pyneats.steps.parsing.views import Flight4D
 
 
 def neats_json_to_flights(
-    flights: Sequence[Mapping[str, Any]],
+    flights: 'Sequence[Mapping[str, Any]]',
     *,
     model_type: str = "NM",
 ) -> list[pd.DataFrame]:
@@ -20,8 +27,19 @@ def neats_json_to_flights(
 
     This function assumes the JSON is already decoded (list[dict]).
     It does *not* perform any file I/O.
-    """
 
+    Parameters
+    ----------
+    flights : Sequence[Mapping[str, Any]]
+        Sequence of decoded NEATS/NM JSON flight objects.
+    model_type : str, optional
+        Model type label to assign to each flight (default is "NM").
+
+    Returns
+    -------
+    list of pd.DataFrame
+        List of per-flight DataFrames in Flight4D schema.
+    """
     result: list[pd.DataFrame] = []
 
     for flight in flights:
@@ -29,35 +47,7 @@ def neats_json_to_flights(
         ap = fi.get("aircraft_properties", {}) or {}
         fp = fi.get("fuel_properties", {}) or {}
 
-        # -----------------------------
-        # 1. Flight-level attrs (canonical names)
-        # -----------------------------
-
-        attrs: dict[str, Any] = {
-            "flight_id": fi.get("flight_identification"),
-            "departure_airport": fi.get("departure_airport"),
-            "arrival_airport": fi.get("arrival_airport"),
-            "model_type": model_type,
-            "aobt": fi.get("departure_date_time"),
-            "arrival_date_time": fi.get("arrival_date_time"),
-            # Aircraft
-            "aircraft_type": ap.get("aircraft_type"),
-            "aircraft_series": ap.get("aircraft_version"),
-            "engine_uid": ap.get("engine_uid"),
-            "takeoff_weight": ap.get("takeoff_mass"),
-            "payload_factor": ap.get("load_factor"),
-            # Fuel (canonical names aligned with NEATSFuel / Flight4D)
-            "hydrogen_content": fp.get("hydrogen_content"),
-            "h_c_ratio": fp.get("hydrogen_per_carbon_ratio"),
-            "aromatic_content": fp.get("aromatic_content"),
-            "q_fuel": fp.get("calorific_value"),
-            "sulphur_content": fp.get("sulphur"),
-            "naphthalene": fp.get("naphthalene"),
-        }
-
-        # Drop attrs with None values or not in Flight4D schema
-        allowed_attrs = set(Flight4D.ATTRS_REQUIRED) | set(Flight4D.ATTRS_OPTIONAL)
-        attrs = {k: v for k, v in attrs.items() if v is not None and k in allowed_attrs}
+        # ...existing code...
 
         # -----------------------------
         # 2. Per-point rows (canonical column names)
@@ -103,7 +93,31 @@ def neats_json_to_flights(
             # Drop columns that are entirely NaN
             df = df.dropna(axis=1, how="all")
 
+
         # Attach attrs (canonical)
+        # Reconstruct flight-level attrs as in original logic
+        allowed_attrs = set(Flight4D.ATTRS_REQUIRED) | set(Flight4D.ATTRS_OPTIONAL)
+        attrs = {k: v for k, v in {
+            "flight_id": fi.get("flight_identification"),
+            "departure_airport": fi.get("departure_airport"),
+            "arrival_airport": fi.get("arrival_airport"),
+            "model_type": model_type,
+            "aobt": fi.get("departure_date_time"),
+            "arrival_date_time": fi.get("arrival_date_time"),
+            # Aircraft
+            "aircraft_type": ap.get("aircraft_type"),
+            "aircraft_series": ap.get("aircraft_version"),
+            "engine_uid": ap.get("engine_uid"),
+            "takeoff_weight": ap.get("takeoff_mass"),
+            "payload_factor": ap.get("load_factor"),
+            # Fuel (canonical names aligned with NEATSFuel / Flight4D)
+            "hydrogen_content": fp.get("hydrogen_content"),
+            "h_c_ratio": fp.get("hydrogen_per_carbon_ratio"),
+            "aromatic_content": fp.get("aromatic_content"),
+            "q_fuel": fp.get("calorific_value"),
+            "sulphur_content": fp.get("sulphur"),
+            "naphthalene": fp.get("naphthalene"),
+        }.items() if v is not None and k in allowed_attrs}
         df.attrs = attrs
 
         result.append(df)

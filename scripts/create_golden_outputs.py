@@ -47,7 +47,8 @@ from pyneats.core.neats_default_parameters import (
     DEFAULT_Q_FUEL,
 )
 from pyneats.core.views import FlightView
-from pyneats.runners.fleet import FleetRunner, FleetRunnerParams
+from pyneats.runners.fleet import FleetRunnerParams
+from pyneats.runners.large_emitter import FleetRunnerLargeEmitter
 from pyneats.steps.weather.weather_store import ZarrPaths
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -189,7 +190,7 @@ def run_pipeline(
         params={},
     )
 
-    runner = FleetRunner(cfg)
+    runner = FleetRunnerLargeEmitter(cfg)
     runner.eval()
 
     if runner.fleet_with_climate_impact is None:
