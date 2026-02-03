@@ -154,14 +154,14 @@ DEFAULT_EMISSIONS_KWARGS: Final[Mapping[str, Any]] = {
 # Humidity scaling method: "Roger's Teoh method" (EAR5 recommendation)
 # Note: May not be appropriate for DWD ICON 2-moment microphysics scheme
 # See RSTS specification for model tuning parameters
-DEFAULT_HUMIDITY_SCALING = ExponentialBoostHumidityScaling(
-    rhi_adj=0.9779,  # RHI adjustment factor
-    rhi_boost_exponent=1.635,  # Exponential boost coefficient
-    clip_upper=1.65,  # Upper clipping limit for humidity scaling
-)
+# DEFAULT_HUMIDITY_SCALING = ExponentialBoostHumidityScaling(
+#     rhi_adj=0.9779,  # RHI adjustment factor
+#     rhi_boost_exponent=1.635,  # Exponential boost coefficient
+#     clip_upper=1.65,  # Upper clipping limit for humidity scaling
+# )
 
 # Alternative: Disable humidity scaling for DWD ICON datasets
-# DEFAULT_HUMIDITY_SCALING = None
+DEFAULT_HUMIDITY_SCALING = None
 
 # CoCiP (Contrails Cirrus Predictions) execution parameters
 # Dynamically configured based on humidity scaling configuration above
