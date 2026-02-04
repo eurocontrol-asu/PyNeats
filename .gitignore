@@ -120,6 +120,12 @@ __pypackages__/
 # BADA data (private, not distributed)
 tests/data/BADA/
 
+# Claude AI session file (local planning docs)
+CLAUDE.md
+
+# Clustering module (work in progress)
+src/pyneats/clustering/
+
 # Local scratch/experiment files
 scratch/
 tmp/
