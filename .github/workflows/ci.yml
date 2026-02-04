@@ -86,16 +86,18 @@ jobs:
         env:
           BADA_PATH: ${{ github.workspace }}/bada_data
         run: |
-          # For Dependabot PRs, skip BADA tests (no data available)
+          # Skip weather tests (no weather data in CI)
+          # For Dependabot PRs, also skip BADA tests (no access to secrets)
           if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
             uv run pytest tests/ \
-              -m "not requires_bada" \
+              -m "not requires_bada and not requires_weather" \
               --cov=src \
               --cov-report=xml \
               --cov-report=term-missing \
               --junitxml=junit.xml
           else
             uv run pytest tests/ \
+              -m "not requires_weather" \
               --cov=src \
               --cov-report=xml \
               --cov-report=term-missing \
