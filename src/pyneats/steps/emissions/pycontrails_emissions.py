@@ -3,10 +3,12 @@ PyContrails Emissions Model Module
 
 Implements aircraft emissions calculation using pycontrails.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field
 from typing import Any
 
 from pycontrails import Flight
@@ -16,9 +18,11 @@ from pyneats.core.neats_default_parameters import DEFAULT_EMISSIONS_KWARGS
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.emissions.params import EmissionParams
-from pyneats.steps.emissions.protocol import EmissionModel, EmissionStepError
+from pyneats.steps.emissions.protocol import EmissionModel
+from pyneats.steps.emissions.protocol import EmissionStepError
 from pyneats.steps.emissions.views import FlightWithEmissions
 from pyneats.steps.performance import FlightWithPerformance
+
 
 __all__ = [
     "PyContrailsEmissionParams",
@@ -32,7 +36,9 @@ class PyContrailsEmissionParams(EmissionParams):
     Parameters for the PyContrails emission model calculation.
     """
 
-    emissions_kwargs: Mapping[str, Any] = field(default_factory=lambda: DEFAULT_EMISSIONS_KWARGS)
+    emissions_kwargs: Mapping[str, Any] = field(
+        default_factory=lambda: DEFAULT_EMISSIONS_KWARGS
+    )
 
 
 @register(EmissionModel, "pycontrails")  # type: ignore[type-abstract]

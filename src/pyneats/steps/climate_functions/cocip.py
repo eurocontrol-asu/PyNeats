@@ -12,21 +12,25 @@ Key Components
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field
 from typing import Any
 
 from pycontrails import Flight
 from pycontrails.core.met import MetDataset
 from pycontrails.models.cocip import Cocip
 
-from pyneats.core.fleet_utils import fleet_to_flights, flights_to_fleet
+from pyneats.core.fleet_utils import fleet_to_flights
+from pyneats.core.fleet_utils import flights_to_fleet
 from pyneats.core.neats_default_parameters import DEFAULT_COCIP_KWARGS
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.climate_functions.params import ClimateParams
-from pyneats.steps.climate_functions.protocol import ContrailsModel, ContrailsStepError
+from pyneats.steps.climate_functions.protocol import ContrailsModel
+from pyneats.steps.climate_functions.protocol import ContrailsStepError
 from pyneats.steps.climate_functions.views import FlightWithRFContrailsImpact
 from pyneats.steps.emissions.views import FlightWithEmissions
+
 
 __all__ = [
     "ContrailsParams",
@@ -41,7 +45,9 @@ class ContrailsParams(ClimateParams):
     met: MetDataset | None = None
     rad: MetDataset | None = None
 
-    cocip_kwargs: Mapping[str, Any] = field(default_factory=lambda: DEFAULT_COCIP_KWARGS)
+    cocip_kwargs: Mapping[str, Any] = field(
+        default_factory=lambda: DEFAULT_COCIP_KWARGS
+    )
 
 
 # ---- PyContrails COCIP wrapper ------------------------------------
@@ -81,7 +87,9 @@ class CoCiPModel(
         self.logger.info("COCIP step completed successfully")
         return FlightWithRFContrailsImpact.from_flight(out)
 
-    def run_fleet(self, flights: list[FlightWithEmissions]) -> list[FlightWithRFContrailsImpact]:
+    def run_fleet(
+        self, flights: list[FlightWithEmissions]
+    ) -> list[FlightWithRFContrailsImpact]:
         """
         Fleet-level vectorized CoCiP evaluation.
 

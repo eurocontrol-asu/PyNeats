@@ -3,6 +3,7 @@ Eurocontrol Emissions Model Module
 
 Defines a placeholder for the Eurocontrol emissions model.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from pyneats.steps.emissions.params import EmissionParams
 from pyneats.steps.emissions.protocol import EmissionModel
 from pyneats.steps.emissions.views import FlightWithEmissions
 from pyneats.steps.performance import FlightWithPerformance
+
 
 __all__ = [
     "EurocontrolEmissionModel",
@@ -25,6 +27,7 @@ class EurocontrolEmissionParams(EmissionParams):
     """
     Parameters for the Eurocontrol emissions model.
     """
+
     pass
 
 
@@ -39,6 +42,7 @@ class EurocontrolEmissionModel(
     """
     Placeholder for the Eurocontrol emissions model.
     """
+
     default_params = EurocontrolEmissionParams
 
     def run(self, flight: FlightWithPerformance) -> FlightWithEmissions:

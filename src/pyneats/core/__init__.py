@@ -1,4 +1,3 @@
-
 """
 NEATS core package.
 

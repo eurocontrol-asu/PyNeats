@@ -1,4 +1,3 @@
-
 """
 BADA Adapters Module
 
@@ -35,10 +34,16 @@ from __future__ import annotations
 from abc import abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, Literal, Protocol, TypeVar, cast
+from typing import Generic
+from typing import Literal
+from typing import Protocol
+from typing import TypeVar
+from typing import cast
 
 from packaging import version
-from pycontrails.physics.units import ft_to_m, m_per_s_to_knots
+from pycontrails.physics.units import ft_to_m
+from pycontrails.physics.units import m_per_s_to_knots
+
 
 try:
     import pyBADA.atmosphere as atm
@@ -54,6 +59,7 @@ except ImportError as e:
 
 
 from pyneats.steps.performance.protocol import PerformanceStepError
+
 
 __all__ = [
     "AircraftProtocol",
@@ -279,7 +285,9 @@ class _PyBADAAdapterBase(Generic[TObj]):
     def fuel_flow_idle(self, state: State, atmosphere: Atmosphere) -> float | None: ...
 
     @abstractmethod
-    def fuel_flow(self, state: State, atmosphere: Atmosphere, thrust: float) -> float | None: ...
+    def fuel_flow(
+        self, state: State, atmosphere: Atmosphere, thrust: float
+    ) -> float | None: ...
 
     @staticmethod
     def _post_process(
@@ -347,27 +355,27 @@ class BADA4Adapter(_PyBADAAdapterBase[Bada4Aircraft], BaseBADAAdapter):
     @property
     def nb_eng(self) -> int | None:
         value = getattr(self._obj, "n_eng", None)
-        return cast(int | None, value)
+        return cast("int | None", value)
 
     @property
     def span(self) -> float | None:
         value = getattr(self._obj, "span", None)
-        return cast(float | None, value)
+        return cast("float | None", value)
 
     @property
     def MTOW(self) -> float | None:
         value = getattr(self._obj, "MTOW", None)
-        return cast(float | None, value)
+        return cast("float | None", value)
 
     @property
     def MPL(self) -> float | None:
         value = getattr(self._obj, "MPL", None)
-        return cast(float | None, value)
+        return cast("float | None", value)
 
     @property
     def OEW(self) -> float | None:
         value = getattr(self._obj, "OEW", None)
-        return cast(float | None, value)
+        return cast("float | None", value)
 
     @property
     def bada_code(self) -> str:
@@ -440,7 +448,9 @@ class BADA4Adapter(_PyBADAAdapterBase[Bada4Aircraft], BaseBADAAdapter):
             deltaTemp=delta_tau,
         )
 
-    def fuel_flow(self, state: State, atmosphere: Atmosphere, thrust: float) -> float | None:
+    def fuel_flow(
+        self, state: State, atmosphere: Atmosphere, thrust: float
+    ) -> float | None:
         delta = atmosphere.delta
         M = state.M
         delta_tau = atmosphere.delta_tau
@@ -487,17 +497,17 @@ class BADA3Adapter(_PyBADAAdapterBase[Bada3Aircraft], BaseBADAAdapter):
     @property
     def nb_eng(self) -> int | None:
         value = getattr(self._obj, "numberOfEngines", None)
-        return cast(int | None, value)
+        return cast("int | None", value)
 
     @property
     def span(self) -> float | None:
         value = getattr(self._obj, "span", None)
-        return cast(float | None, value)
+        return cast("float | None", value)
 
     @property
     def MTOW(self) -> float | None:
         value = getattr(self._obj, "MTOW", None)
-        return cast(float | None, value)
+        return cast("float | None", value)
 
     @property
     def MPL(self) -> float | None:
@@ -506,7 +516,7 @@ class BADA3Adapter(_PyBADAAdapterBase[Bada3Aircraft], BaseBADAAdapter):
     @property
     def OEW(self) -> float | None:
         value = getattr(self._obj, "OEW", None)
-        return cast(float | None, value)
+        return cast("float | None", value)
 
     @property
     def bada_code(self) -> str:
@@ -566,7 +576,9 @@ class BADA3Adapter(_PyBADAAdapterBase[Bada3Aircraft], BaseBADAAdapter):
             T=self.thrust_climb(state, atmosphere),
         )
 
-    def fuel_flow(self, state: State, atmosphere: Atmosphere, thrust: float) -> float | None:
+    def fuel_flow(
+        self, state: State, atmosphere: Atmosphere, thrust: float
+    ) -> float | None:
         v = state.v
         altitude_m = state.h
         phase = state.phase

@@ -4,142 +4,348 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pyneats"
-description = "NEATS: aviation non-CO₂ climate metrics pipeline (PyNeats)."
-readme = "README.md"
-requires-python = ">=3.11,<3.14"
-license = { file = "LICENSE" }
-authors = [{ name = "Philippe VERY", email = "philippe.very@eurocontrol.int" },
-           { name = "Ramon DALMAU", email = "ramon.dalmau-codina@eurocontrol.int" },
-           { name = "Ana-Maria PELIN", email = "ana-maria.pelin.ext@eurocontrol.int" },
-           {name = "Gabriel JARRY", email = "gabriel.jarry@eurocontrol.int"}]
-
-
-keywords = ["aviation", "climate", "contrails", "metrics", "pipeline"]
-classifiers = [
-  "Programming Language :: Python :: 3",
-  "License :: OSI Approved :: MIT License",
-  "Development Status :: 3 - Alpha",
-  "Typing :: Typed",
-]
-
 dynamic = ["version"]
-
-dependencies = [
-  "xarray==2024.10.0",
-  "pycontrails[ecmwf,gcp,gfs,jupyter,pyproj]==0.60.1",
-  "dacite>=1.9.2",
-  "zarr>=2.18.3,<3",
-  "scipy>=1.11.0,<1.17.0",
-  "joblib>=1.3.0",
+description = "NEATS: aviation non-CO2 climate metrics pipeline (PyNeats)."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11,<3.14"
+authors = [
+    { name = "Philippe VERY", email = "philippe.very@eurocontrol.int" },
+    { name = "Ramon DALMAU", email = "ramon.dalmau-codina@eurocontrol.int" },
+    { name = "Ana-Maria PELIN", email = "ana-maria.pelin.ext@eurocontrol.int" },
+    { name = "Gabriel JARRY", email = "gabriel.jarry@eurocontrol.int" },
 ]
+keywords = [
+    "aviation",
+    "climate",
+    "contrails",
+    "emissions",
+    "GWP",
+    "MRV",
+    "non-CO2",
+    "pipeline",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+    "Typing :: Typed",
+]
+dependencies = [
+    "xarray==2024.10.0",
+    "pycontrails[ecmwf,gcp,gfs,jupyter,pyproj]==0.60.1",
+    "dacite>=1.9.2",
+    "zarr>=2.18.3,<3",
+    "scipy>=1.11.0,<1.17.0",
+    "joblib>=1.3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/eurocontrol-asu/PyNeats"
+Documentation = "https://eurocontrol-asu.github.io/PyNeats/"
+Repository = "https://github.com/eurocontrol-asu/PyNeats.git"
+Issues = "https://github.com/eurocontrol-asu/PyNeats/issues"
+Changelog = "https://github.com/eurocontrol-asu/PyNeats/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-# Keep optional-dependencies for backward compatibility
-bada = []  # left empty intentionally; docs explain manual install
+# Optional: BADA performance data (requires manual install, see docs)
+bada = []
+# Testing dependencies
+test = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+]
+# Development dependencies
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.9.0",
+    "mypy>=1.13.0",
+    "pandas-stubs>=2.0.0",
+    "pre-commit>=3.0.0",
+    "pip-audit>=2.7.0",
+]
+# Documentation dependencies
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.0.0",
+    "mkdocstrings[python]>=0.24.0",
+]
+# All optional dependencies
+all = [
+    "pyneats[test,dev,docs]",
+]
 
+# ============================================
+# DEPENDENCY GROUPS (PEP 735 - for uv sync)
+# ============================================
 [dependency-groups]
 dev = [
-  "pytest>=8",
-  "pytest-cov",
-  "ruff>=0.5",
-  "mypy>=1.10",
-  "pre-commit>=3.0",
-  "pip-audit>=2.6",
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.9.0",
+    "mypy>=1.13.0",
+    "pandas-stubs>=2.0.0",
+    "pre-commit>=3.0.0",
+    "pip-audit>=2.7.0",
 ]
-
 docs = [
-  "mkdocs-material>=9.0",
-  "mkdocstrings[python]>=0.24",
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.0.0",
+    "mkdocstrings[python]>=0.24.0",
 ]
 
+# ============================================
+# HATCH - Build & Versioning
+# ============================================
 [tool.hatch.version]
 source = "vcs"
 
 [tool.hatch.build.hooks.vcs]
 version-file = "src/pyneats/_version.py"
 
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/pyneats"]
 
-[tool.hatch.build.targets.sdist]
-include = [
-  "/src",
-  "/tests",
-  "/README.md",
-  "/LICENSE",
+# ============================================
+# RUFF - Linting & Formatting
+# ============================================
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+src = ["src", "tests"]
+exclude = ["*/_version.py"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "N",      # pep8-naming
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "SIM",    # flake8-simplify
+    "TCH",    # flake8-type-checking
+    "PTH",    # flake8-use-pathlib
+    "RUF",    # Ruff-specific rules
+    "PERF",   # perflint
+]
+ignore = [
+    "E501",     # line too long (handled by formatter)
+    "B008",     # do not perform function calls in argument defaults
+    "B905",     # zip without explicit strict parameter
+    "SIM108",   # use ternary operator instead of if-else
+    "TC001",    # move application import into TYPE_CHECKING (formerly TCH001)
+    "TC002",    # move third-party import into TYPE_CHECKING (formerly TCH002)
+    "TC003",    # move stdlib import into TYPE_CHECKING
+    "RUF003",   # ambiguous characters in comments (e.g., ×, ')
+    "RUF005",   # consider spread syntax instead of concatenation
+    "RUF022",   # __all__ not sorted (prefer categorical organization)
+    "PTH",      # use pathlib (gradual migration, not enforced)
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]
+"tests/**/*.py" = [
+    "S101",     # assert allowed in tests
+    "ARG",      # unused arguments (fixtures)
+    "PLR2004",  # magic values in tests OK
+    "B011",     # assert False allowed in tests
+    "E402",     # late imports allowed in tests
+]
+"src/pyneats/_version.py" = ["UP007"]
+"src/pyneats/steps/climate_metrics/gwp.py" = ["N802", "N803", "N806"]  # Scientific notation
+"src/pyneats/steps/performance/bada_*.py" = ["N802", "N806"]  # Aviation acronyms
+
+[tool.ruff.lint.isort]
+known-first-party = ["pyneats"]
+force-single-line = true
+lines-after-imports = 2
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+
+# ============================================
+# MYPY - Type Checking
+# ============================================
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = false
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+ignore_missing_imports = true
+show_error_codes = true
+show_column_numbers = true
+pretty = true
+strict_optional = false
+warn_redundant_casts = true
+warn_unused_ignores = false
+no_implicit_optional = false
+
+[[tool.mypy.overrides]]
+module = [
+    "pycontrails.*",
+    "climaccf.*",
+    "openap.*",
+    "pybada.*",
+    "xarray.*",
+    "pandas.*",
+    "scipy.*",
+    "zarr.*",
+    "joblib.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "pyneats.steps.*",
+    "pyneats.runners.*",
+    "pyneats.core.*",
+]
+# Lenient checking for modules with complex types
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_decorators = false
+
+# ============================================
+# PYTEST - Testing
+# ============================================
 [tool.pytest.ini_options]
-pythonpath = "src"
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
-filterwarnings = [
-    "ignore::Warning",
+pythonpath = ["src"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
 ]
 markers = [
     "requires_bada: tests that require BADA coefficients data",
     "requires_weather: tests that require weather data",
-    "slow: tests that take more than 10 seconds to run",
-    "integration: integration tests",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
     "benchmark: performance benchmark tests",
 ]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::Warning",
+]
 
+# ============================================
+# COVERAGE
+# ============================================
 [tool.coverage.run]
-source = ["pyneats"]
+source = ["src"]
+branch = true
+parallel = true
 omit = [
-    "*/tests/*",
     "*/_version.py",
+    "*/tests/*",
+    "*/__init__.py",
 ]
 
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",
-    "def __repr__",
-    "raise AssertionError",
+    "if TYPE_CHECKING:",
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
-    "if TYPE_CHECKING:",
     "@abstractmethod",
+    "@overload",
+    "def __repr__",
+    "raise AssertionError",
+]
+show_missing = true
+
+[tool.coverage.paths]
+source = [
+    "src/",
+    "*/site-packages/",
 ]
 
-[tool.ruff]
-line-length = 100
-target-version = "py311"
-src = ["src"]
+# ============================================
+# GIT-CLIFF - Changelog Generation
+# ============================================
+[tool.git-cliff.changelog]
+header = """
+# Changelog
 
-[tool.ruff.lint]
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "N",   # pep8-naming
-    "UP",  # pyupgrade
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "SIM", # flake8-simplify
+All notable changes to PyNeats will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+"""
+body = """
+{% if version %}\
+    ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+    ## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | striptags | trim | upper_first }}
+    {% for commit in commits %}
+        - {% if commit.scope %}**{{ commit.scope }}**: {% endif %}\
+            {{ commit.message | upper_first }}\
+    {% endfor %}
+{% endfor %}\n
+"""
+trim = true
+
+[tool.git-cliff.git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+commit_preprocessors = [
+    { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](https://github.com/eurocontrol-asu/PyNeats/issues/${2}))" },
 ]
-ignore = []
-
-[tool.ruff.lint.per-file-ignores]
-"src/pyneats/steps/climate_metrics/gwp.py" = ["N802", "N803", "N806"]  # Scientific notation (J, K units)
-"src/pyneats/steps/performance/bada_*.py" = ["N802", "N806"]  # Aviation acronyms (MTOW, MPL, OEW, M, TAS, CAS)
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-line-ending = "auto"
-
-[tool.mypy]
-python_version = "3.11"
-color_output = true
-pretty = true
-show_column_numbers = true
-strict = true
-check_untyped_defs = true
-ignore_missing_imports = true
-warn_no_return = true
-warn_redundant_casts = true
-warn_unused_configs = true
-warn_unused_ignores = true
-files = ["src/pyneats"]
+commit_parsers = [
+    { message = "^feat", group = "Features" },
+    { message = "^fix", group = "Bug Fixes" },
+    { message = "^doc", group = "Documentation" },
+    { message = "^perf", group = "Performance" },
+    { message = "^refactor", group = "Changed" },
+    { message = "^style", group = "Styling" },
+    { message = "^test", group = "Testing" },
+    { message = "^ci", group = "CI/CD" },
+    { message = "^chore\\(release\\)", skip = true },
+    { message = "^chore\\(deps\\)", skip = true },
+    { message = "^chore\\(pr\\)", skip = true },
+    { message = "^chore\\(pull\\)", skip = true },
+    { message = "^chore", group = "Miscellaneous" },
+    { body = ".*security", group = "Security" },
+    { message = "^revert", group = "Revert" },
+]
+protect_breaking_commits = false
+filter_commits = false
+tag_pattern = "v[0-9].*"
+skip_tags = "v0.1.0-beta.1"
+topo_order = false
+sort_commits = "oldest"

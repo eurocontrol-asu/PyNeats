@@ -3,11 +3,14 @@ Climate Functions Views Module
 
 Defines zero-copy typed views for contrail and non-CO2 climate impact enrichment.
 """
+
 from __future__ import annotations
 
-from typing import ClassVar, Final, Union
+from typing import ClassVar
+from typing import Final
 
 from pyneats.steps.emissions.views import FlightWithEmissions
+
 
 __all__ = [
     "REQUIRED_CONTRAIL_COLS",
@@ -52,12 +55,16 @@ class FlightWithSegmentATR(FlightWithRFContrailsImpact):
     """
     Contains 4D segment-level columns for ATR.
     """
+
     REQUIRED: ClassVar[tuple[str, ...]] = REQUIRED_ATR_COLS
+
 
 class FlightWithGlobalAGWP(FlightWithEmissions):
     """
     Contains aggregated attributes for AGWPS (including contrails).
     """
+
     ATTRS_REQUIRED: ClassVar[tuple[str, ...]] = REQUIRED_AGWP_ATTRS
 
-FlightWithNonCO2Impact = Union[FlightWithSegmentATR, FlightWithGlobalAGWP]
+
+FlightWithNonCO2Impact = FlightWithSegmentATR | FlightWithGlobalAGWP

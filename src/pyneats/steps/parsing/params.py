@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from pyneats.core.steps import BaseParams
 
+
 __all__ = ["TrajectoryParserParams"]
 
 
@@ -20,4 +21,5 @@ class TrajectoryParserParams(BaseParams):
 
     Extend this class to define specific parameters for trajectory parsers.
     """
+
     pass

@@ -3,11 +3,11 @@ Climate Metrics Views Module
 
 Defines zero-copy views for climate-metrics-enriched flights.
 """
+
 from __future__ import annotations
 
-from typing import Any
+from pyneats.steps.climate_functions.views import FlightWithEmissions
 
-from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact, FlightWithEmissions
 
 __all__ = ["FlightWithClimateImpact"]
 

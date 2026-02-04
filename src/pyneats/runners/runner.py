@@ -1,6 +1,8 @@
-from abc import ABC, abstractmethod
-from typing import Self
 import logging
+from abc import ABC
+from abc import abstractmethod
+from typing import Self
+
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +48,7 @@ class Runner(ABC):
 
         for step in steps:
             step()
-            if getattr(self, '_pipeline_aborted', False):
+            if getattr(self, "_pipeline_aborted", False):
                 logger.warning(
                     "Pipeline aborted after %s - all flights failed",
                     step.__name__,

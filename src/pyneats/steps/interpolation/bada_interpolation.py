@@ -3,6 +3,7 @@ BADA Trajectory Interpolation Module
 
 Defines a placeholder for a physics-based trajectory reconstruction (e.g., BADA).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,10 +11,9 @@ from dataclasses import dataclass
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.interpolation.params import TrajectoryInterpolationParams
-from pyneats.steps.interpolation.protocol import (
-    TrajectoryInterpolator,
-)
+from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
 from pyneats.steps.parsing.views import Flight4D
+
 
 __all__ = [
     "BADATrajectoryPredictor",

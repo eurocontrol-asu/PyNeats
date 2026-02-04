@@ -1,21 +1,21 @@
 # pyneats
 
 [![CI](https://github.com/eurocontrol-asu/PyNeats/actions/workflows/ci.yml/badge.svg)](https://github.com/eurocontrol-asu/PyNeats/actions/workflows/ci.yml)
-[![Coverage Status](https://coveralls.io/repos/github/eurocontrol-asu/PyNeats/badge.svg?branch=main)](https://coveralls.io/github/eurocontrol-asu/PyNeats?branch=main)
+[![codecov](https://codecov.io/gh/eurocontrol-asu/PyNeats/branch/main/graph/badge.svg)](https://codecov.io/gh/eurocontrol-asu/PyNeats)
 [![PyPI version](https://badge.fury.io/py/pyneats.svg)](https://badge.fury.io/py/pyneats)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
-[![Typed](https://img.shields.io/badge/typed-mypy%20strict-blue)](https://mypy-lang.org/)
+[![Typed](https://img.shields.io/badge/typed-mypy-blue)](https://mypy-lang.org/)
 
 **pyneats** is an open-source Python library implementing the **MRV (Monitoring, Reporting, and Verification)** technical requirements for computing **non-CO₂ climate impacts of aviation**, expressed as **GWP (Global Warming Potential)** and related metrics.
 
-It integrates multiple established open-source tools to provide a reproducible, end-to-end workflow for estimating aviation’s climate effects beyond CO₂ emissions:
+It integrates multiple established open-source tools to provide a reproducible, end-to-end workflow for estimating aviation's climate effects beyond CO₂ emissions:
 
 - [**PyContrails**](https://github.com/contrailcirrus/pycontrails) – for contrail prediction and atmospheric data processing
 - [**ClimAccf**](https://github.com/dlr-pa/climaccf) – for calculating non-CO₂ aviation climate change functions (aCCFs)
-- [**PyBADA**](https://github.com/eurocontrol-bada/pybada) – for aircraft performance modelling using EUROCONTROL’s BADA datasets
-- [**open-airclim**](https://github.com/openclimatefix/open-airclim) – for integrating climate response functions and GWP calculations (to be used for method D in future PyNeats versions)
+- [**PyBADA**](https://github.com/eurocontrol-bada/pybada) – for aircraft performance modelling using EUROCONTROL's BADA datasets
+- [**open-airclim**](https://github.com/dlr-pa/oac) – for integrating climate response functions and GWP calculations
 
 The library is designed for **researchers, airspace operators, regulators, and industry** who need a transparent and auditable implementation for MRV purposes.
 
@@ -37,36 +37,88 @@ The library is designed for **researchers, airspace operators, regulators, and i
 ### Prerequisites
 
 - **Python 3.11+** (see [Python installation](https://www.python.org/downloads/))
-- **uv** (fast Python package manager) – [Installation guide](https://github.com/astral-sh/uv#getting-started)
+- **uv** (fast Python package manager) – [Installation guide](https://docs.astral.sh/uv/getting-started/installation/)
+- **make** (build automation tool) – typically pre-installed on Linux/macOS
 
-### Development Installation (Current)
-
-**Note:** PyNeats is currently in active development and not yet published to PyPI. Installation is available for developers and contributors only via the source repository.
+### Quick Install (Recommended)
 
 ```bash
-# 1. Clone the repository
+# Clone the repository
 git clone https://github.com/eurocontrol-asu/PyNeats.git
 cd PyNeats
 
-# 2. Install all dependencies (including dev tools)
-uv sync --all-groups
-
-# 3. Install PyBADA manually (has non-standard requirements)
-uv pip install pybada --ignore-requires-python --no-deps
+# Install all dependencies (including PyBADA and open-airclim)
+make install
 ```
 
-**Verify installation:**
-```bash
-# Run tests
-uv run pytest tests/ -v
+This runs `uv sync` and installs PyBADA with the correct flags.
 
-# Run an example
-uv run examples/fleet_computation_from_json.py --help
+### Manual Installation
+
+If you prefer not to use make:
+
+```bash
+# Clone the repository
+git clone https://github.com/eurocontrol-asu/PyNeats.git
+cd PyNeats
+
+# Install dependencies
+uv sync --all-groups
+
+# Install PyBADA (requires special flags due to Python version constraints)
+uv run pip install pybada --no-deps --ignore-requires-python
+
+# Install open-airclim
+uv run pip install git+https://github.com/dlr-pa/oac.git
+```
+
+### Verify Installation
+
+```bash
+# Run unit tests (no external data required)
+make test-unit
+
+# Show available make commands
+make help
 ```
 
 ### For Contributors
 
-If you plan to contribute to PyNeats, see [CONTRIBUTING.md](CONTRIBUTING.md) for additional setup instructions and development workflow guidelines.
+Install pre-commit hooks for automatic code quality checks:
+
+```bash
+make pre-commit-install
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow guidelines.
+
+---
+
+## 🧪 Running Tests
+
+PyNeats tests require external data (BADA aircraft performance data and weather data) for full integration testing.
+
+```bash
+# Run unit tests only (no external data required)
+make test-unit
+
+# Run all tests with BADA data
+make test BADA_PATH=/path/to/bada
+
+# Run all tests with BADA and weather data
+make test BADA_PATH=/path/to/bada WEATHER_PATH=/path/to/weather
+
+# Run tests without coverage (faster)
+make test-fast BADA_PATH=/path/to/bada
+```
+
+You can also set environment variables instead:
+
+```bash
+export BADA_PATH=/path/to/bada
+export WEATHER_PATH=/path/to/weather
+make test
+```
 
 ---
 
@@ -91,7 +143,7 @@ src/pyneats/
 
 **Key Design Principles:**
 - **Modular pipeline**: Each step is independent and can be tested/reused separately
-- **Type safety**: Strict mypy type checking for reliability
+- **Type safety**: mypy type checking for reliability
 - **Open-source integration**: Uses PyContrails, ClimAccf, PyBADA, and open-airclim
 - **Performance-optimized**: Vectorized operations for fleet-level computations with joblib parallelization
 
@@ -104,7 +156,7 @@ src/pyneats/
 Process flight trajectories from a JSON file:
 
 ```bash
-uv run examples/fleet_computation_from_json.py \
+uv run python examples/fleet_computation_from_json.py \
   --json-file tests/data/golden/fleet_5_flights_input.json \
   --weather-path /path/to/weather/zarr/cache \
   --bada-path /path/to/bada/data \
@@ -118,7 +170,7 @@ See [examples/README.md](examples/README.md) for more examples and detailed inst
 Process flight data from a pandas DataFrame:
 
 ```bash
-uv run examples/fleet_computation_from_dataframe.py \
+uv run python examples/fleet_computation_from_dataframe.py \
   --weather-path /path/to/weather/zarr/cache \
   --bada-path /path/to/bada/data \
   --njobs 4
@@ -129,7 +181,7 @@ uv run examples/fleet_computation_from_dataframe.py \
 Build and cache meteorological data from DWD for reuse:
 
 ```bash
-uv run examples/weather_cache.py \
+uv run python examples/weather_cache.py \
   --dwd-path /path/to/dwd/icon/data \
   --zarr-path /path/to/output/zarr/cache \
   --date 2025-07-09 \
@@ -139,6 +191,26 @@ uv run examples/weather_cache.py \
 ### More Examples
 
 For additional examples and detailed documentation, see [examples/README.md](examples/README.md).
+
+---
+
+## 🛠️ Development
+
+### Available Make Commands
+
+```bash
+make help              # Show all available commands
+make install           # Install all dependencies
+make format            # Format code with ruff
+make lint              # Run linting and type checking
+make test              # Run tests with coverage
+make test-fast         # Run tests without coverage
+make test-unit         # Run unit tests only (no external data)
+make audit             # Run security audit
+make check             # Run all checks (lint + audit + test)
+make pre-commit        # Run pre-commit on all files
+make clean             # Clean build artifacts
+```
 
 ---
 
@@ -174,8 +246,8 @@ PyNeats integrates with these established open-source projects:
 |---------|---------|------|
 | **PyContrails** | Contrail prediction and atmospheric data | [github.com/contrailcirrus/pycontrails](https://github.com/contrailcirrus/pycontrails) |
 | **ClimAccf** | Aviation climate change functions (aCCFs) | [github.com/dlr-pa/climaccf](https://github.com/dlr-pa/climaccf) |
-| **PyBADA** | Aircraft performance modeling | [github.com/eurocontrol-bada/pybada](https://github.com/eurocontrol-bada/pybaba) |
-| **open-airclim** | Climate response functions and GWP | [github.com/openclimatefix/open-airclim](https://github.com/openclimatefix/open-airclim) |
+| **PyBADA** | Aircraft performance modeling | [github.com/eurocontrol-bada/pybada](https://github.com/eurocontrol-bada/pybada) |
+| **open-airclim** | Climate response functions and GWP | [github.com/dlr-pa/oac](https://github.com/dlr-pa/oac) |
 
 ---
 
