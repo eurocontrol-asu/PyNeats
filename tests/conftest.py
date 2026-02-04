@@ -21,6 +21,7 @@ import pytest
 
 from pyneats.core.views import FlightView
 
+
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.INFO)
 
@@ -37,7 +38,9 @@ def pytest_configure(config: pytest.Config) -> None:
     """Register custom pytest markers."""
     config.addinivalue_line("markers", "slow: marks tests as slow (>10s)")
     config.addinivalue_line("markers", "requires_bada: marks tests requiring BADA data")
-    config.addinivalue_line("markers", "requires_weather: marks tests requiring weather data")
+    config.addinivalue_line(
+        "markers", "requires_weather: marks tests requiring weather data"
+    )
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
 
 
@@ -191,7 +194,8 @@ def weather(weather_path: Path | None):
         WeatherStore instance or None if weather data not available
     """
     # Import here to avoid issues if pyBADA not installed
-    from pyneats.steps.weather.weather_store import ZarrPaths, get_weather_from_zarr
+    from pyneats.steps.weather.weather_store import ZarrPaths
+    from pyneats.steps.weather.weather_store import get_weather_from_zarr
 
     if weather_path is None or not weather_path.is_dir():
         _log.warning("weather_path does not exist: %s", weather_path)
@@ -248,7 +252,9 @@ def assert_climate_payload_equal(
         AssertionError: If the dicts don't match
     """
     if type(actual) is not type(expected):
-        raise AssertionError(f"{path}: type mismatch: {type(actual)} != {type(expected)}")
+        raise AssertionError(
+            f"{path}: type mismatch: {type(actual)} != {type(expected)}"
+        )
 
     if isinstance(expected, dict):
         # Filter out keys that should be skipped (timing metrics)
@@ -257,7 +263,9 @@ def assert_climate_payload_equal(
         if actual_keys != expected_keys:
             missing = expected_keys - actual_keys
             extra = actual_keys - expected_keys
-            raise AssertionError(f"{path}: key mismatch. Missing: {missing}, Extra: {extra}")
+            raise AssertionError(
+                f"{path}: key mismatch. Missing: {missing}, Extra: {extra}"
+            )
 
         for key in expected_keys:
             assert_climate_payload_equal(
@@ -266,7 +274,9 @@ def assert_climate_payload_equal(
 
     elif isinstance(expected, list):
         if len(actual) != len(expected):
-            raise AssertionError(f"{path}: list length mismatch: {len(actual)} != {len(expected)}")
+            raise AssertionError(
+                f"{path}: list length mismatch: {len(actual)} != {len(expected)}"
+            )
         for i, (a, e) in enumerate(zip(actual, expected, strict=True)):
             assert_climate_payload_equal(a, e, rtol, path=f"{path}[{i}]")
 
@@ -280,7 +290,9 @@ def assert_climate_payload_equal(
         else:
             rel_diff = abs(actual - expected) / abs(expected)
             if rel_diff > rtol:
-                raise AssertionError(f"{path}: {actual} != {expected} (rel_diff={rel_diff:.2e})")
+                raise AssertionError(
+                    f"{path}: {actual} != {expected} (rel_diff={rel_diff:.2e})"
+                )
 
     elif isinstance(expected, int):
         if actual != expected:

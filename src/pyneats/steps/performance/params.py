@@ -1,4 +1,3 @@
-
 """
 Performance Model Parameters Module
 
@@ -11,6 +10,7 @@ from dataclasses import dataclass
 
 from pyneats.core.steps import BaseParams
 
+
 __all__ = ["PerformanceModelParams"]
 
 
@@ -21,4 +21,5 @@ class PerformanceModelParams(BaseParams):
 
     Extend this class to define specific parameters for performance models.
     """
+
     pass

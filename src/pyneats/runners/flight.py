@@ -1,4 +1,3 @@
-
 """
 NEATS Flight Runner Module
 
@@ -21,57 +20,45 @@ in the SmallEmitter and LargeEmitter classes.
 """
 
 import logging
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any, Self
+from abc import ABC
+from abc import abstractmethod
+from dataclasses import dataclass
+from dataclasses import field
+from typing import Any
+from typing import Self
 
 import pandas as pd
 from pycontrails.core.met import MetDataset
 
-from pyneats.core.neats_default_parameters import (
-    DEFAULT_CLIMATE_IMPACT,
-    DEFAULT_CONTRAILS_MODEL,
-    DEFAULT_EMISSIONS,
-    DEFAULT_INTERPOLATOR,
-    DEFAULT_NON_CO2_MODEL,
-    DEFAULT_PERFORMANCE,
-    DEFAULT_TRAJECTORY_PARSER,
-)
+from pyneats.core.neats_default_parameters import DEFAULT_CLIMATE_IMPACT
+from pyneats.core.neats_default_parameters import DEFAULT_CONTRAILS_MODEL
+from pyneats.core.neats_default_parameters import DEFAULT_EMISSIONS
+from pyneats.core.neats_default_parameters import DEFAULT_INTERPOLATOR
+from pyneats.core.neats_default_parameters import DEFAULT_NON_CO2_MODEL
+from pyneats.core.neats_default_parameters import DEFAULT_PERFORMANCE
+from pyneats.core.neats_default_parameters import DEFAULT_TRAJECTORY_PARSER
 from pyneats.core.steps_registry import build
-from pyneats.steps.climate_functions import (
-    FlightWithNonCO2Impact,
-    NonCO2Model,
-)
-from pyneats.steps.climate_metrics import (
-    ClimateImpactModel,
-    ClimateImpactStepError,
-    FlightWithClimateImpact,
-)
-from pyneats.steps.emissions import (
-    EmissionModel,
-    EmissionStepError,
-    FlightWithEmissions,
-)
-from pyneats.steps.interpolation import (
-    TrajectoryInterpolationStepError,
-    TrajectoryInterpolator,
-)
-from pyneats.steps.parsing import (
-    Flight4D,
-    TrajectoryParser,
-    TrajectoryParserStepError,
-)
-from pyneats.steps.performance import (
-    FlightWithPerformance,
-    PerformanceModel,
-    PerformanceStepError,
-)
-from pyneats.steps.weather import (
-    FlightWithWeather,
-    WeatherProviderProtocol,
-    WeatherStepError,
-)
 from pyneats.runners.runner import Runner
+from pyneats.steps.climate_functions import FlightWithNonCO2Impact
+from pyneats.steps.climate_functions import NonCO2Model
+from pyneats.steps.climate_metrics import ClimateImpactModel
+from pyneats.steps.climate_metrics import ClimateImpactStepError
+from pyneats.steps.climate_metrics import FlightWithClimateImpact
+from pyneats.steps.emissions import EmissionModel
+from pyneats.steps.emissions import EmissionStepError
+from pyneats.steps.emissions import FlightWithEmissions
+from pyneats.steps.interpolation import TrajectoryInterpolationStepError
+from pyneats.steps.interpolation import TrajectoryInterpolator
+from pyneats.steps.parsing import Flight4D
+from pyneats.steps.parsing import TrajectoryParser
+from pyneats.steps.parsing import TrajectoryParserStepError
+from pyneats.steps.performance import FlightWithPerformance
+from pyneats.steps.performance import PerformanceModel
+from pyneats.steps.performance import PerformanceStepError
+from pyneats.steps.weather import FlightWithWeather
+from pyneats.steps.weather import WeatherProviderProtocol
+from pyneats.steps.weather import WeatherStepError
+
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +133,6 @@ class FlightRunner(Runner, ABC):
             self.cfg.emissions,
             **self.cfg.params.get("emissions", {}),
         )
-
 
         self.climate_impact: ClimateImpactModel = build(
             ClimateImpactModel,  # type: ignore[type-abstract]
@@ -243,8 +229,12 @@ class FlightRunner(Runner, ABC):
     # Step 3: Intersect with weather data
     def _intersect_weather(self) -> Self:
         if self.interpolated_flight is None:
-            logger.error("Missing interpolated_flight; did you call _interpolate() first?")
-            raise RuntimeError("_interpolate() must be called before _intersect_weather().")
+            logger.error(
+                "Missing interpolated_flight; did you call _interpolate() first?"
+            )
+            raise RuntimeError(
+                "_interpolate() must be called before _intersect_weather()."
+            )
 
         # Run the weather intersection step
         try:
@@ -256,7 +246,7 @@ class FlightRunner(Runner, ABC):
             raise RuntimeError(f"Weather intersection failed: {e}") from e
 
         self.flight_with_weather = enriched
-        #self.interpolated_flight = None
+        # self.interpolated_flight = None
 
         # Cache the downsampled met/rad datasets for later use (e.g accfs)
         self._ds_met = self.weather.ds_met()
@@ -272,8 +262,12 @@ class FlightRunner(Runner, ABC):
     # Step 4: Run Performance model
     def _performance(self) -> Self:
         if self.flight_with_weather is None:
-            logger.error("Missing flight_with_weather; did you call _intersect_weather() first?")
-            raise RuntimeError("_intersect_weather() must be called before _performance().")
+            logger.error(
+                "Missing flight_with_weather; did you call _intersect_weather() first?"
+            )
+            raise RuntimeError(
+                "_intersect_weather() must be called before _performance()."
+            )
 
         try:
             enriched: FlightWithPerformance = self.performance(self.flight_with_weather)
@@ -284,7 +278,7 @@ class FlightRunner(Runner, ABC):
             raise RuntimeError(f"Performance evaluation failed: {e}") from e
 
         self.flight_with_performance = enriched
-        #self.flight_with_weather = None
+        # self.flight_with_weather = None
         logger.info("Performance step completed successfully")
 
         return self
@@ -292,7 +286,9 @@ class FlightRunner(Runner, ABC):
     # Step 5: Run Emission model
     def _emissions(self) -> Self:
         if self.flight_with_performance is None:
-            logger.error("Missing flight_with_performance; did you call performance() first?")
+            logger.error(
+                "Missing flight_with_performance; did you call performance() first?"
+            )
             raise RuntimeError("performance() must be called before _emissions().")
         try:
             enriched: FlightWithEmissions = self.emission(self.flight_with_performance)
@@ -305,7 +301,7 @@ class FlightRunner(Runner, ABC):
 
         # Get the typed, zero-copy view
         self.flight_with_emissions = enriched
-        #self.flight_with_performance = None
+        # self.flight_with_performance = None
 
         logger.info("Emissions step completed successfully")
         return self
@@ -314,7 +310,6 @@ class FlightRunner(Runner, ABC):
     @abstractmethod
     def _climate_impact(self) -> Self:
         """Abstract method."""
-    
 
     # Step 7: Compute CO2 equivalent (using GWP for instance)
     def _climate_metrics(self) -> Self:
@@ -334,16 +329,14 @@ class FlightRunner(Runner, ABC):
 
         # keep the typed, zero-copy view
         self.flight_with_climate_impact = enriched
-        #self.flight_with_nonco2 = None
+        # self.flight_with_nonco2 = None
 
         logger.info("Climate impact (GWP) step completed successfully")
 
         return self
-    
+
     def _load_data(self) -> Self:
-
         return self
-    
-    def _extract_results(self) -> Self:
 
+    def _extract_results(self) -> Self:
         return self

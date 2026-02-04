@@ -6,12 +6,15 @@ Defines the protocol and error class for trajectory parser steps.
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol
+from typing import runtime_checkable
 
 import pandas as pd
 
-from pyneats.core.steps import Step, StepError
+from pyneats.core.steps import Step
+from pyneats.core.steps import StepError
 from pyneats.steps.parsing.views import Flight4D
+
 
 __all__ = [
     "TrajectoryParser",

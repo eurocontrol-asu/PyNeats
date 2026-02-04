@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import ClassVar, Final
+from typing import ClassVar
+from typing import Final
 
 from pyneats.steps.weather.weather_provider import FlightWithWeather
+
 
 __all__ = [
     "REQUIRED_PERF_COLS",
@@ -23,7 +25,6 @@ REQUIRED_PERF_COLS: Final[tuple[str, ...]] = (
 )
 
 
-
 class FlightWithPerformance(FlightWithWeather):
     """
     Zero-copy typed view for performance-enriched flights.
@@ -33,4 +34,5 @@ class FlightWithPerformance(FlightWithWeather):
     REQUIRED : ClassVar[tuple[str, ...]]
         Required columns for a performance-enriched flight.
     """
+
     REQUIRED: ClassVar[tuple[str, ...]] = REQUIRED_PERF_COLS

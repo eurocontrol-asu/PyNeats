@@ -1,4 +1,3 @@
-
 """
 BADA Aircraft Type Mapping Module
 
@@ -21,11 +20,11 @@ BadaMapper
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import cached_property, lru_cache
+from functools import cached_property
+from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
-
 
 
 @dataclass(frozen=True)
@@ -46,6 +45,7 @@ class BadaMappingPaths:
     icao_only : Path
         Path to CSV for ICAO-only fallback mapping.
     """
+
     icao_series_engine: Path
     icao_series: Path
     icao_engine: Path
@@ -72,12 +72,13 @@ def _read_csv_cached(
     return df
 
 
-def _load_df(path: Path, col_icao: str, col_series: str, col_engine: str) -> pd.DataFrame:
+def _load_df(
+    path: Path, col_icao: str, col_series: str, col_engine: str
+) -> pd.DataFrame:
     return _read_csv_cached(str(path), col_icao, col_series, col_engine)
 
 
 # ------ BadaMapper ------------------------------------------------------------
-
 
 
 class BadaMapper:
@@ -112,11 +113,15 @@ class BadaMapper:
 
     @cached_property
     def _df_icao_series(self) -> pd.DataFrame:
-        return _load_df(self.paths.icao_series, self.COL_ICAO, self.COL_SERIES, self.COL_ENGINE_ID)
+        return _load_df(
+            self.paths.icao_series, self.COL_ICAO, self.COL_SERIES, self.COL_ENGINE_ID
+        )
 
     @cached_property
     def _df_icao_engine(self) -> pd.DataFrame:
-        return _load_df(self.paths.icao_engine, self.COL_ICAO, self.COL_SERIES, self.COL_ENGINE_ID)
+        return _load_df(
+            self.paths.icao_engine, self.COL_ICAO, self.COL_SERIES, self.COL_ENGINE_ID
+        )
 
     @cached_property
     def _df_default_engine_by_icao(self) -> pd.DataFrame:
@@ -129,14 +134,18 @@ class BadaMapper:
 
     @cached_property
     def _df_icao_only(self) -> pd.DataFrame:
-        return _load_df(self.paths.icao_only, self.COL_ICAO, self.COL_SERIES, self.COL_ENGINE_ID)
+        return _load_df(
+            self.paths.icao_only, self.COL_ICAO, self.COL_SERIES, self.COL_ENGINE_ID
+        )
 
     # --- Helpers -------------------------------------------------------------
     def _coerce_return(
         self, row: pd.Series, engine_id_override: str | None = None
     ) -> tuple[int, str, str, str]:
         missing = [
-            c for c in (self.COL_NB_ENG, self.COL_BADA3, self.COL_BADA4) if c not in row.index
+            c
+            for c in (self.COL_NB_ENG, self.COL_BADA3, self.COL_BADA4)
+            if c not in row.index
         ]
         if missing:
             raise KeyError(f"Row missing required columns: {missing}")
@@ -148,7 +157,9 @@ class BadaMapper:
         if engine_id_override is not None:
             engine_id = engine_id_override
         else:
-            engine_id = str(row[self.COL_ENGINE_ID]) if self.COL_ENGINE_ID in row.index else ""
+            engine_id = (
+                str(row[self.COL_ENGINE_ID]) if self.COL_ENGINE_ID in row.index else ""
+            )
 
         return nb_eng, bada3, bada4, engine_id
 
@@ -224,7 +235,9 @@ class BadaMapper:
                 if engine_n is not None:
                     return self._coerce_return(row, engine_id_override=engine_n)
                 elif engine_conservative is not None:
-                    return self._coerce_return(row, engine_id_override=engine_conservative)
+                    return self._coerce_return(
+                        row, engine_id_override=engine_conservative
+                    )
                 else:
                     return self._coerce_return(row)
 

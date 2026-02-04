@@ -8,9 +8,11 @@ preserving and restoring fuel information and original columns.
 from __future__ import annotations
 
 import numpy as np
-from pycontrails import Fleet, Flight
+from pycontrails import Fleet
+from pycontrails import Flight
 
 from pyneats.steps.parsing.neats_parser import NEATSFuel  # type: ignore[attr-defined]
+
 
 __all__ = [
     "flights_to_fleet",

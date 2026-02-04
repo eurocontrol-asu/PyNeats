@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterable
-from typing import Any, ClassVar, TypeVar, cast
+from typing import Any
+from typing import ClassVar
+from typing import TypeVar
 
 import numpy as np
 from pycontrails import Flight
@@ -26,11 +28,11 @@ from pycontrails.utils import json as json_utils
 from pyneats.core.neats_fuel import NEATSFuel
 from pyneats.core.steps import StepError
 
+
 __all__ = [
     "ValidationError",
     "FlightView",
 ]
-
 
 
 class ValidationError(StepError):
@@ -42,7 +44,6 @@ class ValidationError(StepError):
 
 
 TView = TypeVar("TView", bound="FlightView")
-
 
 
 class FlightView(Flight):
@@ -150,7 +151,7 @@ class FlightView(Flight):
         return tuple(out)
 
     # --- construction / validation -----------------------------------
-    
+
     @classmethod
     def from_flight(
         cls: type[TView],
@@ -168,7 +169,7 @@ class FlightView(Flight):
 
         if missing_cols or missing_attrs:
             # FIX 1: Define the list before using it
-            messages = [] 
+            messages = []
 
             if missing_cols:
                 messages.append(f"missing columns: {', '.join(missing_cols)}")
@@ -263,7 +264,7 @@ class FlightView(Flight):
         f = Flight.from_dict(d)
 
         # This is needed because it forces it as column instead of attribute when reading from dict
-        # We should force overloaded to_dict to save flight_id as single value (so that is parsed as an attribute) or # noqa: E501
+        # We should force overloaded to_dict to save flight_id as single value (so that is parsed as an attribute) or
         # also overload the from_dict
         f["altitude"] = f.altitude
         f.attrs["flight_id"] = f["flight_id"][0]

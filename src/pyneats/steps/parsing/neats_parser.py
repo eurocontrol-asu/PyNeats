@@ -19,11 +19,11 @@ from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.core.views import ValidationError
 from pyneats.steps.parsing.params import TrajectoryParserParams
-from pyneats.steps.parsing.protocol import (
-    TrajectoryParser,
-    TrajectoryParserStepError,
-)
-from pyneats.steps.parsing.views import REQUIRED_4D_COLS, Flight4D
+from pyneats.steps.parsing.protocol import TrajectoryParser
+from pyneats.steps.parsing.protocol import TrajectoryParserStepError
+from pyneats.steps.parsing.views import REQUIRED_4D_COLS
+from pyneats.steps.parsing.views import Flight4D
+
 
 __all__ = [
     "NeatsTrajectoryParserParams",
@@ -43,6 +43,7 @@ class NeatsTrajectoryParserParams(TrajectoryParserParams):
     timezone : str
         Output timezone; parsing is done as UTC then converted.
     """
+
     date_format: str = "%Y-%m-%d %H:%M:%S"
     timezone: str = "UTC"  # output tz; parsing is done as UTC then converted
 
@@ -71,7 +72,6 @@ class NeatsTrajectoryParser(
     - No missing values in required columns
     """
 
-
     # ...existing code...
 
     default_params = NeatsTrajectoryParserParams
@@ -96,7 +96,9 @@ class NeatsTrajectoryParser(
                 df["altitude"] = ft_to_m(alt_ft)
 
             except Exception as e:
-                raise TrajectoryParserStepError(f"altitude conversion failed: {e}") from e
+                raise TrajectoryParserStepError(
+                    f"altitude conversion failed: {e}"
+                ) from e
 
             # 3) Parse time (tz-aware)
             try:
@@ -122,7 +124,9 @@ class NeatsTrajectoryParser(
             )
 
             if df.empty:
-                raise TrajectoryParserStepError("no valid trajectory points after cleaning")
+                raise TrajectoryParserStepError(
+                    "no valid trajectory points after cleaning"
+                )
 
             # 5) Build flight attributes from df.attrs (canonical keys)
             attrs_input: Mapping[str, Any] = getattr(df, "attrs", {}) or {}

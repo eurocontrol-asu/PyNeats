@@ -1,45 +1,52 @@
-.PHONY: help install lint format test check audit docs-serve clean
+.PHONY: install check lint test test-fast format audit docs-serve docs-build clean pre-commit pre-commit-install help
 
-.DEFAULT_GOAL := help
-
-help: ## Show this help message
-	@echo 'Usage: make [target]'
-	@echo ''
-	@echo 'Available targets:'
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
-
-install: ## Install all dependencies with uv
+install:  ## Install all dependencies
 	uv sync --all-groups
 	uv run pip install pybada --no-deps --ignore-requires-python
 	uv run pip install git+https://github.com/dlr-pa/oac.git
 
-format: ## Auto-format code with ruff
-	uv run ruff format src/pyneats tests/
+check: lint audit test  ## Run all checks
 
-lint: ## Run linting (ruff) and type checking (mypy)
-	uv run ruff check src/pyneats tests/
-	uv run mypy src/pyneats
+lint:  ## Run linting and type checking
+	uv run ruff check src/ tests/
+	uv run ruff format --check src/ tests/
+	uv run mypy src/pyneats/
 
-test: ## Run tests with coverage
-	uv run pytest tests/ -v --cov=pyneats --cov-report=term --cov-report=html
+test:  ## Run tests with coverage
+	uv run pytest tests/ --cov=src --cov-report=term-missing
 
-audit: ## Run security audit with pip-audit
+test-fast:  ## Run tests without coverage (faster)
+	uv run pytest tests/ -v
+
+format:  ## Format code
+	uv run ruff format src/ tests/
+	uv run ruff check --fix src/ tests/
+
+audit:  ## Security audit
 	uv run pip-audit
-
-check: lint test ## Run all quality checks (lint + test)
 
 docs-serve:  ## Serve docs locally
 	uv sync --group docs --quiet
 	uv run mkdocs serve
 
-clean: ## Clean up build artifacts and caches
-	rm -rf .pytest_cache
-	rm -rf .mypy_cache
-	rm -rf .ruff_cache
-	rm -rf htmlcov
-	rm -rf dist
-	rm -rf build
-	rm -rf *.egg-info
-	find . -type d -name __pycache__ -exec rm -rf {} +
-	find . -type f -name '*.pyc' -delete
-	find . -type f -name '*.pyo' -delete
+docs-build:  ## Build documentation
+	uv sync --group docs --quiet
+	uv run mkdocs build
+
+clean:  ## Clean build artifacts
+	rm -rf build/ dist/ .pytest_cache/ .mypy_cache/ .ruff_cache/ htmlcov/ .coverage coverage.xml site/
+	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name '*.pyc' -delete 2>/dev/null || true
+	find . -type f -name '*.pyo' -delete 2>/dev/null || true
+
+pre-commit:  ## Run pre-commit on all files
+	uv run pre-commit run --all-files
+
+pre-commit-install:  ## Install pre-commit hooks
+	uv run pre-commit install
+	uv run pre-commit install --hook-type commit-msg
+
+help:  ## Show help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+.DEFAULT_GOAL := help

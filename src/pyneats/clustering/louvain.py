@@ -1,5 +1,6 @@
 import warnings
-from typing import Any, Final
+from typing import Any
+from typing import Final
 
 import networkx as nx
 import numpy as np
@@ -65,7 +66,9 @@ def create_st_traffic_graph(
 
             if not temp_df.empty:
                 df_temp = df_temp.loc[temp_df.index].copy()
-                df_temp["it"] = np.floor(temp_df["time_numeric"] / dt_ns).astype(np.int32)
+                df_temp["it"] = np.floor(temp_df["time_numeric"] / dt_ns).astype(
+                    np.int32
+                )
                 grouping_cols.append("it")
         except Exception:
             warnings.warn("Temporal dimension skipped due to error.", stacklevel=2)
@@ -271,7 +274,9 @@ class LouvainTrafficClusterer:
             "dz": kwargs.get("dz", self.dz),
             "dt": kwargs.get("dt", self.dt),
             "resolution": kwargs.get("resolution", self.resolution),
-            "min_community_size": kwargs.get("min_community_size", self.min_community_size),
+            "min_community_size": kwargs.get(
+                "min_community_size", self.min_community_size
+            ),
         }
 
         # Call the core logic (your highly efficient function)

@@ -3,19 +3,22 @@ Emissions Protocol Module
 
 Defines the protocol and error class for emissions steps.
 """
+
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol
+from typing import runtime_checkable
 
-from pyneats.core.steps import Step, StepError
+from pyneats.core.steps import Step
+from pyneats.core.steps import StepError
 from pyneats.steps.emissions.views import FlightWithEmissions
 from pyneats.steps.performance import FlightWithPerformance
+
 
 __all__ = [
     "EmissionModel",
     "EmissionStepError",
 ]
-
 
 
 @runtime_checkable

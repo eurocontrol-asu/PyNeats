@@ -14,13 +14,19 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
+from dataclasses import dataclass
 from time import perf_counter
-from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
+from typing import Any
+from typing import Generic
+from typing import Protocol
+from typing import TypeVar
+from typing import runtime_checkable
 
 import pandas as pd
 from dacite import from_dict
 from pycontrails import Flight
+
 
 __all__ = [
     "InFlight",
@@ -43,6 +49,7 @@ class BaseParams:
 
     This class should be subclassed to define parameters for each NEATS processing step.
     """
+
     pass
 
 
@@ -54,6 +61,7 @@ Params = TypeVar("Params", bound=BaseParams)
 
 # --- Common step error base ---
 
+
 class StepError(RuntimeError):
     """
     Base class for domain errors raised by steps.
@@ -64,7 +72,6 @@ class StepError(RuntimeError):
 
 # --- Structural contract: any callable (InFlight) -> OutFlight qualifies as a Step ---
 @runtime_checkable
-
 class Step(Protocol[InFlight, OutFlight]):
     """
     Protocol defining the core interface for NEATS processing steps.
@@ -86,7 +93,6 @@ OutFlightT = TypeVar("OutFlightT", bound=Flight)
 
 
 @runtime_checkable
-
 class VectorizedStep(Protocol[InFlightT, OutFlightT]):
     """
     Protocol for steps that support fleet-level vectorized execution.
@@ -109,7 +115,6 @@ class VectorizedStep(Protocol[InFlightT, OutFlightT]):
     """
 
     def run_fleet(self, flights: list[InFlightT]) -> list[OutFlightT]: ...
-
 
 
 def update_param_dict(
@@ -144,6 +149,7 @@ def update_param_dict(
 
 
 # --- Convenience base with timing, logging, and error policy ---
+
 
 class BaseStep(Generic[InFlight, OutFlight, Params]):
     """
@@ -203,7 +209,9 @@ class BaseStep(Generic[InFlight, OutFlight, Params]):
             params_dict = asdict(self.default_params())
             update_param_dict(params_dict, params)
         else:
-            raise TypeError(f"Step parameters must be {self.default_params.__name__} or dict")
+            raise TypeError(
+                f"Step parameters must be {self.default_params.__name__} or dict"
+            )
 
         update_param_dict(params_dict, params_kwargs)
         self.params = from_dict(self.default_params, params_dict)

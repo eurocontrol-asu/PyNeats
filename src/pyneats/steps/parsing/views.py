@@ -6,9 +6,11 @@ Defines the zero-copy, typed view for 4D flight data (latitude, longitude, altit
 
 from __future__ import annotations
 
-from typing import ClassVar, Final
+from typing import ClassVar
+from typing import Final
 
 from pyneats.core.views import FlightView
+
 
 __all__ = [
     "REQUIRED_4D_COLS",
@@ -68,6 +70,7 @@ class Flight4D(FlightView):
     ATTRS_REQUIRED : ClassVar[tuple[str, ...]]
         Required attributes for a 4D flight.
     """
+
     REQUIRED: ClassVar[tuple[str, ...]] = REQUIRED_4D_COLS
     OPTIONAL: ClassVar[tuple[str, ...]] = OPTIONAL_COLS
     ATTRS_OPTIONAL: ClassVar[tuple[str, ...]] = ATTRS_OPTIONAL
