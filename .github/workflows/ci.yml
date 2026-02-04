@@ -84,7 +84,7 @@ jobs:
 
       - name: Run tests with coverage
         env:
-          BADA_ROOT_PATH: ${{ github.workspace }}/bada_data
+          BADA_PATH: ${{ github.workspace }}/bada_data
         run: |
           # For Dependabot PRs, skip BADA tests (no data available)
           if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
