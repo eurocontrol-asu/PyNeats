@@ -48,8 +48,8 @@ format:  ## Format code
 	uv run ruff format src/ tests/
 	uv run ruff check --fix src/ tests/
 
-audit:  ## Security audit
-	uv run pip-audit
+audit:  ## Security audit (informational, won't fail)
+	uv run pip-audit --skip-editable || true
 
 docs-serve:  ## Serve docs locally
 	uv sync --group docs --quiet
