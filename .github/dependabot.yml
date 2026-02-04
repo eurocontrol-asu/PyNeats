@@ -1,5 +1,10 @@
 # Dependabot configuration
 # https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+#
+# STATUS: DISABLED
+# Dependabot is temporarily disabled. To re-enable, set open-pull-requests-limit
+# to a non-zero value (e.g., 5 for pip, 3 for github-actions).
+#
 
 version: 2
 updates:
@@ -7,8 +12,8 @@ updates:
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "monthly"  # Changed from weekly to reduce noise
-    open-pull-requests-limit: 5  # Reduced from 10
+      interval: "monthly"
+    open-pull-requests-limit: 0  # DISABLED - set to 5 to re-enable
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -36,8 +41,8 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "monthly"  # Changed from weekly
-    open-pull-requests-limit: 3  # Reduced from 5
+      interval: "monthly"
+    open-pull-requests-limit: 0  # DISABLED - set to 3 to re-enable
     commit-message:
       prefix: "ci"
       include: "scope"
