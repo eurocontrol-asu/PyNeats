@@ -2,109 +2,155 @@
 
 Thank you for your interest in contributing to **PyNeats**! We welcome contributions of all kinds, including bug reports, feature requests, documentation improvements, and code contributions.
 
-This guide will help you set up your development environment and contribute effectively.
-
 ---
 
 ## Getting Started
 
-1. **Fork the repository** and clone your fork locally:
+### Prerequisites
 
-   git clone [https://github.com/your-username/pyneats.git](https://github.com/your-username/pyneats.git)
-   cd pyneats
+- **Python 3.11+**
+- **uv** (fast Python package manager) – [Installation guide](https://docs.astral.sh/uv/getting-started/installation/)
+- **make** (build automation tool)
 
-2. **Create a virtual environment** (recommended):
+### Setup
 
-   python -m venv .venv
-   source .venv/bin/activate  # Linux/macOS
-   .venv\Scripts\activate     # Windows
+1. **Fork and clone** the repository:
 
-3. **Install the package in editable mode with dev dependencies**:
+   ```bash
+   git clone https://github.com/your-username/PyNeats.git
+   cd PyNeats
+   ```
 
-   pip install --upgrade pip
-   pip install -e ".[dev]"
+2. **Install dependencies**:
 
----
+   ```bash
+   make install
+   ```
 
-## Code Style and Quality
+3. **Install pre-commit hooks** (required for contributors):
 
-We use **Ruff** and **Mypy** to maintain code quality and type safety.
+   ```bash
+   make pre-commit-install
+   ```
 
-* **Linting**:
-  ruff check src tests
-
-* **Type checking**:
-  mypy src
-
-* **Auto-fix formatting issues**:
-  ruff check --fix src tests
+   This enables automatic code formatting and commit message validation.
 
 ---
 
-## Running Tests
+## Development Workflow
 
-PyNeats uses **pytest**. To run all tests:
+### Available Commands
+
+```bash
+make help              # Show all available commands
+make format            # Format code with ruff
+make lint              # Run linting and type checking
+make test              # Run tests with coverage
+make test-fast         # Run tests without coverage (faster)
+make test-unit         # Run unit tests only (no external data)
+make check             # Run all checks (lint + audit + test)
+make pre-commit        # Run pre-commit on all files
+```
+
+### Running Tests
+
+```bash
+# Unit tests only (no external data required)
+make test-unit
+
+# With BADA data
+make test BADA_PATH=/path/to/bada
+
+# With BADA and weather data
+make test BADA_PATH=/path/to/bada WEATHER_PATH=/path/to/weather
+```
+
+---
+
+## Code Style
+
+We use **Ruff** for formatting/linting and **mypy** for type checking.
+
+```bash
+# Format code
+make format
+
+# Check for issues
+make lint
+```
+
+Pre-commit hooks will automatically format code and check for issues before each commit.
+
+---
+
+## Commit Messages
+
+We use **Conventional Commits** format. Pre-commit hooks enforce this.
 
 ```
-pytest .
+<type>(<scope>): <description>
+
+[optional body]
 ```
 
-Don't forget to define the weather cache path if you want to run also tests involving weather data:
+**Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `ci`, `build`
 
+**Examples**:
 ```
-pytest . --met-cache-dir=/datasave/NEATS_CLEAN/NyYXp7uG/met_cache
+feat(parser): add support for OpenSky format
+fix(emissions): correct fuel flow calculation
+docs(readme): update installation instructions
 ```
-
-For instance.
 
 ---
 
 ## Making Changes
 
-1. Create a **feature branch**:
+1. **Create a feature branch**:
 
+   ```bash
    git checkout -b feature/my-new-feature
+   ```
 
-2. Make your changes and **write tests** for new functionality.
+2. **Make changes** and write tests for new functionality.
 
-3. Run linting, type checking, and tests locally to ensure nothing is broken:
+3. **Run checks locally**:
 
-   ruff check src tests
-   mypy src
-   pytest .
+   ```bash
+   make check
+   ```
 
-4. Commit your changes:
+4. **Commit your changes** (pre-commit hooks will run automatically):
 
+   ```bash
    git add .
-   git commit -m "Add <short description of change>"
+   git commit -m "feat(scope): add new feature"
+   ```
 
 ---
 
 ## Pull Request
 
-1. Push your branch to your fork:
+1. **Push** your branch:
 
+   ```bash
    git push origin feature/my-new-feature
+   ```
 
-2. Open a pull request (PR) against the `main` branch of the original repository.
+2. **Open a pull request** against the `main` branch.
 
-3. Fill in the PR template with a clear description of your changes.
+3. **Ensure CI passes** – all checks must be green.
 
-4. Respond to review comments and make updates as needed.
+4. **Respond to review comments** and make updates as needed.
 
 ---
 
 ## Additional Notes
 
-* **Documentation**: Update `README.md` or add docstrings as needed.
-* **Dependencies**: Add new runtime dependencies to `pyproject.toml` under `dependencies`. For dev tools, add under `[project.optional-dependencies]` dev.
+- **Documentation**: Update README.md or add docstrings as needed.
+- **Dependencies**: Add runtime dependencies to `pyproject.toml` under `dependencies`. For dev tools, add to `[dependency-groups]` dev.
+- **Tests**: New features should include tests. Use `@pytest.mark.requires_bada` or `@pytest.mark.requires_weather` for tests requiring external data.
 
 ---
 
-Thank you for helping improve **PyNeats**! Your contributions make a real difference.
-
----
-
-This is **fully Markdown**, commands are indented, and you can **copy-paste it directly** into your `CONTRIBUTING.md`.
-
-If you want, I can also make a **super short one-page “Quick Start” version** in Markdown for new contributors. Do you want me to do that?
+Thank you for helping improve **PyNeats**!
