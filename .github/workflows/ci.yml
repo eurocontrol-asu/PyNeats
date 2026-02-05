@@ -88,20 +88,23 @@ jobs:
         run: |
           # Skip weather tests (no weather data in CI)
           # For Dependabot PRs, also skip BADA tests (no access to secrets)
+          # Exit code 5 = no tests collected (all filtered out) - this is OK
           if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
             uv run pytest tests/ \
               -m "not requires_bada and not requires_weather" \
               --cov=src \
               --cov-report=xml \
               --cov-report=term-missing \
-              --junitxml=junit.xml
+              --junitxml=junit.xml \
+              || [ $? -eq 5 ]
           else
             uv run pytest tests/ \
               -m "not requires_weather" \
               --cov=src \
               --cov-report=xml \
               --cov-report=term-missing \
-              --junitxml=junit.xml
+              --junitxml=junit.xml \
+              || [ $? -eq 5 ]
           fi
 
       - name: Upload coverage to Codecov
