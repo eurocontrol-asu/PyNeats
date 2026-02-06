@@ -60,7 +60,7 @@ jobs:
     name: Generate Changelog
     runs-on: ubuntu-latest
     outputs:
-      changelog: ${{ steps.changelog.outputs.changelog }}
+      changelog: ${{ steps.set_output.outputs.changelog }}
 
     steps:
       - uses: actions/checkout@v4
@@ -70,6 +70,7 @@ jobs:
       - name: Generate changelog
         id: changelog
         uses: orhun/git-cliff-action@v4
+        continue-on-error: true
         with:
           config: pyproject.toml
           args: --latest --strip header
@@ -77,6 +78,17 @@ jobs:
           OUTPUT: CHANGELOG.md
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set changelog output
+        id: set_output
+        run: |
+          if [ "${{ steps.changelog.outcome }}" = "success" ] && [ -n "${{ steps.changelog.outputs.changelog }}" ]; then
+            echo "changelog<<EOF" >> $GITHUB_OUTPUT
+            echo "${{ steps.changelog.outputs.changelog }}" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "changelog=Release ${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
 
   # ============================================
   # PUBLISH TO TEST PYPI (Pre-releases only)
@@ -149,4 +161,4 @@ jobs:
           files: dist/*
           draft: false
           prerelease: false
-          generate_release_notes: false
+          generate_release_notes: ${{ needs.changelog.outputs.changelog == format('Release {0}', github.ref_name) }}
