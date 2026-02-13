@@ -125,6 +125,13 @@ DEFAULT_INTERPOLATION_TIME: Final[str] = "1min"
 DEFAULT_BADA4_VERSION: str = "4.2.1"
 DEFAULT_BADA3_VERSION: str = "3.16"
 
+# Max consecutive segments of a flight that fall out of the envelope allowed by the BADA model
+DEFAULT_BADA_MAX_CONSECUTIVE_FAILURES = 4
+
+# Very conservative threshold on the fuel flow. An error in BADA will be thown if higher
+# Further studies need to be performed to better handle out of envelop data points
+DEFAULT_FF_OUTLIER_THRESHOLD = 1000
+
 # Mass estimation parameters
 # Used in iterative aircraft mass computation from fuel consumption
 DEFAULT_PAYLOAD_FACTOR: Final[float] = (
@@ -194,7 +201,7 @@ if DEFAULT_HUMIDITY_SCALING is not None:
         ),  # Maximum contrail age before complete dissipation
         "humidity_scaling": DEFAULT_HUMIDITY_SCALING,  # Apply humidity adjustment from above
         "interpolation_use_indices": False,  # Use direct spatial interpolation (not index-based)
-        "vpm_activation": False,  # Disable volumetric potential maximum activation
+        "vpm_activation": False,  # Disable vpm activation method
     }
 else:
     # Fallback configuration without humidity scaling
@@ -207,7 +214,7 @@ else:
             12, "h"
         ),  # Maximum contrail age before complete dissipation
         "interpolation_use_indices": False,  # Use direct spatial interpolation (not index-based)
-        "vpm_activation": False,  # Disable volumetric potential maximum activation
+        "vpm_activation": False,  # Disable vpm activation
     }
 
 # Aviation Radiative Forcing Index (RFI) and Climate Impact parameters

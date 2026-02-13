@@ -202,10 +202,49 @@ def run_pipeline(
     )
 
 
+def _extract_times_from_trajectory(trajectory_data: list[dict[str, Any]]) -> np.ndarray:
+    """Extract time values from trajectory waypoints.
+    
+    Handles both input format ('ts' as ISO timestamp strings) and output format
+    ('time' as numeric seconds since start).
+    
+    Args:
+        trajectory_data: List of trajectory waypoint dictionaries
+        
+    Returns:
+        Array of numeric time values (seconds)
+    """
+    from dateutil import parser
+    
+    # Check if 'time' field exists (output format)
+    if "time" in trajectory_data[0]:
+        return np.array([pt["time"] for pt in trajectory_data])
+    
+    # Otherwise use 'ts' field (input format) - parse timestamps
+    elif "ts" in trajectory_data[0]:
+        timestamps = [parser.parse(pt["ts"]).timestamp() for pt in trajectory_data]
+        # Convert to relative seconds (start at 0)
+        timestamps = np.array(timestamps)
+        return timestamps - timestamps[0]
+    
+    else:
+        raise ValueError("Trajectory data must have either 'time' or 'ts' field")
+
+
 def extract_baseline_values(flights: list[FlightView]) -> dict[str, Any]:
     """Extract baseline values from output flights for perturbation.
 
-    Returns a dict with baseline values keyed by flight_id.
+    Extracts both scalar attributes and trajectory-level time series data.
+    For trajectory data, stores both time and values to enable time-based
+    interpolation when applying to input trajectories with different sampling.
+
+    Args:
+        flights: List of output flights from baseline run
+
+    Returns:
+        Dictionary keyed by flight_id containing:
+        - Scalar attributes (payload_factor, takeoff_mass, etc.)
+        - Trajectory data as {"time": array, "values": array} dicts
     """
     baseline: dict[str, Any] = {
         "payload_factor": {},
@@ -220,7 +259,7 @@ def extract_baseline_values(flights: list[FlightView]) -> dict[str, Any]:
     for flight in flights:
         flight_id = flight.attrs.get("flight_id", "unknown")
 
-        # Scalar attrs (use defaults if not present)
+        # Extract scalar attributes (use defaults if not present)
         baseline["payload_factor"][flight_id] = flight.attrs.get(
             "payload_factor", DEFAULT_PAYLOAD_FACTOR
         )
@@ -229,16 +268,64 @@ def extract_baseline_values(flights: list[FlightView]) -> dict[str, Any]:
         )
         baseline["q_fuel"][flight_id] = flight.attrs.get("q_fuel", DEFAULT_Q_FUEL)
 
-        # Takeoff mass = first value of aircraft_mass column
+        # Takeoff mass is the first value of aircraft_mass trajectory
         aircraft_mass = flight["aircraft_mass"]
         baseline["takeoff_mass"][flight_id] = float(aircraft_mass[0])
 
-        # Column values (as numpy arrays)
-        baseline["aircraft_mass"][flight_id] = np.array(aircraft_mass)
-        baseline["fuel_flow"][flight_id] = np.array(flight["fuel_flow"])
-        baseline["engine_efficiency"][flight_id] = np.array(flight["engine_efficiency"])
+        # Store trajectory data with time for interpolation
+        # This allows applying baseline values to input trajectories with different
+        # waypoint counts (e.g., before vs after resampling/interpolation)
+        time_column = flight["time"]
+        
+        # Convert time to numeric if needed (handle datetime64 arrays from pandas/pycontrails)
+        if hasattr(time_column, 'dtype') and np.issubdtype(time_column.dtype, np.datetime64):
+            # Convert datetime64 to float (unix timestamp in seconds)
+            time_array = time_column.astype('datetime64[s]').astype(float)
+        else:
+            # Already numeric
+            time_array = np.array(time_column, dtype=float)
+        
+        baseline["aircraft_mass"][flight_id] = {
+            "time": time_array,
+            "values": np.array(aircraft_mass),
+        }
+        baseline["fuel_flow"][flight_id] = {
+            "time": time_array,
+            "values": np.array(flight["fuel_flow"]),
+        }
+        baseline["engine_efficiency"][flight_id] = {
+            "time": time_array,
+            "values": np.array(flight["engine_efficiency"]),
+        }
 
     return baseline
+
+
+def _extract_times_from_trajectory(trajectory_data: list[dict[str, Any]]) -> np.ndarray:
+    """Extract time values from trajectory waypoints.
+    
+    Handles both input format ('ts' as ISO timestamp strings) and output format
+    ('time' as numeric seconds since start).
+    
+    Args:
+        trajectory_data: List of trajectory waypoint dictionaries
+        
+    Returns:
+        Array of numeric time values (unix timestamps in seconds)
+    """
+    from dateutil import parser
+    
+    # Check if 'time' field exists (output format)
+    if "time" in trajectory_data[0]:
+        return np.array([pt["time"] for pt in trajectory_data], dtype=float)
+    
+    # Otherwise use 'ts' field (input format) - parse timestamps
+    elif "ts" in trajectory_data[0]:
+        timestamps = [parser.parse(pt["ts"]).timestamp() for pt in trajectory_data]
+        return np.array(timestamps, dtype=float)
+    
+    else:
+        raise ValueError("Trajectory data must have either 'time' or 'ts' field")
 
 
 def apply_payload_factor(
@@ -286,17 +373,42 @@ def apply_aircraft_mass_column(
     baseline: dict[str, Any],
     factor: float,
 ) -> list[dict[str, Any]]:
-    """Apply perturbed aircraft_mass column to input flights."""
+    """Apply perturbed aircraft_mass column to input flights.
+
+    Interpolates baseline aircraft_mass values (from output trajectory) to the
+    input trajectory's time points, allowing for different waypoint counts.
+
+    Args:
+        input_data: Input flight data (before processing)
+        baseline: Baseline values with time-series data
+        factor: Perturbation factor to apply to baseline values
+
+    Returns:
+        Modified input data with 'am' (aircraft_mass) column added
+    """
     data = copy.deepcopy(input_data)
+    
     for flight in data:
         flight_id = flight["flight_information"]["flight_identification"]
-        base_values = baseline["aircraft_mass"].get(flight_id)
-        if base_values is not None:
-            perturbed = (base_values * factor).tolist()
+        base_data = baseline["aircraft_mass"].get(flight_id)
+        
+        if base_data is not None:
             trajectory_data = flight["flight_information"]["trajectory"]["trajectory_data"]
+            
+            # Extract input trajectory times (handles both 'ts' and 'time' fields)
+            input_times = _extract_times_from_trajectory(trajectory_data)
+            
+            # Interpolate baseline values to input times and apply perturbation
+            perturbed_values = np.interp(
+                input_times,
+                base_data["time"],
+                base_data["values"] * factor,
+            )
+            
+            # Assign interpolated values to waypoints
             for i, waypoint in enumerate(trajectory_data):
-                if i < len(perturbed):
-                    waypoint["am"] = perturbed[i]
+                waypoint["am"] = float(perturbed_values[i])
+    
     return data
 
 
@@ -305,17 +417,42 @@ def apply_fuel_flow_column(
     baseline: dict[str, Any],
     factor: float,
 ) -> list[dict[str, Any]]:
-    """Apply perturbed fuel_flow column to input flights."""
+    """Apply perturbed fuel_flow column to input flights.
+
+    Interpolates baseline fuel_flow values (from output trajectory) to the
+    input trajectory's time points, allowing for different waypoint counts.
+
+    Args:
+        input_data: Input flight data (before processing)
+        baseline: Baseline values with time-series data
+        factor: Perturbation factor to apply to baseline values
+
+    Returns:
+        Modified input data with 'ff' (fuel_flow) column added
+    """
     data = copy.deepcopy(input_data)
+    
     for flight in data:
         flight_id = flight["flight_information"]["flight_identification"]
-        base_values = baseline["fuel_flow"].get(flight_id)
-        if base_values is not None:
-            perturbed = (base_values * factor).tolist()
+        base_data = baseline["fuel_flow"].get(flight_id)
+        
+        if base_data is not None:
             trajectory_data = flight["flight_information"]["trajectory"]["trajectory_data"]
+            
+            # Extract input trajectory times (handles both 'ts' and 'time' fields)
+            input_times = _extract_times_from_trajectory(trajectory_data)
+            
+            # Interpolate baseline values to input times and apply perturbation
+            perturbed_values = np.interp(
+                input_times,
+                base_data["time"],
+                base_data["values"] * factor,
+            )
+            
+            # Assign interpolated values to waypoints
             for i, waypoint in enumerate(trajectory_data):
-                if i < len(perturbed):
-                    waypoint["ff"] = perturbed[i]
+                waypoint["ff"] = float(perturbed_values[i])
+    
     return data
 
 
@@ -324,17 +461,42 @@ def apply_engine_efficiency_column(
     baseline: dict[str, Any],
     factor: float,
 ) -> list[dict[str, Any]]:
-    """Apply perturbed engine_efficiency column to input flights."""
+    """Apply perturbed engine_efficiency column to input flights.
+
+    Interpolates baseline engine_efficiency values (from output trajectory) to the
+    input trajectory's time points, allowing for different waypoint counts.
+
+    Args:
+        input_data: Input flight data (before processing)
+        baseline: Baseline values with time-series data
+        factor: Perturbation factor to apply to baseline values
+
+    Returns:
+        Modified input data with 'ee' (engine_efficiency) column added
+    """
     data = copy.deepcopy(input_data)
+    
     for flight in data:
         flight_id = flight["flight_information"]["flight_identification"]
-        base_values = baseline["engine_efficiency"].get(flight_id)
-        if base_values is not None:
-            perturbed = (base_values * factor).tolist()
+        base_data = baseline["engine_efficiency"].get(flight_id)
+        
+        if base_data is not None:
             trajectory_data = flight["flight_information"]["trajectory"]["trajectory_data"]
+            
+            # Extract input trajectory times (handles both 'ts' and 'time' fields)
+            input_times = _extract_times_from_trajectory(trajectory_data)
+            
+            # Interpolate baseline values to input times and apply perturbation
+            perturbed_values = np.interp(
+                input_times,
+                base_data["time"],
+                base_data["values"] * factor,
+            )
+            
+            # Assign interpolated values to waypoints
             for i, waypoint in enumerate(trajectory_data):
-                if i < len(perturbed):
-                    waypoint["ee"] = perturbed[i]
+                waypoint["ee"] = float(perturbed_values[i])
+    
     return data
 
 
@@ -411,23 +573,43 @@ def apply_mixed_columns(
         flight_id = flight["flight_information"]["flight_identification"]
         trajectory_data = flight["flight_information"]["trajectory"]["trajectory_data"]
 
-        # Get pattern for this flight (cycle if more flights than patterns)
+        # Get pattern for this flight (cycles if more flights than patterns)
         pattern_idx = idx % len(column_patterns)
         has_ff, has_am, has_ee = column_patterns[pattern_idx]
 
-        # Get baseline values for this flight
-        ff_values = baseline["fuel_flow"].get(flight_id)
-        am_values = baseline["aircraft_mass"].get(flight_id)
-        ee_values = baseline["engine_efficiency"].get(flight_id)
+        # Get baseline time-series data for this flight
+        ff_data = baseline["fuel_flow"].get(flight_id)
+        am_data = baseline["aircraft_mass"].get(flight_id)
+        ee_data = baseline["engine_efficiency"].get(flight_id)
 
-        # Apply columns based on pattern
+        # Extract input trajectory times for interpolation (handles both 'ts' and 'time' fields)
+        input_times = _extract_times_from_trajectory(trajectory_data)
+
+        # Interpolate baseline values to input trajectory times
+        ff_interp = (
+            np.interp(input_times, ff_data["time"], ff_data["values"])
+            if has_ff and ff_data is not None
+            else None
+        )
+        am_interp = (
+            np.interp(input_times, am_data["time"], am_data["values"])
+            if has_am and am_data is not None
+            else None
+        )
+        ee_interp = (
+            np.interp(input_times, ee_data["time"], ee_data["values"])
+            if has_ee and ee_data is not None
+            else None
+        )
+
+        # Apply interpolated values to waypoints based on pattern
         for i, waypoint in enumerate(trajectory_data):
-            if has_ff and ff_values is not None and i < len(ff_values):
-                waypoint["ff"] = float(ff_values[i])
-            if has_am and am_values is not None and i < len(am_values):
-                waypoint["am"] = float(am_values[i])
-            if has_ee and ee_values is not None and i < len(ee_values):
-                waypoint["ee"] = float(ee_values[i])
+            if ff_interp is not None:
+                waypoint["ff"] = float(ff_interp[i])
+            if am_interp is not None:
+                waypoint["am"] = float(am_interp[i])
+            if ee_interp is not None:
+                waypoint["ee"] = float(ee_interp[i])
 
         _log.debug(
             "Flight %d (%s): ff=%s, am=%s, ee=%s",
