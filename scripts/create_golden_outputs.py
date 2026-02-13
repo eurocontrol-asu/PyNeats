@@ -3,14 +3,26 @@
 
 This script creates multiple golden test cases from a single input JSON by:
 1. Running the default case to get baseline values
-2. Creating perturbed variations of the input via :func:`apply_parameters`
+2. Creating perturbed variations of the input via :func:apply_parameters
 3. Running the pipeline on each variation
 4. Saving input/output pairs to the golden test directory
 
-All test case specifications are defined declaratively in :func:`build_test_cases`
-using :class:`TestCaseSpec`. Each case is built from scratch via
-:func:`apply_parameters`, the unified applicator that maps parameter names to
-NM JSON locations through :data:`PARAMETER_REGISTRY`.
+Two generation modes are available, both called sequentially from :func:main:
+
+Mode 1 Per-File Legacy Generation (:func:generate_per_file_golden):
+    Preserves the existing per-test-case *_input.json / *_output.json
+    file-pair generation for backward compatibility with test_pipeline.py.
+
+Mode 2 Aggregated Single-File Generation (:func:generate_aggregated_golden):
+    Produces one combined input JSON and one combined output JSON containing
+    one flight per test case.
+    Error-expectation cases are included their errors propagate via the
+    fleet runner's error_records.
+
+All test case specifications are defined declaratively in :func:build_test_cases
+using :class:TestCaseSpec. Each case is built from scratch via
+:func:apply_parameters, the unified applicator that maps parameter names to
+NM JSON locations through :data:PARAMETER_REGISTRY.
 
 Usage:
     python scripts/create_golden_outputs.py \\
@@ -30,30 +42,15 @@ Test cases generated:
         - {base}_aircraft_mass_col: aircraft_mass column
         - {base}_fuel_flow_col: fuel_flow column
         - {base}_engine_efficiency_col: engine_efficiency column
-        - {base}_true_airspeed_col: true_airspeed column
-        - {base}_hydrogen_content: hydrogen_content in fuel_properties
         - {base}_q_fuel: calorific_value (q_fuel) in fuel_properties
-        - {base}_aromatic_content: aromatic_content in fuel_properties
-        - {base}_sulphur: sulphur in fuel_properties
-        - {base}_naphthalene: naphthalene in fuel_properties
-
-    Ref-minus-one (all params except one — tests default fallback)
-        - {base}_no_payload_factor
-        - {base}_no_takeoff_mass
-        - {base}_no_hydrogen_content
-        - {base}_no_q_fuel
-        - {base}_no_fuel_flow
-        - {base}_no_aircraft_mass
-        - {base}_no_engine_efficiency
-        - {base}_no_true_airspeed
-
-    Ref-minus-multiple (all params except a category)
-        - {base}_no_fuel_props: no fuel properties at all
-        - {base}_no_columns: no trajectory columns at all
 
     Legacy mixed-pattern cases (custom per-flight heterogeneity)
         - {base}_mixed_columns: different flights have different columns
         - {base}_mixed_attrs: different flights have different attributes
+
+    Aggregated (Mode 2)
+        - {base}_aggregated_input / {base}_aggregated_output:
+          One flight per TC (except ref and mixed), including error-expectation TCs
 """
 
 from __future__ import annotations
@@ -63,7 +60,7 @@ import copy
 import json
 import logging
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -90,6 +87,160 @@ _log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class Modification:
+    """A single declarative mutation to apply to all flights in the input.
+
+    Each modification targets a path inside flight_information and
+    sets it to the given value. Fields that are not included in a
+    :class:TestCaseSpec params dict are simply never written, so
+    omission is handled by :func:apply_parameters.
+
+    Aircraft properties (aircraft_properties.<field>):
+    Target                                   Example
+    aircraft_properties.aircraft_type(str)   Modification("aircraft_properties.aircraft_type", "B737-800W")
+    aircraft_properties.aircraft_type(str)   Modification("aircraft_properties.aircraft_type", "AT72")
+    aircraft_properties.aircraft_type(str)   Modification("aircraft_properties.aircraft_type", "ZZZZ")
+    aircraft_properties.engine_uid(str)      Modification("aircraft_properties.engine_uid", "PW4060")
+    aircraft_properties.engine_uid(str)      Modification("aircraft_properties.engine_uid", "CFM56-FAKE")
+    aircraft_properties.engine_uid(str)      Modification("aircraft_properties.engine_uid", "LEAP-1A26")
+    aircraft_properties.takeoff_mass(float)  Modification("aircraft_properties.takeoff_mass", 10000.0)
+    aircraft_properties.takeoff_mass(float)  Modification("aircraft_properties.takeoff_mass", 999999.0)
+    aircraft_properties.load_factor(float)   Modification("aircraft_properties.load_factor", 1.5)
+
+    Fuel properties (fuel_properties.<field>):
+    Target                                  Example
+    fuel_properties.hydrogen_content(float) Modification("fuel_properties.hydrogen_content", 14.0)
+    fuel_properties.calorific_value(float)  Modification("fuel_properties.calorific_value", 43_000_000.0)
+    fuel_properties.aromatic_content(float) Modification("fuel_properties.aromatic_content", 0.30)
+    fuel_properties.sulphur(float)          Modification("fuel_properties.sulphur", 0.005)
+    fuel_properties.naphthalene(float)      Modification("fuel_properties.naphthalene", 0.04)
+
+    Trajectory columns (trajectory.<json_field>):
+    Target                  Example
+    trajectory.am(callable) Modification("trajectory.am", _make_non_decreasing_mass)
+    trajectory.am(callable) Modification("trajectory.am", _make_exceeds_mtow_mass)
+    trajectory.am(float)    Modification("trajectory.am", 1.05)  (factor applied to baseline)
+    trajectory.ff(float)    Modification("trajectory.ff", 0.95)
+    trajectory.ee(float)    Modification("trajectory.ee", 1.02)
+    trajectory.tasfloat)    Modification("trajectory.tas", 0.98)
+
+    For trajectory columns the value can be:
+    - A callable (baseline_arr, n_waypoints) -> list[float] that
+      receives the baseline array and returns the replacement values.
+    - A numeric factor applied element-wise: baseline[i] * factor.
+
+    Attributes
+    ----------
+    target : str
+        Dot-path into the NM JSON flight_information.
+    value : Any
+        The value to set (scalar, float factor, or callable for trajectory).
+    """
+
+    target: str
+    value: Any
+
+
+def _apply_single_modification(
+    fi: dict[str, Any],
+    flight_id: str,
+    baseline: dict[str, Any],
+    mod: Modification,
+) -> None:
+    """Apply one :class:Modification to a single flight's flight_information dict."""
+    parts = mod.target.split(".")
+
+    if parts[0] in ("aircraft_properties", "fuel_properties"):
+        section = fi.setdefault(parts[0], {})
+        section[parts[1]] = mod.value
+
+    elif parts[0] == "trajectory":
+        field = parts[1]
+        waypoints = fi["trajectory"]["trajectory_data"]
+
+        # Resolve JSON short name (am, ff, …) to internal baseline key
+        internal = next(
+            (
+                s.internal_name
+                for s in PARAMETER_REGISTRY.values()
+                if s.category == "column" and s.json_field == field
+            ),
+            field,
+        )
+        base_arr = baseline.get(internal, {}).get(flight_id)
+
+        if callable(mod.value):
+            new_values = mod.value(base_arr, len(waypoints))
+            for i, wp in enumerate(waypoints):
+                if i < len(new_values):
+                    wp[field] = new_values[i]
+        elif isinstance(mod.value, (int, float)):
+            if base_arr is not None:
+                for i, wp in enumerate(waypoints):
+                    if i < len(base_arr):
+                        wp[field] = float(base_arr[i]) * mod.value
+
+
+def _modify_flight(
+    input_data: list[dict[str, Any]],
+    baseline: dict[str, Any],
+    modifications: list[Modification],
+) -> list[dict[str, Any]]:
+    """Apply a list of declarative :class:Modification objects to all flights.
+
+    This is the single entry point for all structural mutations (aircraft type
+    changes, engine UID overrides, mass column patterns, etc.) that cannot be
+    expressed as simple numeric perturbation factors.
+
+    Args:
+        input_data: NM JSON flights
+        baseline: Baseline values from :func:extract_baseline_values
+        modifications: Ordered list of mutations to apply
+
+    Returns:
+        Deep-copied input with all modifications applied.
+    """
+    data = copy.deepcopy(input_data)
+
+    for flight in data:
+        fi = flight["flight_information"]
+        flight_id = fi["flight_identification"]
+
+        for mod in modifications:
+            _apply_single_modification(fi, flight_id, baseline, mod)
+
+    return data
+
+
+def _make_non_decreasing_mass(
+    baseline_arr: np.ndarray | None,
+    n_waypoints: int,
+) -> list[float]:
+    """Create a mass array that increases at some points (violates monotonicity)."""
+    if baseline_arr is None:
+        return [70000.0] * n_waypoints
+    arr = list(float(v) for v in baseline_arr)
+    mid = len(arr) // 2
+    if mid > 0:
+        arr[mid] = arr[mid - 1] + 100.0  # bump up one point
+    return arr
+
+
+def _make_exceeds_mtow_mass(
+    baseline_arr: np.ndarray | None,
+    n_waypoints: int,
+) -> list[float]:
+    """Create a mass array with some values above ~78000 kg MTOW
+    (mass takeoff weight) for A320.
+    """
+    if baseline_arr is None:
+        return [85000.0] * n_waypoints
+    arr = list(float(v) for v in baseline_arr)
+    arr[0] = 85000.0  # exceed MTOW at first waypoint
+    return arr
+
+
+@dataclass(frozen=True)
 class ParamSpec:
     """Specification for a single perturbable parameter.
     Parameter registry: single source of truth for all perturbable parameters
@@ -99,13 +250,13 @@ class ParamSpec:
     internal_name : str
         Key in baseline dict / FlightView attrs or columns.
     category : str
-        ``"attr"`` for scalar flight attributes, ``"column"`` for trajectory arrays.
+        "attr" for scalar flight attributes, "column" for trajectory arrays.
     json_section : str
-        NM JSON section: ``"aircraft_properties"``, ``"fuel_properties"``, or ``"trajectory"``.
+        NM JSON section: "aircraft_properties", "fuel_properties", or "trajectory".
     json_field : str
         Field name in the NM JSON structure.
     default_value : Any
-        Default constant from neats_default_parameters, or ``None``.
+        Default constant from neats_default_parameters, or None.
     is_numeric : bool
         Whether a perturbation factor applies (False for strings like engine_uid).
     """
@@ -121,58 +272,110 @@ class ParamSpec:
 PARAMETER_REGISTRY: dict[str, ParamSpec] = {
     # aircraft attrs
     "payload_factor": ParamSpec(
-        "payload_factor", "attr", "aircraft_properties",
-        "load_factor", DEFAULT_PAYLOAD_FACTOR, True,
+        "payload_factor",
+        "attr",
+        "aircraft_properties",
+        "load_factor",
+        DEFAULT_PAYLOAD_FACTOR,
+        True,
     ),
     "takeoff_mass": ParamSpec(
-        "takeoff_mass", "attr", "aircraft_properties",
-        "takeoff_mass", None, True,
+        "takeoff_mass",
+        "attr",
+        "aircraft_properties",
+        "takeoff_mass",
+        None,
+        True,
     ),
     "engine_uid": ParamSpec(
-        "engine_uid", "attr", "aircraft_properties",
-        "engine_uid", None, False,
+        "engine_uid",
+        "attr",
+        "aircraft_properties",
+        "engine_uid",
+        None,
+        False,
     ),
     # fuel attrs
     "hydrogen_content": ParamSpec(
-        "hydrogen_content", "attr", "fuel_properties",
-        "hydrogen_content", DEFAULT_HYDROGEN_CONTENT, True,
+        "hydrogen_content",
+        "attr",
+        "fuel_properties",
+        "hydrogen_content",
+        DEFAULT_HYDROGEN_CONTENT,
+        True,
     ),
     "h_c_ratio": ParamSpec(
-        "h_c_ratio", "attr", "fuel_properties",
-        "hydrogen_per_carbon_ratio", None, True,
+        "h_c_ratio",
+        "attr",
+        "fuel_properties",
+        "hydrogen_per_carbon_ratio",
+        None,
+        True,
     ),
     "aromatic_content": ParamSpec(
-        "aromatic_content", "attr", "fuel_properties",
-        "aromatic_content", DEFAULT_AROMATICS_CONTENT, True,
+        "aromatic_content",
+        "attr",
+        "fuel_properties",
+        "aromatic_content",
+        DEFAULT_AROMATICS_CONTENT,
+        True,
     ),
     "q_fuel": ParamSpec(
-        "q_fuel", "attr", "fuel_properties",
-        "calorific_value", DEFAULT_Q_FUEL, True,
+        "q_fuel",
+        "attr",
+        "fuel_properties",
+        "calorific_value",
+        DEFAULT_Q_FUEL,
+        True,
     ),
     "naphthalene": ParamSpec(
-        "naphthalene", "attr", "fuel_properties",
-        "naphthalene", DEFAULT_NAPHTHALEN_CONTENT, True,
+        "naphthalene",
+        "attr",
+        "fuel_properties",
+        "naphthalene",
+        DEFAULT_NAPHTHALEN_CONTENT,
+        True,
     ),
     "sulphur_content": ParamSpec(
-        "sulphur_content", "attr", "fuel_properties",
-        "sulphur", DEFAULT_SULPHUR_CONTENT, True,
+        "sulphur_content",
+        "attr",
+        "fuel_properties",
+        "sulphur",
+        DEFAULT_SULPHUR_CONTENT,
+        True,
     ),
     # trajectory columns
     "fuel_flow": ParamSpec(
-        "fuel_flow", "column", "trajectory",
-        "ff", None, True,
+        "fuel_flow",
+        "column",
+        "trajectory",
+        "ff",
+        None,
+        True,
     ),
     "engine_efficiency": ParamSpec(
-        "engine_efficiency", "column", "trajectory",
-        "ee", None, True,
+        "engine_efficiency",
+        "column",
+        "trajectory",
+        "ee",
+        None,
+        True,
     ),
     "aircraft_mass": ParamSpec(
-        "aircraft_mass", "column", "trajectory",
-        "am", None, True,
+        "aircraft_mass",
+        "column",
+        "trajectory",
+        "am",
+        None,
+        True,
     ),
     "true_airspeed": ParamSpec(
-        "true_airspeed", "column", "trajectory",
-        "tas", None, True,
+        "true_airspeed",
+        "column",
+        "trajectory",
+        "tas",
+        None,
+        True,
     ),
 }
 
@@ -192,6 +395,35 @@ PERTURBATIONS: dict[str, float] = {
     "naphthalene": 0.95,  # 95% of default (0.03 -> ~0.0285)
     "mixed_columns": 1.0,  # Legacy: not a factor, kept for interface consistency
     "mixed_attrs": 1.0,  # Legacy: not a factor, kept for interface consistency
+}
+
+
+# Aggregated-mode flight selections one flight per TC, never EAF2143 (fails).
+# Round-robin across the four reliable flights.
+AGGREGATED_FLIGHT_SELECTIONS: dict[str, str] = {
+    # Aircraft type cases
+    "tc_ac_overspec": "RYR46YN",
+    "tc_ac_no_bada4": "ACA812",
+    "tc_ac_no_bada": "UAE62Y",  # expect_error: fleet propagates error
+    # Engine cases
+    "tc_eng_unspec": "FDX5067",
+    "tc_eng_mismatch": "RYR46YN",
+    "tc_eng_unknown": "ACA812",
+    # Mass strategy cases
+    "tc_mass_all_unspec": "UAE62Y",
+    "tc_mass_no_tom_no_lf": "FDX5067",
+    "tc_mass_no_am_no_lf": "RYR46YN",
+    "tc_mass_no_am_no_tom": "ACA812",
+    "tc_mass_no_am": "UAE62Y",
+    "tc_mass_no_tom": "FDX5067",
+    "tc_mass_no_lf": "RYR46YN",
+    # Mass validation / error cases
+    "tc_mass_below_oew": "ACA812",  # expect_error: fleet propagates error
+    "tc_mass_not_decreasing": "UAE62Y",  # expect_error: fleet propagates error
+    "tc_mass_exceeds_mtow": "FDX5067",  # expect_error: fleet propagates error
+    "tc_tom_exceeds_mtow": "RYR46YN",  # expect_error: fleet propagates error
+    # Load factor clamping
+    "tc_lf_gt_one": "ACA812",
 }
 
 
@@ -331,14 +563,12 @@ def run_pipeline(
 def extract_baseline_values(flights: list[FlightView]) -> dict[str, Any]:
     """Extract baseline values from output flights for perturbation.
 
-    Extracts all parameters defined in :data:`PARAMETER_REGISTRY` so that
+    Extracts all parameters defined in :data:PARAMETER_REGISTRY so that
     every schema-defined optional property is available for perturbation.
 
-    Returns a dict with baseline values keyed by ``{internal_name: {flight_id: value}}``.
+    Returns a dict with baseline values keyed by {internal_name: {flight_id: value}}.
     """
-    baseline: dict[str, Any] = {
-        spec.internal_name: {} for spec in PARAMETER_REGISTRY.values()
-    }
+    baseline: dict[str, Any] = {spec.internal_name: {} for spec in PARAMETER_REGISTRY.values()}
 
     for flight in flights:
         flight_id = flight.attrs.get("flight_id", "unknown")
@@ -361,9 +591,7 @@ def extract_baseline_values(flights: list[FlightView]) -> dict[str, Any]:
             if spec.category != "column":
                 continue
             if flight.has(spec.internal_name):
-                baseline[spec.internal_name][flight_id] = np.array(
-                    flight[spec.internal_name]
-                )
+                baseline[spec.internal_name][flight_id] = np.array(flight[spec.internal_name])
 
     return baseline
 
@@ -524,23 +752,23 @@ def apply_parameters(
     """Apply one or more parameter perturbations to input flights.
 
     This is a unified applicator that can inject any combination of parameters
-    defined in :data:`PARAMETER_REGISTRY`. Each parameter is looked up in the
+    defined in :data:PARAMETER_REGISTRY. Each parameter is looked up in the
     registry to determine its JSON location and whether it is a scalar attribute
     or a per-waypoint column.
 
     Args:
         input_data: Original NM JSON input flights.
-        baseline: Baseline values from :func:`extract_baseline_values`.
-        params: Dict mapping parameter name → perturbation factor.
-            For numeric params the applied value is ``baseline * factor``.
-            For non-numeric params (e.g. ``engine_uid``) the factor is ignored
+        baseline: Baseline values from :func:extract_baseline_values.
+        params: Dict mapping parameter name => perturbation factor.
+            For numeric params the applied value is baseline * factor.
+            For non-numeric params (e.g. engine_uid) the factor is ignored
             and the baseline value is injected as-is.
 
     Returns:
         Deep-copied input with the requested parameters applied.
 
     Raises:
-        KeyError: If a param name is not in :data:`PARAMETER_REGISTRY`.
+        KeyError: If a param name is not in :data:PARAMETER_REGISTRY.
     """
     data = copy.deepcopy(input_data)
 
@@ -587,7 +815,7 @@ def _validate_against_schema(
 
     Args:
         flights: List of NM JSON flight dicts (each wrapped in
-            ``{"flight_information": {...}}``).
+            {"flight_information": {...}}).
         schema_path: Path to the authoritative JSON schema file.
     """
     try:
@@ -604,9 +832,7 @@ def _validate_against_schema(
     for idx, flight in enumerate(flights):
         errors = list(validator.iter_errors(flight))
         if errors:
-            fid = flight.get("flight_information", {}).get(
-                "flight_identification", f"index-{idx}"
-            )
+            fid = flight.get("flight_information", {}).get("flight_identification", f"index-{idx}")
             for err in errors:
                 _log.warning(
                     "Schema validation issue for flight '%s': %s (path: %s)",
@@ -626,12 +852,12 @@ def apply_ref(
 
     The reference case has every optional field populated with its baseline
     value (no perturbation). After applying the parameters the result is
-    validated against ``schemas/flight_schema.json`` to ensure completeness.
+    validated against schemas/flight_schema.json to ensure completeness.
 
     Args:
         input_data: Original NM JSON input flights.
-        baseline: Baseline values from :func:`extract_baseline_values`.
-        factor: Ignored — always uses 1.0 for the reference case.
+        baseline: Baseline values from :func:extract_baseline_values.
+        factor: Ignored always uses 1.0 for the reference case.
         schema_path: Path to the JSON schema used for validation.
 
     Returns:
@@ -647,8 +873,8 @@ def apply_ref(
 def _ref_params_except(*exclude: str) -> dict[str, float]:
     """Return all registry parameters at factor 1.0, minus the excluded ones.
 
-    Instead of starting from a fully-populated reference and nulling fields 
-    out, each test case is built from scratch by including only the parameters 
+    Instead of starting from a fully-populated reference and nulling fields
+    out, each test case is built from scratch by including only the parameters
     it needs.
 
     Examples::
@@ -660,13 +886,13 @@ def _ref_params_except(*exclude: str) -> dict[str, float]:
         apply_parameters(data, baseline, _ref_params_except("q_fuel", "hydrogen_content"))
 
     Args:
-        *exclude: Parameter names (keys in :data:`PARAMETER_REGISTRY`) to omit.
+        exclude: Parameter names (keys in :data:PARAMETER_REGISTRY) to omit.
 
     Returns:
-        Dict of ``{param_name: 1.0}`` for every registered parameter not in *exclude*.
+        Dict of {param_name: 1.0} for every registered parameter not in exclude
 
     Raises:
-        KeyError: If any name in *exclude* is not in :data:`PARAMETER_REGISTRY`.
+        KeyError: If any name in exclude is not in :data:PARAMETER_REGISTRY.
     """
     unknown = set(exclude) - set(PARAMETER_REGISTRY)
     if unknown:
@@ -681,46 +907,57 @@ class TestCaseSpec:
     Attributes
     ----------
     suffix : str
-        File name suffix, e.g. ``"ref"`` → ``{base}_ref_input.json``.
+        File name suffix, e.g. "ref" => {base}_ref_input.json.
     params : dict[str, float]
-        Parameter names → perturbation factors passed to :func:`apply_parameters`.
+        Parameter names => perturbation factors passed to :func:apply_parameters.
         An empty dict means "no optional parameters" (bare input).
     description : str
         Note for logging.
     validate_schema : bool
-        If ``True``, validate the generated input against the flight schema.
+        If True, validate the generated input against the flight schema.
+    modifications : list[Modification] | None
+        Optional list of structural mutations applied after numeric perturbations.
+        Processed by :func:_modify_flight.
+    expect_error : bool
+        If True, the pipeline is expected to fail for all flights. Only the
+        input and error metadata are saved (no golden output).
     """
 
     suffix: str
     params: dict[str, float]
     description: str = ""
     validate_schema: bool = False
+    modifications: list[Modification] | None = None
+    expect_error: bool = False
 
 
-def build_test_cases() -> list[TestCaseSpec]:
-    """Build the full list of golden test case specifications.
+def build_test_cases_legacy() -> list[TestCaseSpec]:
+    """Build test case specs for Mode 1 (per-file legacy generation).
 
-    All cases are built from scratch via :func:`apply_parameters`.
-    The reference case includes every parameter at factor 1.0. Single-parameter
-    perturbation cases include only that one parameter at its perturbation factor.
-    "Ref-minus-one" cases include everything except one parameter to test
-    fallback/default behaviour.
+    This produces the original set of golden test cases that predates the
+    tc_* naming convention: reference case, single-parameter perturbations.
+
+    Legacy mixed-pattern cases (mixed_columns, mixed_attrs) are NOT
+    included here, they use custom per-flight logic and are handled directly
+    in :func:generate_per_file_golden.
 
     Returns:
-        Ordered list of :class:`TestCaseSpec` to generate.
+        Ordered list of :class:TestCaseSpec for Mode 1 generation.
     """
+    all_params = {name: 1.0 for name in PARAMETER_REGISTRY}
     cases: list[TestCaseSpec] = []
 
     # 1. Reference case: all params at baseline
-    cases.append(TestCaseSpec(
-        suffix="ref",
-        params={name: 1.0 for name in PARAMETER_REGISTRY},
-        description="Reference case: all optional params at baseline",
-        validate_schema=True,
-    ))
+    cases.append(
+        TestCaseSpec(
+            suffix="ref",
+            params=all_params,
+            description="TC_REF: all optional params at baseline",
+            validate_schema=True,
+        )
+    )
 
     # 2. Single-parameter perturbation cases
-    # Each includes ONLY the one parameter being tested, at its perturbation factor.
     single_param_cases: list[tuple[str, str, float]] = [
         # (suffix, registry_param_name, factor)
         ("payload_factor", "payload_factor", PERTURBATIONS["payload_factor"]),
@@ -728,54 +965,209 @@ def build_test_cases() -> list[TestCaseSpec]:
         ("aircraft_mass_col", "aircraft_mass", PERTURBATIONS["aircraft_mass_col"]),
         ("fuel_flow_col", "fuel_flow", PERTURBATIONS["fuel_flow_col"]),
         ("engine_efficiency_col", "engine_efficiency", PERTURBATIONS["engine_efficiency_col"]),
-        ("true_airspeed_col", "true_airspeed", PERTURBATIONS["true_airspeed_col"]),
-        ("hydrogen_content", "hydrogen_content", PERTURBATIONS["hydrogen_content"]),
         ("q_fuel", "q_fuel", PERTURBATIONS["q_fuel"]),
-        ("aromatic_content", "aromatic_content", PERTURBATIONS["aromatic_content"]),
-        ("sulphur", "sulphur_content", PERTURBATIONS["sulphur"]),
-        ("naphthalene", "naphthalene", PERTURBATIONS["naphthalene"]),
     ]
     for suffix, param_name, factor in single_param_cases:
-        cases.append(TestCaseSpec(
-            suffix=suffix,
-            params={param_name: factor},
-            description=f"Single perturbation: {param_name} at {factor:.3f}",
-        ))
-    
-    # 3. Ref-minus-one cases: all params except one, testing fallback/default behaviour
-    ref_minus_one_params = [
-        "payload_factor",
-        "takeoff_mass",
-        "hydrogen_content",
-        "q_fuel",
-        "fuel_flow",
-        "aircraft_mass",
-        "engine_efficiency",
-        "true_airspeed",
-    ]
-    for excluded in ref_minus_one_params:
-        cases.append(TestCaseSpec(
-            suffix=f"no_{excluded}",
-            params=_ref_params_except(excluded),
-            description=f"Ref minus {excluded} — tests default fallback",
-        ))
+        cases.append(
+            TestCaseSpec(
+                suffix=suffix,
+                params={param_name: factor},
+                description=f"Single perturbation: {param_name} at {factor:.3f}",
+            )
+        )
 
-    # 4. Ref-minus-multiple: test multiple missing params at once
-    cases.append(TestCaseSpec(
-        suffix="no_fuel_props",
-        params=_ref_params_except(
-            "hydrogen_content", "q_fuel", "aromatic_content",
-            "naphthalene", "sulphur_content", "h_c_ratio",
-        ),
-        description="Ref minus all fuel properties — tests full fuel defaults",
-    ))
-    cases.append(TestCaseSpec(
-        suffix="no_columns",
-        params=_ref_params_except(
-            "fuel_flow", "aircraft_mass", "engine_efficiency", "true_airspeed",
-        ),
-        description="Ref minus all trajectory columns — tests column-free path",
-    ))
+    return cases
+
+
+def build_test_cases() -> list[TestCaseSpec]:
+    """Build test case specs for Mode 2 (tc_* test cases only).
+
+    These are the structured test cases that exercise specific pipeline
+    behaviours: aircraft type resolution, engine UID handling, mass strategy
+    selection, and error/validation paths.
+
+    Returns:
+        Ordered list of :class:TestCaseSpec for Mode 2 generation.
+    """
+    all_params = {name: 1.0 for name in PARAMETER_REGISTRY}
+    cases: list[TestCaseSpec] = []
+
+    # Aircraft type cases (TC_AC_*)
+    # TC_AC_OVERSPEC: overspecified AC type => BADA mapper remapping
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_ac_overspec",
+            params=all_params,
+            modifications=[Modification("aircraft_properties.aircraft_type", "B737-800W")],
+            description="TC_AC_OVERSPEC: overspecified AC type: tests BADA mapper remapping",
+        )
+    )
+    # TC_AC_NO_BADA4: AC only in BADA3 => fallback to BADA3
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_ac_no_bada4",
+            params=all_params,
+            modifications=[Modification("aircraft_properties.aircraft_type", "AT72")],
+            description="TC_AC_NO_BADA4: AC type only in BADA3: tests BADA3 fallback",
+        )
+    )
+    # TC_AC_NO_BADA: completely unknown AC type => abort
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_ac_no_bada",
+            params=all_params,
+            modifications=[Modification("aircraft_properties.aircraft_type", "ZZZZ")],
+            description="TC_AC_NO_BADA: unknown AC type: expects abort",
+            expect_error=True,
+        )
+    )
+
+    # Engine cases (TC_ENG_*)
+    # TC_ENG_UNSPEC: no engine_uid => select representative/conservative
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_eng_unspec",
+            params=_ref_params_except("engine_uid"),
+            description="TC_ENG_UNSPEC: no engine UID: select representative/conservative",
+        )
+    )
+    # TC_ENG_MISMATCH: engine UID doesn't match AC => drop and use default
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_eng_mismatch",
+            params=all_params,
+            modifications=[Modification("aircraft_properties.engine_uid", "PW4060")],
+            description="TC_ENG_MISMATCH: engine UID mismatch: drop and use default",
+        )
+    )
+    # TC_ENG_UNKNOWN: known AC, unknown engine UID => use predecessor/successor
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_eng_unknown",
+            params=all_params,
+            modifications=[Modification("aircraft_properties.engine_uid", "CFM56-FAKE")],
+            description="TC_ENG_UNKNOWN: unknown engine UID: use predecessor/successor",
+        )
+    )
+    # TC_ENG_LEANBURN: lean-burn engine => lean for perf, rich for emissions
+    # !!!! NOT IN USE !!! => see email to not test lean burn mapping for now
+    # cases.append(TestCaseSpec(
+    #     suffix="tc_eng_leanburn",
+    #     params=all_params,
+    #     modifications=[Modification("aircraft_properties.engine_uid", "LEAP-1A26")],
+    #     description="TC_ENG_LEANBURN: lean-burn engine: lean for perf, rich for emissions",
+    # ))
+
+    # Mass strategy cases (TC_MASS_*: success)
+    # TC_MASS_ALL_UNSPEC: no mass info at all => LF=1 iterative
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_mass_all_unspec",
+            params={},
+            description="TC_MASS_ALL_UNSPEC: no mass params => LF=1 iterative",
+        )
+    )
+    # TC_MASS_NO_TOM_NO_LF: only aircraft_mass column
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_mass_no_tom_no_lf",
+            params={"aircraft_mass": 0.97},
+            description="TC_MASS_NO_TOM_NO_LF: only AM column",
+        )
+    )
+    # TC_MASS_NO_AM_NO_LF: only takeoff_mass attr
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_mass_no_am_no_lf",
+            params={"takeoff_mass": 0.97},
+            description="TC_MASS_NO_AM_NO_LF: only TOM attr",
+        )
+    )
+    # TC_MASS_NO_AM_NO_TOM: only payload_factor attr
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_mass_no_am_no_tom",
+            params={"payload_factor": 0.8},
+            description="TC_MASS_NO_AM_NO_TOM: only LF attr",
+        )
+    )
+    # TC_MASS_NO_AM: takeoff_mass + payload_factor, no aircraft_mass
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_mass_no_am",
+            params={"takeoff_mass": 0.97, "payload_factor": 0.8},
+            description="TC_MASS_NO_AM: TOM+LF, no AM",
+        )
+    )
+    # TC_MASS_NO_TOM: aircraft_mass + payload_factor, no takeoff_mass
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_mass_no_tom",
+            params={"aircraft_mass": 0.97, "payload_factor": 0.8},
+            description="TC_MASS_NO_TOM: AM+LF, no TOM",
+        )
+    )
+    # TC_MASS_NO_LF: aircraft_mass + takeoff_mass, no payload_factor
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_mass_no_lf",
+            params={"aircraft_mass": 0.97, "takeoff_mass": 0.97},
+            description="TC_MASS_NO_LF: AM+TOM, no LF",
+        )
+    )
+
+    # Mass validation / error cases (TC_MASS_* => expects abort)
+    # TC_MASS_BELOW_OEW: takeoff mass below OEW => abort
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_mass_below_oew",
+            params=all_params,
+            modifications=[Modification("aircraft_properties.takeoff_mass", 10000.0)],
+            description="TC_MASS_BELOW_OEW: mass below OEW: expects abort",
+            expect_error=True,
+        )
+    )
+    # TC_MASS_NOT_DECREASING: aircraft_mass not strictly decreasing => abort
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_mass_not_decreasing",
+            params=all_params,
+            modifications=[Modification("trajectory.am", _make_non_decreasing_mass)],
+            description="TC_MASS_NOT_DECREASING: mass not strictly decreasing: expects abort",
+            expect_error=True,
+        )
+    )
+    # TC_MASS_EXCEEDS_MTOW: some waypoint masses above MTOW => abort
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_mass_exceeds_mtow",
+            params=all_params,
+            modifications=[Modification("trajectory.am", _make_exceeds_mtow_mass)],
+            description="TC_MASS_EXCEEDS_MTOW: some masses > MTOW: expects abort",
+            expect_error=True,
+        )
+    )
+    # TC_TOM_EXCEEDS_MTOW: takeoff mass above MTOW => abort
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_tom_exceeds_mtow",
+            params=all_params,
+            modifications=[Modification("aircraft_properties.takeoff_mass", 999999.0)],
+            description="TC_TOM_EXCEEDS_MTOW: TOM > MTOW: expects abort",
+            expect_error=True,
+        )
+    )
+
+    # Load factor clamping (TC_LF_GT_ONE)
+    # TC_LF_GT_ONE: load factor > 1 => clamped to 1.0
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_lf_gt_one",
+            params=all_params,
+            modifications=[Modification("aircraft_properties.load_factor", 1.5)],
+            description="TC_LF_GT_ONE: LF > 1: clamped to 1.0",
+        )
+    )
 
     return cases
 
@@ -827,22 +1219,70 @@ def filter_input_to_match_outputs(
     return filtered
 
 
-def main() -> int:
-    """Main entry point."""
-    args = parse_args()
+@dataclass
+class GoldenContext:
+    """Shared context for golden test case generation.
 
+    Produced by :func:setup_baseline and consumed by both
+    :func:generate_per_file_golden (Mode 1) and
+    :func:generate_aggregated_golden (Mode 2).
+
+    Attributes
+    ----------
+    args : argparse.Namespace
+        Parsed CLI arguments.
+    base_name : str
+        Base name derived from the input file (e.g. "fleet_5_flights").
+    zarr_paths : ZarrPaths
+        Weather data paths for the pipeline.
+    original_input : list[dict]
+        Original NM JSON flights (possibly filtered to exclude default failures).
+    baseline : dict[str, Any]
+        Baseline values extracted from default-case outputs, keyed by
+        {internal_name: {flight_id: value}}.
+    default_outputs : list[FlightView]
+        Output flights from the default (unmodified) pipeline run.
+    """
+
+    args: argparse.Namespace
+    base_name: str
+    zarr_paths: ZarrPaths
+    original_input: list[dict[str, Any]]
+    baseline: dict[str, Any]
+    default_outputs: list[FlightView]
+
+
+def setup_baseline(args: argparse.Namespace) -> GoldenContext:
+    """Run the default case and extract baseline values for perturbation.
+
+    This is the shared preamble for both generation modes. It:
+
+    1. Creates the output directory and Zarr paths.
+    2. Loads the original input JSON.
+    3. Runs the default (unmodified) pipeline unless --skip-default.
+    4. Extracts baseline values from the default output.
+
+    Args:
+        args: Parsed CLI arguments.
+
+    Returns:
+        A :class:GoldenContext containing all shared state.
+
+    Raises:
+        SystemExit: If required paths do not exist.
+    """
     # Validate inputs
     if not args.input.exists():
         _log.error("Input file not found: %s", args.input)
-        return 1
+        sys.exit(1)
 
     if not args.weather_path.is_dir():
         _log.error("Weather path not found: %s", args.weather_path)
-        return 1
+        sys.exit(1)
 
     if not args.bada_path.is_dir():
         _log.error("BADA path not found: %s", args.bada_path)
-        return 1
+        sys.exit(1)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -857,9 +1297,9 @@ def main() -> int:
     original_input = load_input(args.input)
     _log.info("Loaded %d flights from input", len(original_input))
 
-    # === Pass 1: Generate default case and extract baseline ===
+    # === Generate default case and extract baseline ===
     _log.info("=" * 60)
-    _log.info("Pass 1: Generating default case")
+    _log.info("Setup: Generating default case")
     _log.info("=" * 60)
 
     default_input_path = args.output_dir / f"{base_name}_input.json"
@@ -897,14 +1337,44 @@ def main() -> int:
     baseline = extract_baseline_values(default_outputs)
     _log.info("Extracted baseline values from %d flights", len(default_outputs))
 
-    # Generate test cases via unified apply_parameters
+    return GoldenContext(
+        args=args,
+        base_name=base_name,
+        zarr_paths=zarr_paths,
+        original_input=original_input,
+        baseline=baseline,
+        default_outputs=default_outputs,
+    )
+
+
+# Mode 1 Per-file legacy generation
+def generate_per_file_golden(ctx: GoldenContext) -> None:
+    """Mode 1: Generate per-test-case input/output file pairs.
+
+    Preserves the exact same generation logic used for backward
+    compatibility with test_pipeline.py and test_fleet_pipeline.py.
+
+    For each :class:TestCaseSpec from :func:build_test_cases:
+
+    1. Apply numeric perturbations via :func:apply_parameters.
+    2. Apply structural modifications via :func:_modify_flight (if any).
+    3. Run the fleet pipeline.
+    4. Filter input to match successful outputs.
+    5. Save {base}_{suffix}_input.json and {base}_{suffix}_output.json.
+
+    Legacy mixed-pattern cases (mixed_columns, mixed_attrs) are handled
+    separately with their custom per-flight logic.
+
+    Args:
+        ctx: Shared golden context from :func:setup_baseline.
+    """
     _log.info("=" * 60)
-    _log.info("Generating test cases")
+    _log.info("Mode 1: Generating per-file test cases")
     _log.info("=" * 60)
 
-    test_cases = build_test_cases()
+    test_cases = build_test_cases_legacy()
 
-    # Append the legacy mixed-pattern cases that need custom per-flight logic
+    # Legacy mixed-pattern cases that need custom per-flight logic
     # (these cannot be expressed as a simple params dict)
     legacy_cases: list[tuple[str, Any, str]] = [
         ("mixed_columns", apply_mixed_columns, "mixed_columns"),
@@ -914,38 +1384,52 @@ def main() -> int:
     for spec in test_cases:
         _log.info("-" * 40)
         _log.info(
-            "Generating case: %s (%d params) — %s",
+            "Generating case: %s (%d params, %d mods%s) %s",
             spec.suffix,
             len(spec.params),
+            len(spec.modifications) if spec.modifications else 0,
+            ", expect_error" if spec.expect_error else "",
             spec.description,
         )
 
         # Build from scratch: apply only the requested parameters
-        modified_input = apply_parameters(original_input, baseline, spec.params)
+        modified_input = apply_parameters(ctx.original_input, ctx.baseline, spec.params)
+
+        if spec.modifications:
+            modified_input = _modify_flight(modified_input, ctx.baseline, spec.modifications)
 
         # Optional schema validation (e.g. for the ref case)
         if spec.validate_schema:
-            _validate_against_schema(modified_input, str(Path(__file__).parent / "schemas/flight_schema.json"))
+            _validate_against_schema(
+                modified_input,
+                str(Path(__file__).parent / "schemas/flight_schema.json"),
+            )
+
         # Save modified input
-        case_input_path = args.output_dir / f"{base_name}_{spec.suffix}_input.json"
+        case_input_path = ctx.args.output_dir / f"{ctx.base_name}_{spec.suffix}_input.json"
         save_input(modified_input, case_input_path)
 
-        # Run pipeline
         _log.info("Running pipeline...")
         try:
-            result = run_pipeline(case_input_path, zarr_paths, args.bada_path)
+            result = run_pipeline(case_input_path, ctx.zarr_paths, ctx.args.bada_path)
 
-            # Filter input to only include flights that succeeded
-            filtered_input = filter_input_to_match_outputs(modified_input, result)
+            if spec.expect_error:
+                _log.info(
+                    "Case '%s' (expect_error): %d succeeded, %d failed",
+                    spec.suffix,
+                    result.num_succeeded,
+                    result.num_failed,
+                )
+                continue
 
             # Re-save filtered input (overwrite)
+            filtered_input = filter_input_to_match_outputs(modified_input, result)
             save_input(filtered_input, case_input_path)
 
             # Save output
-            case_output_path = args.output_dir / f"{base_name}_{spec.suffix}_output.json"
+            case_output_path = ctx.args.output_dir / f"{ctx.base_name}_{spec.suffix}_output.json"
             save_output(result.outputs, case_output_path)
 
-            # Summary for this case
             _log.info(
                 "Case '%s': %d succeeded, %d failed",
                 spec.suffix,
@@ -953,10 +1437,17 @@ def main() -> int:
                 result.num_failed,
             )
         except Exception as e:
-            _log.error("Failed to generate case %s: %s", spec.suffix, e)
-            # Remove the input file if pipeline failed completely
-            if case_input_path.exists():
-                case_input_path.unlink()
+            if spec.expect_error:
+                _log.info(
+                    "Case '%s' (expect_error): pipeline raised %s: %s",
+                    spec.suffix,
+                    type(e).__name__,
+                    e,
+                )
+            else:
+                _log.error("Failed to generate case %s: %s", spec.suffix, e)
+                if case_input_path.exists():
+                    case_input_path.unlink()
             continue
 
     # Legacy mixed-pattern cases (custom per-flight logic)
@@ -964,18 +1455,18 @@ def main() -> int:
         _log.info("-" * 40)
         _log.info("Generating legacy case: %s (factor=%.3f)", suffix, PERTURBATIONS[perturb_key])
 
-        modified_input = modifier_fn(original_input, baseline, PERTURBATIONS[perturb_key])
+        modified_input = modifier_fn(ctx.original_input, ctx.baseline, PERTURBATIONS[perturb_key])
 
-        case_input_path = args.output_dir / f"{base_name}_{suffix}_input.json"
+        case_input_path = ctx.args.output_dir / f"{ctx.base_name}_{suffix}_input.json"
         save_input(modified_input, case_input_path)
 
         _log.info("Running pipeline...")
         try:
-            result = run_pipeline(case_input_path, zarr_paths, args.bada_path)
+            result = run_pipeline(case_input_path, ctx.zarr_paths, ctx.args.bada_path)
             filtered_input = filter_input_to_match_outputs(modified_input, result)
             save_input(filtered_input, case_input_path)
 
-            case_output_path = args.output_dir / f"{base_name}_{suffix}_output.json"
+            case_output_path = ctx.args.output_dir / f"{ctx.base_name}_{suffix}_output.json"
             save_output(result.outputs, case_output_path)
 
             _log.info(
@@ -989,6 +1480,171 @@ def main() -> int:
             if case_input_path.exists():
                 case_input_path.unlink()
             continue
+
+    _log.info("Mode 1 complete.")
+
+# Mode 2 Aggregated single-file generation
+
+def _extract_single_flight(
+    original_input: list[dict[str, Any]],
+    flight_id: str,
+) -> dict[str, Any] | None:
+    """Extract a single flight from the original input by flight_identification.
+
+    Args:
+        original_input: List of NM JSON flight dicts.
+        flight_id: The flight_identification value to match.
+
+    Returns:
+        Deep copy of the matching flight dict, or None if not found.
+    """
+    for flight in original_input:
+        if flight["flight_information"]["flight_identification"] == flight_id:
+            return copy.deepcopy(flight)
+    return None
+
+
+def generate_aggregated_golden(ctx: GoldenContext) -> None:
+    """Mode 2: Generate a single aggregated input/output JSON pair.
+
+    For each non-ref, non-mixed test case from :func:build_test_cases:
+
+    1. Look up the hardcoded flight from :data:AGGREGATED_FLIGHT_SELECTIONS.
+    2. Extract that single flight from the original input.
+    3. Apply :func:apply_parameters with the TC's params.
+    4. Apply :func:_modify_flight if the TC has structural modifications.
+    5. Rename flight_identification to {original_id}__{tc_suffix} for uniqueness.
+    6. Aggregate all modified flights into one list.
+
+    The aggregated input is saved as {base}_aggregated_input.json, then
+    the fleet pipeline is run once. The output (only successful flights) is
+    saved as {base}_aggregated_output.json.
+
+    Error-expectation TCs are included their flights will appear in the
+    fleet runner's error_records while successful flights appear in the
+    output. This tests the fleet runner's ability to handle mixed
+    success/failure in a single batch.
+
+    Args:
+        ctx: Shared golden context from :func:setup_baseline.
+    """
+    _log.info("=" * 60)
+    _log.info("Mode 2: Generating aggregated single-file golden data")
+    _log.info("=" * 60)
+
+    test_cases = build_test_cases()
+    aggregated_flights: list[dict[str, Any]] = []
+    included_suffixes: list[str] = []
+    skipped_suffixes: list[str] = []
+
+    for spec in test_cases:
+        # Look up the hardcoded flight selection
+        selected_flight_id = AGGREGATED_FLIGHT_SELECTIONS.get(spec.suffix)
+        if selected_flight_id is None:
+            _log.warning(
+                "No flight selection for TC '%s' in AGGREGATED_FLIGHT_SELECTIONS skipping",
+                spec.suffix,
+            )
+            skipped_suffixes.append(spec.suffix)
+            continue
+
+        # Extract the single flight from original input
+        single_flight = _extract_single_flight(ctx.original_input, selected_flight_id)
+        if single_flight is None:
+            _log.warning(
+                "Flight '%s' not found in original input for TC '%s' skipping",
+                selected_flight_id,
+                spec.suffix,
+            )
+            skipped_suffixes.append(spec.suffix)
+            continue
+
+        # Apply numeric perturbations (wrapping in a list for apply_parameters)
+        modified = apply_parameters([single_flight], ctx.baseline, spec.params)
+
+        # Apply structural modifications if any
+        if spec.modifications:
+            modified = _modify_flight(modified, ctx.baseline, spec.modifications)
+
+        # Rename flight_identification to avoid collisions:
+        # {original_id}__{tc_suffix}
+        modified_flight = modified[0]
+        new_id = f"{selected_flight_id}__{spec.suffix}"
+        modified_flight["flight_information"]["flight_identification"] = new_id
+
+        aggregated_flights.append(modified_flight)
+        included_suffixes.append(spec.suffix)
+
+        _log.debug(
+            "Aggregated TC '%s': flight '%s' -> '%s'%s",
+            spec.suffix,
+            selected_flight_id,
+            new_id,
+            " (expect_error)" if spec.expect_error else "",
+        )
+
+    _log.info(
+        "Aggregated %d flights from %d TCs (skipped: %s)",
+        len(aggregated_flights),
+        len(included_suffixes),
+        ", ".join(skipped_suffixes) if skipped_suffixes else "none",
+    )
+
+    if not aggregated_flights:
+        _log.warning("No flights to aggregate skipping Mode 2")
+        return
+
+    # Save aggregated input
+    agg_input_path = ctx.args.output_dir / f"{ctx.base_name}_aggregated_input.json"
+    save_input(aggregated_flights, agg_input_path)
+
+    # Run fleet pipeline once on the aggregated input
+    _log.info("Running fleet pipeline on aggregated input (%d flights)...", len(aggregated_flights))
+    try:
+        result = run_pipeline(agg_input_path, ctx.zarr_paths, ctx.args.bada_path)
+
+        # Keep ALL flights in input (including error-expectation ones) so that
+        # test_cases_pipeline.py can verify both success and error outcomes from
+        # a single fleet run. Save aggregated output
+        agg_output_path = ctx.args.output_dir / f"{ctx.base_name}_aggregated_output.json"
+        save_output(result.outputs, agg_output_path)
+
+        _log.info(
+            "Aggregated result: %d succeeded, %d failed",
+            result.num_succeeded,
+            result.num_failed,
+        )
+
+        if result.num_failed > 0:
+            _log.info(
+                "Failed flight IDs: %s",
+                ", ".join(sorted(result.get_failed_flight_ids())),
+            )
+    except Exception as e:
+        _log.error("Failed to generate aggregated golden data: %s", e)
+        if agg_input_path.exists():
+            agg_input_path.unlink()
+
+    _log.info("Mode 2 complete.")
+
+
+def main() -> int:
+    """Main entry point runs both generation modes sequentially.
+
+    1. :func:setup_baseline default case + baseline extraction.
+    2. :func:generate_per_file_golden Mode 1: per-test-case file pairs.
+    3. :func:generate_aggregated_golden Mode 2: single aggregated file pair.
+    """
+    args = parse_args()
+
+    # Shared setup: default case + baseline extraction
+    ctx = setup_baseline(args)
+
+    # Mode 1: per-file legacy generation (backward compatible)
+    generate_per_file_golden(ctx)
+
+    # Mode 2: aggregated single-file generation
+    generate_aggregated_golden(ctx)
 
     _log.info("=" * 60)
     _log.info("Done! Generated golden test cases in: %s", args.output_dir)
