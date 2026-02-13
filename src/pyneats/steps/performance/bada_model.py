@@ -43,23 +43,21 @@ from pycontrails.physics.jet import overall_propulsion_efficiency
 from pycontrails.physics.units import ft_to_m
 from pycontrails.physics.units import m_to_T_isa
 
+from pyneats.core.neats_default_parameters import DEFAULT_BADA3_VERSION
+from pyneats.core.neats_default_parameters import DEFAULT_BADA4_VERSION
+from pyneats.core.neats_default_parameters import DEFAULT_BADA_MAX_CONSECUTIVE_FAILURES
+from pyneats.core.neats_default_parameters import DEFAULT_DELTA_TAU_COMPUTE_METHOD
+from pyneats.core.neats_default_parameters import DEFAULT_DELTA_TAU_FILL_METHOD
+from pyneats.core.neats_default_parameters import DEFAULT_FF_OUTLIER_THRESHOLD
+from pyneats.core.neats_default_parameters import DEFAULT_FUEL_RESERVE_FRACTION
+from pyneats.core.neats_default_parameters import DEFAULT_MAX_MASS_ESTIMATION_ITER
+from pyneats.core.neats_default_parameters import DEFAULT_MAX_REL_MASS_DIFF
+from pyneats.core.neats_default_parameters import DEFAULT_PAYLOAD_FACTOR
+from pyneats.core.neats_default_parameters import DEFAULT_ROCD_PHASE_THRESHOLD
 from pyneats.core.neats_default_parameters import (
-    DEFAULT_BADA3_VERSION,
-    DEFAULT_BADA4_VERSION,
-    DEFAULT_DELTA_TAU_COMPUTE_METHOD,
-    DEFAULT_DELTA_TAU_FILL_METHOD,
-    DEFAULT_FUEL_RESERVE_FRACTION,
-    DEFAULT_MAX_MASS_ESTIMATION_ITER,
-    DEFAULT_MAX_REL_MASS_DIFF,
-    DEFAULT_PAYLOAD_FACTOR,
-    DEFAULT_ROCD_PHASE_THRESHOLD,
-    DEFAULT_BADA_MAX_CONSECUTIVE_FAILURES,
     DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW,
-    REFERENCE_Q_FUEL,
-    DEFAULT_FF_OUTLIER_THRESHOLD,
 )
-
-
+from pyneats.core.neats_default_parameters import REFERENCE_Q_FUEL
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.performance.bada_adapters import BADA3Adapter
@@ -183,8 +181,6 @@ class BADAPerformanceModelParams(PerformanceModelParams):
 
     max_consecutive_failures = DEFAULT_BADA_MAX_CONSECUTIVE_FAILURES
     ff_outlier_threshold = DEFAULT_FF_OUTLIER_THRESHOLD
-
-
 
     # BADA mapping paths (to packaged resources)
     icao_series_engine_path = Path(
@@ -573,49 +569,47 @@ class BADAPerformanceModel(
     def _derive_fuel_flow_from_mass_if_needed(self, df: pd.DataFrame) -> None:
         """
         Derive fuel_flow from aircraft_mass trajectory if mass provided but fuel_flow not.
-        
+
         When airlines provide aircraft_mass along the trajectory, we can infer fuel consumption
         from the decrease in mass over time:
             fuel_flow[i] = -(mass[i+1] - mass[i]) / segment_duration[i]
-        
+
         where segment_duration[i] is in seconds, and fuel_flow is in kg/s.
-        
+
         The derived fuel_flow will be preserved in the output (like airline-provided fuel_flow),
         while engine efficiency will still be computed using BADA thrust and fuel_flow for
         internal consistency with the physics model.
         """
         if "aircraft_mass" not in df.columns or "fuel_flow" in df.columns:
             return
-        
-        self.logger.info(
-            "Deriving fuel_flow from aircraft_mass trajectory decrease"
-        )
-        
+
+        self.logger.info("Deriving fuel_flow from aircraft_mass trajectory decrease")
+
         # Ensure numeric types
         df["aircraft_mass"] = pd.to_numeric(df["aircraft_mass"], errors="coerce")
         df["segment_duration"] = pd.to_numeric(df["segment_duration"], errors="coerce")
-        
+
         # Derive fuel_flow from mass differences
         # segment_duration[i] is in seconds (from flight.segment_duration())
         mass_vals = df["aircraft_mass"].values
         dt_vals = df["segment_duration"].values
-        
+
         # fuel_flow[i] = -(mass[i+1] - mass[i]) / segment_duration[i]
         # Use prepend to handle first waypoint (assumes no mass change at t=0)
         mass_diff = np.diff(mass_vals, prepend=mass_vals[0])  # First segment: diff=0
         fuel_flow_derived = -mass_diff / dt_vals  # Negative sign because mass decreases
-        
+
         # Ensure non-negative (handle numerical errors or unusual cases)
         fuel_flow_derived = np.maximum(fuel_flow_derived, 0.0)
-        
+
         df["fuel_flow"] = fuel_flow_derived
-        
+
         self.logger.debug(
             "Derived fuel_flow from mass trajectory",
             extra={
                 "mean_ff_kg_s": float(fuel_flow_derived.mean()),
-                "total_fuel_kg": float((fuel_flow_derived * dt_vals).sum())
-            }
+                "total_fuel_kg": float((fuel_flow_derived * dt_vals).sum()),
+            },
         )
 
     # ---------- mass strategies ----------
@@ -762,10 +756,10 @@ class BADAPerformanceModel(
                     raise PerformanceStepError(
                         f"BADA calculation failed on the very first trajectory point: {e}"
                     ) from e
-                
+
                 consecutive_failures += 1
 
-            # If we exceed the threshold, raise the exception for the whole flight
+                # If we exceed the threshold, raise the exception for the whole flight
                 if consecutive_failures > max_consecutive_failures:
                     raise PerformanceStepError(
                         f"Exceeded maximum consecutive BADA failures ({max_consecutive_failures}). "
@@ -775,7 +769,9 @@ class BADAPerformanceModel(
                 # Log the interpolation to keep a trace of the correction (optional but recommended)
                 self.logger.debug(
                     "BADA computation failed at altitude %s. Propagating previous values. (Failure %s/%s)",
-                    pt.altitude, consecutive_failures, max_consecutive_failures
+                    pt.altitude,
+                    consecutive_failures,
+                    max_consecutive_failures,
                 )
 
                 # Propagate from the last successful state
