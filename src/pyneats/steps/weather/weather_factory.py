@@ -227,7 +227,6 @@ class DWDFactory(WeatherFactoryProtocol):
       - build & read Zarr stores (cache.zarr).
     """
 
-    # Maps (matching your “dirty” script)
     _required_map: ClassVar[Mapping[str, MetVariable]] = {
         "u": EastwardWind,
         "v": NorthwardWind,
