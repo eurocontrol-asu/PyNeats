@@ -43,6 +43,7 @@ nav:
     - Python API: reference/api/
   - Explanation:
     - Architecture: explanation/architecture.md
+    - MRV Specification: explanation/mrv_specification.md
 
 plugins:
   - search

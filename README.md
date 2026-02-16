@@ -138,7 +138,7 @@ src/pyneats/
 │   ├── emissions/     # Fuel burn and emissions calculation
 │   ├── climate_functions/  # Climate response functions (PyContrails, ClimAccf)
 │   └── climate_metrics/    # GWP and climate impact metrics
-└── adapters/          # Wrappers around external libraries
+└── resources/         # Bundled data files
 ```
 
 **Key Design Principles:**
@@ -216,7 +216,7 @@ make clean             # Clean build artifacts
 
 ## 📚 Documentation
 
-- **[Architecture](docs/architecture.md)** – System design and module overview
+- **[Architecture](docs/explanation/architecture.md)** – System design and module overview
 - **[Examples](examples/README.md)** – Runnable examples with explanations
 - **[Contributing](CONTRIBUTING.md)** – Development setup and contribution guidelines
 
