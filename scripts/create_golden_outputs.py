@@ -2014,7 +2014,7 @@ def main() -> int:
     ctx = setup_baseline(args)
 
     # Mode 1: per-file legacy generation (backward compatible)
-    #generate_per_file_golden(ctx)
+    generate_per_file_golden(ctx)
 
     # Mode 2: aggregated single-file generation
     generate_aggregated_golden(ctx)
