@@ -201,7 +201,7 @@ class BadaMapper:
             (NB_ENG: int, BADA3: str, BADA4: str, ENGINE_ID: str)
 
         Raises:
-            KeyError if nothing can be resolved.
+            KeyError: If nothing can be resolved.
         """
         if not icao:
             raise KeyError("ICAO is required")
