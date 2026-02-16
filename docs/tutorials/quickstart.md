@@ -67,4 +67,4 @@ The pipeline executes these steps sequentially for each flight:
 
 - [Usage guide](../howto/usage.md) — Processing flights from DataFrames, building weather caches
 - [Architecture](../explanation/architecture.md) — System design and module overview
-- [Python API](../reference/api/) — Auto-generated API reference
+- [Python API](../reference/api/SUMMARY.md) — Auto-generated API reference

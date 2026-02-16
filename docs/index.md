@@ -28,7 +28,7 @@ It orchestrates [PyContrails](https://github.com/contrailcirrus/pycontrails), [P
 
     Process DataFrames, build weather caches, choose runners.
 
--   :material-api: **[API Reference](reference/api/)**
+-   :material-api: **[API Reference](reference/api/SUMMARY.md)**
 
     Auto-generated documentation for all public modules.
 
@@ -46,8 +46,22 @@ It orchestrates [PyContrails](https://github.com/contrailcirrus/pycontrails), [P
 
 ## Pipeline at a Glance
 
-```
-Parsing → Interpolation → Weather → Performance → Emissions → Climate Functions → Climate Metrics
+```mermaid
+graph LR
+    A["🛫 Parsing"] --> B["📐 Interpolation"]
+    B --> C["🌤️ Weather"]
+    C --> D["⚙️ Performance"]
+    D --> E["💨 Emissions"]
+    E --> F["🌡️ Climate Functions"]
+    F --> G["📊 Climate Metrics"]
+
+    style A fill:#4051b5,color:#fff
+    style B fill:#5c6bc0,color:#fff
+    style C fill:#7986cb,color:#fff
+    style D fill:#9575cd,color:#fff
+    style E fill:#ab47bc,color:#fff
+    style F fill:#e91e63,color:#fff
+    style G fill:#f44336,color:#fff
 ```
 
 Each stage is an independent **Step** that can be swapped, tested, and configured separately via the step registry.
