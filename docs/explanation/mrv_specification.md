@@ -26,7 +26,7 @@ As a result, PyNeats introduces no new low-level numerical kernels.
 ## Modules
 
 ### 1. Trajectory Parsing
-Retrieves the 4D trajectory and flight-level information from primary or secondary sources (e.g. ADS-B or FTFM/RTFM/CTFM trajectories).
+Retrieves the 4D trajectory and flight-level information from primary or secondary sources (e.g. OFP, QAR, ADS-B, or FTFM/RTFM/CTFM trajectories).
 
 ### 2. Interpolation / Resampling
 Reconstructs the 4D trajectory to meet the **60-second sampling** requirement used by the CoCiP model for contrail-impact modelling.
@@ -59,7 +59,21 @@ Converts climate-function outputs into requested metrics (e.g., GWP and CO₂-eq
 ## Module Dependencies
 
 The computational logic is almost perfectly sequential and implemented as such in PyNeats.
-The following diagram (to be inserted) illustrates dependencies between module inputs and outputs.
+
+```mermaid
+graph LR
+    A["Trajectory Parsing"] --> B["Interpolation"]
+    B --> C["Weather"]
+    C --> D["Performance"]
+    D --> E["Emissions"]
+    E --> F["Climate Functions"]
+    F --> G["Climate Metrics"]
+
+    C -.-> D
+    C -.-> F
+    D -.-> F
+    E -.-> F
+```
 
 ---
 
@@ -89,22 +103,18 @@ Two trajectory types are used as secondary data sources — **FTFM/RTFM** and **
 
 ---
 
-### Interpolation / Reconstruction
+### Preprocessing / Interpolation / Reconstruction
 
-The interpolation module converts input trajectories (primary or secondary) to the sampling cadence required by CoCiP.
+The interpolation module converts input trajectories (primary or secondary) to the **60-second** sampling cadence required by CoCiP.
 
-- PyNeats currently uses **linear interpolation** via PyContrails’ `resample_and_fill` method.
-- Coarse native sampling can yield unrealistic segments that stray outside the flight envelope.
-- Smoothing is applied on both speed and acceleration to reduce unrealistic segments.
-
-An **alternative** (under consideration) is a point-mass-model-based “inverse” trajectory reconstructor to obtain dynamically consistent 4D paths from sparse inputs.
-Linear interpolation remains in use for the present release.
+- PyNeats currently uses **linear interpolation** via PyContrails' `resample_and_fill` method.
+- For secondary data, coarse native sampling can yield segments that stray outside the flight envelope after interpolation.
+- To obtain more realistic trajectories, **smoothing is applied to ground speed** using the **Savitzky-Golay filter** from PyContrails, reducing the number of segments that fall outside the flight envelope.
+- For optional primary variables along the trajectory (e.g. true airspeed, aircraft mass, fuel flow, or engine efficiency), **linear interpolation** is applied to align their values with the trajectory timestamps. Missing data points are filled using the same method.
 
 ---
 
 ### DWD ICON Mapping with PyContrails Weather Variables
-
-DWD ICON variables are mapped into PyContrails variable objects as follows:
 
 #### Required Map (CoCiP)
 | DWD Variable | PyContrails Object |
@@ -146,10 +156,11 @@ Performance models such as BADA require **true airspeed (TAS)** to simulate flig
 TAS is derived from wind, ground speed, heading, and track.
 
 To support this:
-- DWD provides an **additional wind-field dataset (840–570 hPa)** to complement the main file (550–140 hPa).
-- Below 840 hPa, wind is set to zero (simplifies TAS derivation).
-- Temperature and specific humidity are interpolated on the main field (550–140 hPa).
-- Weather is sub-sampled using PyContrails’ `downselect_met()` before `intersect_met()` for efficiency.
+- DWD provides an **additional wind-field dataset (840–570 hPa, FL050–FL150)** to complement the main file (550–140 hPa, FL160–FL460).
+- Both wind datasets are **concatenated**. Below FL050 (840 hPa), wind is set to zero, simplifying TAS derivation in the lower atmosphere.
+- **Temperature**: interpolated on the main file (550–140 hPa) to provide BADA with the required correction relative to the standard atmosphere. Extrapolation for lower altitudes is performed in the performance module.
+- **Specific humidity**: interpolated on the main file (550–140 hPa) to supply the emission model for further use in CoCiP.
+- Weather is sub-sampled using PyContrails' `downselect_met()` before `intersect_met()` for efficiency.
 
 ---
 
@@ -164,59 +175,71 @@ PyNeats currently uses **BADA** (via pyBADA) for performance computations.
 
 #### Input Decision Logic
 
-When primary data are available, PyNeats follows the decision tree:
+The emissions and climate modules require **fuel flow** and **engine efficiency** at each trajectory point. PyNeats follows this decision tree:
 
 1. **Fuel flow and engine efficiency provided** → use directly; skip performance step.
-2. **Only fuel flow provided** → compute engine efficiency via BADA thrust/fuel flow.
-3. **Aircraft mass evolution provided** → use directly in BADA.
-4. **Only take-off weight (TOW) provided** → estimate mass evolution using BADA.
-5. **No mass nor TOW provided** → infer mass from load factor:
+2. **Only fuel flow provided** → use AO fuel flow for downstream calculations, but compute engine efficiency via BADA thrust and fuel flow. *Note*: BADA fuel flow must still be computed at each point to derive engine efficiency correctly.
+3. **Aircraft mass evolution provided** → use directly in BADA to compute fuel flow, thrust, and engine efficiency.
+4. **Only take-off weight (TOW) provided** → use TOW within the performance model to estimate mass evolution, then compute fuel flow, thrust, and engine efficiency.
+5. **No mass nor TOW provided** → infer mass from load factor (AO-provided or conservative default of 1):
 
 \[
 m_{\text{init}} = OEW + \text{load\_factor} \times (MTOW - OEW)
 \]
 
 Then iterate:
-1. Compute fuel flow and burn
-2. Estimate fuel reserve (≈ 3 %)
+1. Compute fuel flow and fuel burn at each trajectory point
+2. Estimate fuel reserve (≈ 3 % of trip fuel)
 3. Update TOW:
 
 \[
 TOW = \min(MTOW,\ OEW + \text{load\_factor} \times MPL + \text{consumed\_fuel} + \text{reserve})
 \]
 
-4. Reduce mass along trajectory
+4. Reduce aircraft mass along trajectory according to fuel burnt
 5. Iterate until convergence (Δmass < tol %).
-In PyNeats, only one iteration is used to reduce cost.
+
+!!! note
+    In PyNeats, steps 1–4 are performed **twice** to balance accuracy and computational cost. Note that BADA 3 does not provide MPL; in that case MPL = MTOW − OEW.
+
+See [Input Prioritization](input_prioritization.md) for the full decision flowchart.
 
 #### Additional Parameters
 - Fuel calorific value (`q_fuel`) from AO, if provided, linearly corrects `fuel_flow_rate`.
-- ICAO↔BADA type mapping from EUROCONTROL.
+- ICAO↔BADA type mapping from EUROCONTROL: the correspondence between ICAO aircraft types, aircraft versions, engine identifiers and BADA types (BADA 4 in priority, then BADA 3) follows a multi-level fallback chain. The engine UID for emission computations uses the MRR conservative value if not provided as primary data.
 
 ---
 
 ### Emission Model
 
-PyNeats uses PyContrails’ emission model (BFFM2 and T4/T2).
-To account for fuel properties, a **custom `Fuel` class** (inheriting from `SAFBlend`) is used:
+PyNeats uses PyContrails' emission utilities (BFFM2 for gaseous emissions, T4/T2 for nvPM).
+To account for fuel properties provided by AOs, a **custom `NEATSFuel` class** (inheriting from `SAFBlend`) is used:
 
-- **Hydrogen content** affects water emission index.
-- If not provided, deduced from H/C ratio:
+- All fuel properties from `SAFBlend` are initially set to their defaults.
+- **Hydrogen content**: if provided by the AO, overrides the default. Otherwise, if the H/C ratio (*r*) is provided:
 
 \[
 H = \frac{r \times 1.008}{12.011 + r \times 1.008}
 \]
 
-- **nvPM** reduced via `black_carbon` class depending on hydrogen content.
-- **Calorific content (`q_fuel`)** overrides defaults, influencing nvPM and T4/T2.
+- If neither hydrogen content nor H/C ratio is provided, the default (13.8 %, JET-A from PyContrails) is used.
+- **Water emission index** (`ei_h2o`): the default of 1.23 is adjusted linearly based on hydrogen content, consistent with the `SAFBlend` class.
+- **nvPM**: reduced using PyContrails' `black_carbon` class, parameterised by hydrogen content (currently only available for SAF blends in PyContrails).
+- **Calorific content** (`q_fuel`): if provided by the AO, overrides the default, influencing nvPM and T4/T2.
+- Aromatic content, sulphur, and naphthalene fuel properties (which an AO can provide) are **not yet used** by any calculation.
 - Emission computations enforce ICAO engine identifiers.
+
+!!! info "For the 2025 report"
+    It is unlikely that AOs will produce primary fuel properties. These may be replaced by statistics from the **RefuelEU** project (aggregated by airport).
 
 ---
 
 ### Climate Functions
 
 The parameterisation of climate functions follows the technical requirements.
-Any change in **`q_fuel`** impacts **SAC** computation within CoCiP.
+
+- Any change in **`q_fuel`** impacts **SAC** (Schmidt-Appleman Criterion) computation within CoCiP.
+- It has been decided (in coordination with the consortium) to **not use any humidity correction** in the current implementation.
 
 ---
 
@@ -259,17 +282,21 @@ CO2_{eq,Con}(H) = \frac{EF \cdot (ERF/RF)_{Con}}{S_{Earth} \cdot C(H) \cdot s_{y
 \[
 AGWP_{Spec}(H) =
 \frac{K_{AGWP←RF}^{Spec}(H)}{K_{ATR←RF}^{Spec}(H)}
-EF(ERF/RF)_{Spec}
-\frac{C_{ATR←Pulse}^{Spec}(H)}{C_{ATR←Pulse}^{Spec}(H_0)}
-ATR^{Spec}(H_0)
+\cdot EF(ERF/RF)_{Spec}
+\cdot \frac{C_{ATR←Pulse}^{Spec}(H)}{C_{ATR←Pulse}^{Spec}(H_0)}
+\cdot ATR^{Spec}(H_0)
 \]
 
 where:
-- \( K_{AGWP←RF}^{Spec}(H) \), \( K_{ATR←RF}^{Spec}(H) \): conversion factors (Dahlmann 2025)
-- \( C_{ATR←Pulse}^{Spec}(H) \): conversion from *climaccf*
-- \( ATR^{Spec}(H_0) \): output from CLIMaCCF
-- \( H_0 = 20 y \) reference horizon
+- \( K_{AGWP←RF}^{Spec}(H) \): conversion factor from RF to AGWP (Dahlmann 2025)
+- \( K_{ATR←RF}^{Spec}(H) \): conversion factor from RF to ATR (Dahlmann 2025)
+- \( C_{ATR←Pulse}^{Spec}(H) \): conversion from pulse emissions in *climaccf* (Yin et al. 2023, Dietmüller et al. 2023)
+- \( ATR^{Spec}(H_0) \): output from CLIMaCCF with pulse scenario and no efficacy parameterisation
+- \( H_0 = 20\,y \): reference horizon for pulse computation within CLIMaCCF
 - \( EF(ERF/RF)_{Spec} \): efficacy from spec document
+
+!!! note
+    The RF backward calculation factor \( C_{ATR←Pulse}^{Spec}(H) \) from CLIMaCCF v1.0/v1.0a must be **discounted** in the denominator because it is not consistent with the Dahlmann 2025 conversion factors.
 
 Then,
 

@@ -43,6 +43,7 @@ nav:
     - Python API: reference/api/
   - Explanation:
     - Architecture: explanation/architecture.md
+    - Input Prioritization: explanation/input_prioritization.md
     - MRV Specification: explanation/mrv_specification.md
 
 plugins:
