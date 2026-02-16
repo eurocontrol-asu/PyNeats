@@ -63,8 +63,10 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-
+import pycontrails.core.flight as pyflight
+import pycontrails.physics.units as pyunits
 import numpy as np
+import pandas as pd
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -116,13 +118,15 @@ class Modification:
     fuel_properties.naphthalene(float)      Modification("fuel_properties.naphthalene", 0.04)
 
     Trajectory columns (trajectory.<json_field>):
-    Target                  Example
-    trajectory.am(callable) Modification("trajectory.am", _make_non_decreasing_mass)
-    trajectory.am(callable) Modification("trajectory.am", _make_exceeds_mtow_mass)
-    trajectory.am(float)    Modification("trajectory.am", 1.05)  (factor applied to baseline)
-    trajectory.ff(float)    Modification("trajectory.ff", 0.95)
-    trajectory.ee(float)    Modification("trajectory.ee", 1.02)
-    trajectory.tasfloat)    Modification("trajectory.tas", 0.98)
+    Target                      Example
+    trajectory.am(callable)     Modification("trajectory.am", _make_non_decreasing_mass)
+    trajectory.am(callable)     Modification("trajectory.am", _make_exceeds_mtow_mass)
+    trajectory.am(float)        Modification("trajectory.am", 1.05)  (factor applied to baseline)
+    trajectory.ff(float)        Modification("trajectory.ff", 0.95)
+    trajectory.ee(float)        Modification("trajectory.ee", 1.02)
+    trajectory.tasfloat)        Modification("trajectory.tas", 0.98)
+    Modifications to all trajectory columns
+    trajectory.trajectory_data  Modification("trajectory.trajectory_data", _make_mixed_time)
 
     For trajectory columns the value can be:
     - A callable (baseline_arr, n_waypoints) -> list[float] that
@@ -155,30 +159,33 @@ def _apply_single_modification(
         section[parts[1]] = mod.value
 
     elif parts[0] == "trajectory":
-        field = parts[1]
-        waypoints = fi["trajectory"]["trajectory_data"]
+        if parts[1] == 'trajectory_data':
+            base_arr = {s.internal_name: baseline.get(s.internal_name).get(flight_id) for s in PARAMETER_REGISTRY.values() if s.category == "column"}
+            fi["trajectory"]["trajectory_data"] = mod.value(base_arr)
+        else:
+            field = parts[1]
+            waypoints = fi["trajectory"]["trajectory_data"]
 
-        # Resolve JSON short name (am, ff, …) to internal baseline key
-        internal = next(
-            (
-                s.internal_name
-                for s in PARAMETER_REGISTRY.values()
-                if s.category == "column" and s.json_field == field
-            ),
-            field,
-        )
-        base_arr = baseline.get(internal, {}).get(flight_id)
-
-        if callable(mod.value):
-            new_values = mod.value(base_arr, len(waypoints))
-            for i, wp in enumerate(waypoints):
-                if i < len(new_values):
-                    wp[field] = new_values[i]
-        elif isinstance(mod.value, (int, float)):
-            if base_arr is not None:
+            # Resolve JSON short name (am, ff, …) to internal baseline key
+            internal = next(
+                (
+                    s.internal_name
+                    for s in PARAMETER_REGISTRY.values()
+                    if s.category == "column" and s.json_field == field
+                ),
+                field,
+            )
+            base_arr = baseline.get(internal, {}).get(flight_id)
+            if callable(mod.value):
+                new_values = mod.value(base_arr, len(waypoints))
                 for i, wp in enumerate(waypoints):
-                    if i < len(base_arr):
-                        wp[field] = float(base_arr[i]) * mod.value
+                    if i < len(new_values):
+                        wp[field] = new_values[i]
+            elif isinstance(mod.value, (int, float)):
+                if base_arr is not None:
+                    for i, wp in enumerate(waypoints):
+                        if i < len(base_arr):
+                            wp[field] = float(base_arr[i]) * mod.value
 
 
 def _modify_flight(
@@ -225,7 +232,6 @@ def _make_non_decreasing_mass(
         arr[mid] = arr[mid - 1] + 100.0  # bump up one point
     return arr
 
-
 def _make_exceeds_mtow_mass(
     baseline_arr: np.ndarray | None,
     n_waypoints: int,
@@ -239,6 +245,307 @@ def _make_exceeds_mtow_mass(
     arr[0] = 85000.0  # exceed MTOW at first waypoint
     return arr
 
+def _make_var_time_resolution(
+        baseline: dict[str,np.ndarray]
+) -> list[dict[str, Any]]:
+    """Apply test a varying time resolution with intervalls > 60 s to 4D flight trajectories.
+
+    Creates "trajectory_data"-part of input-JSON from baseline output with applied manipulation to the flight
+    trajectory
+
+    Args:
+        baseline: Baseline trajectory datapoints extracted from default case outputs
+
+    Returns:
+        Modified input flight trajectory ("trajectory_data"-part of input-JSON)
+    """
+    baseline = copy.deepcopy(baseline)
+    # Sort waypoints by time
+    idx_sort = np.argsort(baseline['time'])
+    for key in baseline.keys():
+        baseline[key] = baseline[key][idx_sort]
+    time = baseline['time']
+    duration_flight_s = (time[-1] - time[0]) / np.timedelta64(1, 's')
+    # Number of "syntetic" time steps added
+    steps = 12 if (duration_flight_s > 20 * 60) else (3 if (duration_flight_s > 5 * 60) else 0)
+    # Timespan of single steps
+    dt_manipulate_s = np.linspace(10, 120, steps)
+    duration_manipulate_s = np.ceil(sum(dt_manipulate_s))
+    flighttime_s = (time - time[0]) / np.timedelta64(1, 's')
+    # Startindex of applied modification
+    idx_manip_1 = np.searchsorted(flighttime_s, (duration_flight_s - duration_manipulate_s) / 2,
+                                  side='right') - 1
+    # End index of applied modification
+    idx_manip_2 = np.searchsorted(flighttime_s, flighttime_s[idx_manip_1] + duration_manipulate_s, side='right')
+    # Insert defined time steps into waypoint-time-vector
+    time_manip = np.concatenate((time[0:idx_manip_1],
+                                 np.array([time[idx_manip_1] + np.timedelta64(int(n), 's') for n in
+                                           np.cumsum(dt_manipulate_s)]),
+                                 time[idx_manip_2:-1]
+                                 ))
+    flighttime_manip_s = (time_manip - time_manip[0]) / np.timedelta64(1, 's')
+    baseline_manip = {}
+    # Apply changed waypoint-time-vector and interpolate trajectory data accordingly
+    for key in baseline.keys():
+        if key == 'time':
+            baseline_manip[key] = time_manip
+        else:
+            baseline_manip[key] = np.interp(flighttime_manip_s, flighttime_s, baseline[key])
+    return _baseline_to_json_input(baseline_manip)
+
+def _make_mixed_time(
+        baseline: dict[str,np.ndarray]
+) -> list[dict[str, Any]]:
+    """Apply test for unordered waypoints to 4D flight trajectories.
+
+    Creates "trajectory_data"-part of input-JSON from baseline output with applied manipulation to the flight
+    trajectory
+
+    Args:
+        baseline: Baseline trajectory datapoints extracted from default case outputs
+
+    Returns:
+        Modified input flight trajectory ("trajectory_data"-part of input-JSON)
+    """
+    baseline = copy.deepcopy(baseline)
+    # Shuffle waypoint order
+    idx_rand = np.random.permutation(len(baseline['time']))
+    baseline_manip = {}
+    for key in baseline.keys():
+        baseline_manip[key] = baseline[key][idx_rand]
+    return _baseline_to_json_input(baseline_manip)
+
+def _make_duplicate_time(
+        baseline: dict[str,np.ndarray]
+) -> list[dict[str, Any]]:
+    """Apply test for duplicate waypoints to 4D flight trajectories.
+
+    Creates "trajectory_data"-part of input-JSON from baseline output with applied manipulation to the flight
+    trajectory
+
+    Args:
+        baseline: Baseline trajectory datapoints extracted from default case outputs
+
+    Returns:
+        Modified input flight trajectory ("trajectory_data"-part of input-JSON)
+    """
+    baseline = copy.deepcopy(baseline)
+    # Include one waypoint twice
+    dupl = int(np.floor(len(baseline['time']) / 2))
+    idx_dupl = np.insert(np.arange(len(baseline['time'])), dupl, dupl)
+    baseline_manip = {}
+    for key in baseline.keys():
+        baseline_manip[key] = baseline[key][idx_dupl]
+    return _baseline_to_json_input(baseline_manip)
+
+def _make_missing_timestamps(
+        baseline: dict[str,np.ndarray]
+) -> list[dict[str, Any]]:
+    """Apply test for missing values for timestamps to 4D flight trajectories.
+
+    Creates "trajectory_data"-part of input-JSON from baseline output with applied manipulation to the flight
+    trajectory
+
+    Args:
+        baseline: Baseline trajectory datapoints extracted from default case outputs
+
+    Returns:
+        Modified input flight trajectory ("trajectory_data"-part of input-JSON)
+    """
+    baseline = copy.deepcopy(baseline)
+    # Set the timestamps of two waypoints to NaT
+    baseline_manip = baseline
+    idx_miss = [int(np.floor(len(baseline['time']) / 3)), int(np.floor(2 * len(baseline['time']) / 3))]
+    baseline_manip['time'][idx_miss] = baseline_manip['time'].dtype.type(None)
+    return _baseline_to_json_input(baseline_manip)
+
+def _make_missing_latitudes(
+        baseline: dict[str,np.ndarray]
+) -> list[dict[str, Any]]:
+    """Apply test for missing values for latitudes to 4D flight trajectories.
+
+    Creates "trajectory_data"-part of input-JSON from baseline output with applied manipulation to the flight
+    trajectory
+
+    Args:
+        baseline: Baseline trajectory datapoints extracted from default case outputs
+
+    Returns:
+        Modified input flight trajectory ("trajectory_data"-part of input-JSON)
+    """
+    baseline = copy.deepcopy(baseline)
+    # Set the latitudes of two waypoints to None
+    baseline_manip = baseline
+    idx_miss = [int(np.floor(len(baseline['latitude']) / 3)), int(np.floor(2 * len(baseline['latitude']) / 3))]
+    baseline_manip['latitude'][idx_miss] = baseline_manip['latitude'].dtype.type(None)
+    return _baseline_to_json_input(baseline_manip)
+
+def _make_missing_longitudes(
+        baseline: dict[str,np.ndarray]
+) -> list[dict[str, Any]]:
+    """Apply test for missing values for longitude to 4D flight trajectories.
+
+    Creates "trajectory_data"-part of input-JSON from baseline output with applied manipulation to the flight
+    trajectory
+
+    Args:
+        baseline: Baseline trajectory datapoints extracted from default case outputs
+
+    Returns:
+        Modified input flight trajectory ("trajectory_data"-part of input-JSON)
+    """
+    baseline = copy.deepcopy(baseline)
+    # Set the longitudes of two waypoints to None
+    baseline_manip = baseline
+    idx_miss = [int(np.floor(len(baseline['longitude']) / 3)), int(np.floor(2 * len(baseline['longitude']) / 3))]
+    baseline_manip['longitude'][idx_miss] = baseline_manip['longitude'].dtype.type(None)
+    return _baseline_to_json_input(baseline_manip)
+
+def _make_missing_altitudes(
+        baseline: dict[str,np.ndarray]
+) -> list[dict[str, Any]]:
+    """Apply test for missing values for altitude to 4D flight trajectories.
+
+    Creates "trajectory_data"-part of input-JSON from baseline output with applied manipulation to the flight
+    trajectory
+
+    Args:
+        baseline: Baseline trajectory datapoints extracted from default case outputs
+
+    Returns:
+        Modified input flight trajectory ("trajectory_data"-part of input-JSON)
+    """
+    baseline = copy.deepcopy(baseline)
+    # Set the altitude of two waypoints to None
+    baseline_manip = baseline
+    idx_miss = [int(np.floor(len(baseline['altitude']) / 3)), int(np.floor(2 * len(baseline['altitude']) / 3))]
+    baseline_manip['altitude'][idx_miss] = baseline_manip['altitude'].dtype.type(None)
+    return _baseline_to_json_input(baseline_manip)
+
+def _make_missing_departure(
+        baseline: dict[str,np.ndarray]
+) -> list[dict[str, Any]]:
+    """Apply test for missing flight departure phase to 4D flight trajectories.
+
+    Creates "trajectory_data"-part of input-JSON from baseline output with applied manipulation to the flight
+    trajectory
+
+    Args:
+        baseline: Baseline trajectory datapoints extracted from default case outputs
+
+    Returns:
+        Modified input flight trajectory ("trajectory_data"-part of input-JSON)
+    """
+    baseline = copy.deepcopy(baseline)
+    # Remove departure waypoints
+    idx_sort = np.argsort(baseline['time'])
+    for key in baseline.keys():
+        baseline[key] = baseline[key][idx_sort]
+    try:
+        # First point of flight above 2000ft from first datapoint
+        idx_departure = np.searchsorted(baseline['altitude'], baseline['altitude'][0] + 2 * 304.8, side='right')
+    except:
+        # Default, if flight does not reach 2000ft
+        idx_departure = 3
+    baseline_manip = {}
+    for key in baseline.keys():
+        baseline_manip[key] = baseline[key][idx_departure:]
+    return _baseline_to_json_input(baseline_manip)
+
+def _make_missing_landing(
+        baseline: dict[str,np.ndarray]
+) -> list[dict[str, Any]]:
+    """Apply test for missing flight landing phase to 4D flight trajectories.
+
+    Creates "trajectory_data"-part of input-JSON from baseline output with applied manipulation to the flight
+    trajectory
+
+    Args:
+        baseline: Baseline trajectory datapoints extracted from default case outputs
+
+    Returns:
+        Modified input flight trajectory ("trajectory_data"-part of input-JSON)
+    """
+    baseline = copy.deepcopy(baseline)
+    # Remove landing waypoints
+    idx_sort = np.argsort(baseline['time'])
+    for key in baseline.keys():
+        baseline[key] = baseline[key][idx_sort]
+    try:
+        alt_reversed = baseline['altitude'][::-1]
+        idx_rev = np.searchsorted(alt_reversed, alt_reversed[0] + 2 * 304.8, side='right') - 1
+        # Last point of flight above 2000ft from last datapoint
+        idx_landing = len(alt_reversed) - idx_rev
+    except:
+        # Default, if flight does not reach 2000ft
+        idx_landing = len(baseline['altitude']) - 3
+    baseline_manip = {}
+    for key in baseline.keys():
+        baseline_manip[key] = baseline[key][:idx_landing]
+    return _baseline_to_json_input(baseline_manip)
+
+def _make_altitude_fluctuations(
+        baseline: dict[str,np.ndarray]
+) -> list[dict[str, Any]]:
+    """Apply test for altitude fluctuations in cruise flight to 4D flight trajectories.
+
+    Creates "trajectory_data"-part of input-JSON from baseline output with applied manipulation to the flight
+    trajectory
+
+    Args:
+        baseline: Baseline trajectory datapoints extracted from default case outputs
+
+    Returns:
+        Modified input flight trajectory ("trajectory_data"-part of input-JSON)
+    """
+    baseline = copy.deepcopy(baseline)
+    # Add altitude fluctuations in cruise flight
+    delta_fluctuation = 120  # max. 60 m fluctuation up and down
+    idx_sort = np.argsort(baseline['time'])
+    for key in baseline.keys():
+        baseline[key] = baseline[key][idx_sort]
+    flight_phases = pyflight.segment_phase(pyflight.segment_rocd(pyflight.segment_duration(baseline['time']),
+                                                                 pyunits.m_to_ft(baseline['altitude'])),
+                                           pyunits.m_to_ft(baseline['altitude']))
+    # Index of cruise phase waypoints
+    idx_cruise = np.argwhere(flight_phases == pyflight.FlightPhase.CRUISE).flatten()
+    alt_fluctuations = (np.random.rand(len(idx_cruise)) - 0.5) * delta_fluctuation
+    baseline_manip = baseline
+    baseline_manip['altitude'][idx_cruise] = baseline['altitude'][idx_cruise] + alt_fluctuations
+    return _baseline_to_json_input(baseline_manip)
+
+def _baseline_to_json_input(baseline: dict[str,np.ndarray]) -> list[dict[str, Any]]:
+    """Translate baseline trajectory format to Input-JSON "trajectory_data" format.
+
+    Modifies dict keys and data formats and units to translate trajetory data
+
+    Args:
+        baseline: Baseline trajectory data
+
+    Returns:
+        JSON-input format trajectory data ("trajectory_data"-part of input-JSON)
+    """
+    if 'time' in baseline.keys():
+        # → "2025-11-02T10:02:00+0000"
+        baseline['time'] = pd.to_datetime(baseline['time'])
+        baseline['time'] = np.array(baseline['time'].strftime("%Y-%m-%dT%H:%M:%S+0000"))
+    if 'altitude' in baseline.keys():
+        baseline['altitude'] = np.round(pyunits.m_to_ft(baseline['altitude']) / 100)
+    json_rename_keys = {
+        "time": "ts",
+        "latitude": "lat",
+        "longitude": "lon",
+        "altitude": "fl",
+        "fuel_flow": "ff",
+        "engine_efficiency": "ee",
+        "aircraft_mass": "am",
+        "true_airspeed": "tas",
+    }
+    baseline_json = {json_rename_keys[key]: baseline[key] for key in json_rename_keys.keys() if
+                           key in baseline.keys()}
+    keys = baseline_json.keys()  # preserves the original key order
+    waypoints_manip = [dict(zip(keys, vals)) for vals in zip(*baseline_json.values())]
+    return waypoints_manip
 
 @dataclass(frozen=True)
 class ParamSpec:
@@ -345,6 +652,38 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
         True,
     ),
     # trajectory columns
+    "time": ParamSpec(
+        "time",
+        "column",
+        "trajectory",
+        "ts",
+        None,
+        True,
+    ),
+    "latitude": ParamSpec(
+        "latitude",
+        "column",
+        "trajectory",
+        "lat",
+        None,
+        True,
+    ),
+    "longitude": ParamSpec(
+        "longitude",
+        "column",
+        "trajectory",
+        "lon",
+        None,
+        True,
+    ),
+    "altitude": ParamSpec(
+        "altitude",
+        "column",
+        "trajectory",
+        "fl",
+        None,
+        True,
+    ),
     "fuel_flow": ParamSpec(
         "fuel_flow",
         "column",
@@ -424,6 +763,17 @@ AGGREGATED_FLIGHT_SELECTIONS: dict[str, str] = {
     "tc_tom_exceeds_mtow": "RYR46YN",  # expect_error: fleet propagates error
     # Load factor clamping
     "tc_lf_gt_one": "ACA812",
+    # Trajectory modifications
+    "tc_var_time_resolution": "RYR46YN",
+    "tc_mixed_time": "ACA812",
+    "tc_duplicate_time": "UAE62Y",
+    "tc_missing_timestamps": "FDX5067",
+    "tc_missing_latitudes": "RYR46YN",
+    "tc_missing_longitudes": "ACA812",
+    "tc_missing_altitudes": "UAE62Y",
+    "tc_missing_departure": "FDX5067",
+    "tc_missing_landing": "RYR46YN",
+    "tc_altitude_fluctuations": "ACA812",
 }
 
 
@@ -795,7 +1145,10 @@ def apply_parameters(
                     section[spec.json_field] = base_value
 
             elif spec.category == "column":
-                perturbed = (base_value * factor).tolist()
+                if factor != 1:
+                    perturbed = (base_value * factor).tolist()
+                else:
+                    perturbed = base_value.tolist()
                 waypoints = fi["trajectory"]["trajectory_data"]
                 for i, wp in enumerate(waypoints):
                     if i < len(perturbed):
@@ -1168,6 +1521,27 @@ def build_test_cases() -> list[TestCaseSpec]:
             description="TC_LF_GT_ONE: LF > 1: clamped to 1.0",
         )
     )
+
+    # Trajectory modification test cases
+    trajectory_mod_cases = {
+        "var_time_resolution":_make_var_time_resolution,
+        "mixed_time":_make_mixed_time,
+        "duplicate_time":_make_duplicate_time,
+        "missing_timestamps":_make_missing_timestamps,
+        "missing_latitudes":_make_missing_latitudes,
+        "missing_longitudes":_make_missing_longitudes,
+        "missing_altitudes":_make_missing_altitudes,
+        "missing_departure":_make_missing_departure,
+        "missing_landing":_make_missing_landing,
+        "altitude_fluctuations":_make_altitude_fluctuations,
+    }
+    for case in trajectory_mod_cases.keys():
+        cases.append(TestCaseSpec(
+            suffix= "tc_"+case,
+            params=all_params,
+            modifications=[Modification("trajectory.trajectory_data", trajectory_mod_cases[case])],
+            description="Trajectory modification case: %s" % case
+        ))
 
     return cases
 
@@ -1597,7 +1971,6 @@ def generate_aggregated_golden(ctx: GoldenContext) -> None:
     # Save aggregated input
     agg_input_path = ctx.args.output_dir / f"{ctx.base_name}_aggregated_input.json"
     save_input(aggregated_flights, agg_input_path)
-
     # Run fleet pipeline once on the aggregated input
     _log.info("Running fleet pipeline on aggregated input (%d flights)...", len(aggregated_flights))
     try:
@@ -1641,7 +2014,7 @@ def main() -> int:
     ctx = setup_baseline(args)
 
     # Mode 1: per-file legacy generation (backward compatible)
-    generate_per_file_golden(ctx)
+    #generate_per_file_golden(ctx)
 
     # Mode 2: aggregated single-file generation
     generate_aggregated_golden(ctx)
