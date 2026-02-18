@@ -278,10 +278,10 @@ def _make_var_time_resolution(
     # End index of applied modification
     idx_manip_2 = np.searchsorted(flighttime_s, flighttime_s[idx_manip_1] + duration_manipulate_s, side='right')
     # Insert defined time steps into waypoint-time-vector
-    time_manip = np.concatenate((time[0:idx_manip_1],
+    time_manip = np.concatenate((time[:idx_manip_1],
                                  np.array([time[idx_manip_1] + np.timedelta64(int(n), 's') for n in
                                            np.cumsum(dt_manipulate_s)]),
-                                 time[idx_manip_2:-1]
+                                 time[idx_manip_2:]
                                  ))
     flighttime_manip_s = (time_manip - time_manip[0]) / np.timedelta64(1, 's')
     baseline_manip = {}
@@ -353,10 +353,14 @@ def _make_missing_timestamps(
         Modified input flight trajectory ("trajectory_data"-part of input-JSON)
     """
     baseline = copy.deepcopy(baseline)
+    # Sort waypoints by time
+    idx_sort = np.argsort(baseline['time'])
+    for key in baseline.keys():
+        baseline[key] = baseline[key][idx_sort]
     # Set the timestamps of two waypoints to NaT
     baseline_manip = baseline
     idx_miss = [int(np.floor(len(baseline['time']) / 3)), int(np.floor(2 * len(baseline['time']) / 3))]
-    baseline_manip['time'][idx_miss] = baseline_manip['time'].dtype.type(None)
+    baseline_manip['time'][idx_miss] = np.datetime64("NaT")
     return _baseline_to_json_input(baseline_manip)
 
 def _make_missing_latitudes(
@@ -374,10 +378,15 @@ def _make_missing_latitudes(
         Modified input flight trajectory ("trajectory_data"-part of input-JSON)
     """
     baseline = copy.deepcopy(baseline)
+    # Sort waypoints by time
+    idx_sort = np.argsort(baseline['time'])
+    for key in baseline.keys():
+        baseline[key] = baseline[key][idx_sort]
     # Set the latitudes of two waypoints to None
     baseline_manip = baseline
     idx_miss = [int(np.floor(len(baseline['latitude']) / 3)), int(np.floor(2 * len(baseline['latitude']) / 3))]
-    baseline_manip['latitude'][idx_miss] = baseline_manip['latitude'].dtype.type(None)
+    baseline_manip['latitude'] = baseline_manip['latitude'].astype(float)
+    baseline_manip['latitude'][idx_miss] = np.nan
     return _baseline_to_json_input(baseline_manip)
 
 def _make_missing_longitudes(
@@ -395,10 +404,15 @@ def _make_missing_longitudes(
         Modified input flight trajectory ("trajectory_data"-part of input-JSON)
     """
     baseline = copy.deepcopy(baseline)
+    # Sort waypoints by time
+    idx_sort = np.argsort(baseline['time'])
+    for key in baseline.keys():
+        baseline[key] = baseline[key][idx_sort]
     # Set the longitudes of two waypoints to None
     baseline_manip = baseline
     idx_miss = [int(np.floor(len(baseline['longitude']) / 3)), int(np.floor(2 * len(baseline['longitude']) / 3))]
-    baseline_manip['longitude'][idx_miss] = baseline_manip['longitude'].dtype.type(None)
+    baseline_manip['longitude'] = baseline_manip['longitude'].astype(float)
+    baseline_manip['longitude'][idx_miss] = np.nan
     return _baseline_to_json_input(baseline_manip)
 
 def _make_missing_altitudes(
@@ -416,10 +430,15 @@ def _make_missing_altitudes(
         Modified input flight trajectory ("trajectory_data"-part of input-JSON)
     """
     baseline = copy.deepcopy(baseline)
+    # Sort waypoints by time
+    idx_sort = np.argsort(baseline['time'])
+    for key in baseline.keys():
+        baseline[key] = baseline[key][idx_sort]
     # Set the altitude of two waypoints to None
     baseline_manip = baseline
     idx_miss = [int(np.floor(len(baseline['altitude']) / 3)), int(np.floor(2 * len(baseline['altitude']) / 3))]
-    baseline_manip['altitude'][idx_miss] = baseline_manip['altitude'].dtype.type(None)
+    baseline_manip['altitude'] = baseline_manip['altitude'].astype(float)
+    baseline_manip['altitude'][idx_miss] = np.nan
     return _baseline_to_json_input(baseline_manip)
 
 def _make_missing_departure(
@@ -437,10 +456,11 @@ def _make_missing_departure(
         Modified input flight trajectory ("trajectory_data"-part of input-JSON)
     """
     baseline = copy.deepcopy(baseline)
-    # Remove departure waypoints
+    # Sort waypoints by time
     idx_sort = np.argsort(baseline['time'])
     for key in baseline.keys():
         baseline[key] = baseline[key][idx_sort]
+    # Remove departure waypoints
     try:
         # First point of flight above 2000ft from first datapoint
         idx_departure = np.searchsorted(baseline['altitude'], baseline['altitude'][0] + 2 * 304.8, side='right')
@@ -467,10 +487,11 @@ def _make_missing_landing(
         Modified input flight trajectory ("trajectory_data"-part of input-JSON)
     """
     baseline = copy.deepcopy(baseline)
-    # Remove landing waypoints
+    # Sort waypoints by time
     idx_sort = np.argsort(baseline['time'])
     for key in baseline.keys():
         baseline[key] = baseline[key][idx_sort]
+    # Remove departure waypoints
     try:
         alt_reversed = baseline['altitude'][::-1]
         idx_rev = np.searchsorted(alt_reversed, alt_reversed[0] + 2 * 304.8, side='right') - 1
@@ -509,10 +530,42 @@ def _make_altitude_fluctuations(
                                            pyunits.m_to_ft(baseline['altitude']))
     # Index of cruise phase waypoints
     idx_cruise = np.argwhere(flight_phases == pyflight.FlightPhase.CRUISE).flatten()
-    alt_fluctuations = (np.random.rand(len(idx_cruise)) - 0.5) * delta_fluctuation
-    baseline_manip = baseline
-    baseline_manip['altitude'][idx_cruise] = baseline['altitude'][idx_cruise] + alt_fluctuations
+    delta_idx_cruise = idx_cruise[1:]-idx_cruise[:-1]
+    cruise_detected = 0
+    for i,delta in enumerate(delta_idx_cruise):
+        if (delta == 1) & (cruise_detected == 0):
+            cruise_detected=i
+        elif (delta != 1) & (cruise_detected > 0):
+            if ((baseline['time'][idx_cruise[i]] - baseline['time'][idx_cruise[cruise_detected]]) / np.timedelta64(1,'s')) > 119:
+                break
+            else:
+                cruise_detected = 0
+    if cruise_detected == 0:
+        raise RuntimeError("No valid cruise phase detected.")
+    else:
+        cruise_time_5s = np.floor((baseline['time'][idx_cruise[i]] - baseline['time'][idx_cruise[cruise_detected]]) / np.timedelta64(5,'s'))
+        time_manip = np.concatenate((baseline['time'][:idx_cruise[cruise_detected]],
+                                     np.array([baseline['time'][idx_cruise[cruise_detected]] + np.timedelta64(int(n)*5, 's') for n in np.arange(1,cruise_time_5s)]),
+                                     baseline['time'][idx_cruise[i]:]
+                                     ))
+        flighttime_manip_s = (time_manip - time_manip[0]) / np.timedelta64(1, 's')
+        flighttime_s = (baseline['time'] - baseline['time'][0]) / np.timedelta64(1, 's')
+        baseline_manip = {}
+        # Apply changed waypoint-time-vector and interpolate trajectory data accordingly
+        for key in baseline.keys():
+            if key == "time":
+                baseline_manip[key] = time_manip
+            else:
+                baseline_manip[key] = np.interp(flighttime_manip_s, flighttime_s, baseline[key])
+        flight_phases = pyflight.segment_phase(pyflight.segment_rocd(pyflight.segment_duration(baseline_manip['time']),
+                                                                     pyunits.m_to_ft(baseline_manip['altitude'])),
+                                               pyunits.m_to_ft(baseline_manip['altitude']))
+        # Index of cruise phase waypoints
+        idx_cruise = np.argwhere(flight_phases == pyflight.FlightPhase.CRUISE).flatten()
+        alt_fluctuations = (np.random.rand(len(idx_cruise)) - 0.5) * delta_fluctuation
+        baseline_manip['altitude'][idx_cruise] = baseline_manip['altitude'][idx_cruise] + alt_fluctuations
     return _baseline_to_json_input(baseline_manip)
+
 
 def _baseline_to_json_input(baseline: dict[str,np.ndarray]) -> list[dict[str, Any]]:
     """Translate baseline trajectory format to Input-JSON "trajectory_data" format.
@@ -541,10 +594,11 @@ def _baseline_to_json_input(baseline: dict[str,np.ndarray]) -> list[dict[str, An
         "aircraft_mass": "am",
         "true_airspeed": "tas",
     }
-    baseline_json = {json_rename_keys[key]: baseline[key] for key in json_rename_keys.keys() if
+    baseline_json = {json_rename_keys[key]: list(pd.Series(baseline[key]).replace(np.nan, None)) for key in json_rename_keys.keys() if
                            key in baseline.keys()}
     keys = baseline_json.keys()  # preserves the original key order
     waypoints_manip = [dict(zip(keys, vals)) for vals in zip(*baseline_json.values())]
+
     return waypoints_manip
 
 @dataclass(frozen=True)
@@ -945,6 +999,35 @@ def extract_baseline_values(flights: list[FlightView]) -> dict[str, Any]:
 
     return baseline
 
+def interpolate_baseline_to_input_size(
+        baseline: dict[str, Any],
+        input_data: list[dict[str, Any]]
+)-> dict[str, Any]:
+    column_keys_json = {s.internal_name: s.json_field for s in PARAMETER_REGISTRY.values() if s.category == "column"}
+    columns_from_input = ["time", "latitude", "longitude", "altitude"]
+    columns_interpolate_baseline = [key for key in column_keys_json.keys() if key not in columns_from_input]
+    data = copy.deepcopy(input_data)
+    baseline_interpol = copy.deepcopy(baseline)
+    for flight in data:
+        flight_id = flight["flight_information"]["flight_identification"]
+        traj = flight["flight_information"]["trajectory"]["trajectory_data"]
+        input_ts = pd.to_datetime([pt["ts"] for pt in traj], utc=True).to_numpy(dtype="datetime64[ns]")
+        baseline_time = baseline["time"][flight_id]
+        input_dt_s = (input_ts-input_ts[0])/np.timedelta64(1, 's')
+        baseline_dt_s = (baseline_time-input_ts[0])/np.timedelta64(1, 's')
+        for col in column_keys_json.keys():
+            if col in baseline_interpol.keys():
+                if flight_id in baseline_interpol[col].keys():
+                    if col == "time":
+                        baseline_interpol[col][flight_id] = input_ts
+                    elif col == "altitude":
+                        baseline_interpol[col][flight_id] = np.array([pyunits.ft_to_m(pt[column_keys_json[col]]*100) for pt in traj])
+                    elif col in columns_from_input:
+                        baseline_interpol[col][flight_id] = np.array([pt[column_keys_json[col]] for pt in traj])
+                    elif col in  columns_interpolate_baseline:
+                        baseline_interpol[col][flight_id] = np.interp(input_dt_s, baseline_dt_s, baseline[col][flight_id])
+    return baseline_interpol
+
 
 def apply_mixed_columns(
     input_data: list[dict[str, Any]],
@@ -1150,9 +1233,11 @@ def apply_parameters(
                 else:
                     perturbed = base_value.tolist()
                 waypoints = fi["trajectory"]["trajectory_data"]
-                for i, wp in enumerate(waypoints):
-                    if i < len(perturbed):
+                if len(perturbed) == len(waypoints):
+                    for i, wp in enumerate(waypoints):
                         wp[spec.json_field] = perturbed[i]
+                else:
+                    raise RuntimeError("Baseline does not match input data by size")
 
     return data
 
@@ -1708,7 +1793,8 @@ def setup_baseline(args: argparse.Namespace) -> GoldenContext:
         default_outputs = [FlightView.from_dict(d) for d in data]
 
     # Extract baseline values for perturbation
-    baseline = extract_baseline_values(default_outputs)
+    original_baseline = extract_baseline_values(default_outputs)
+    baseline = interpolate_baseline_to_input_size(original_baseline,original_input)
     _log.info("Extracted baseline values from %d flights", len(default_outputs))
 
     return GoldenContext(
