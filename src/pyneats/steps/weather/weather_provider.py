@@ -221,6 +221,7 @@ class WeatherProvider(
     """
 
     default_params = WeatherProviderParams
+    output_schema = FlightWithWeather
 
     def __init__(
         self,

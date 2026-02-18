@@ -62,6 +62,7 @@ class CoCiPModel(
     """Calculates contrail climate impact using the Pycontrails's CoCiP implementation"""
 
     default_params = ContrailsParams
+    output_schema = FlightWithRFContrailsImpact
 
     def _post_init(self) -> None:
         if self.params.met is None or self.params.rad is None:

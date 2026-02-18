@@ -222,7 +222,6 @@ class FleetRunnerLargeEmitter(FleetRunner):
             self.fleet_with_emissions,
             "CoCiP evaluation",
             self.cocip_step,
-            self.cfg.cocip_critical_columns,
         )
 
         self.fleet_with_contrails = flights
