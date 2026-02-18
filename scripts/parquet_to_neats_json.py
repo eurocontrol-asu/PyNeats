@@ -2,8 +2,8 @@
 Convert a parquet file of ADS-B state vectors into NEATS-format JSON.
 
 Reads a parquet file produced by OpenSky (or similar ADS-B sources),
-selects a random sample of flights, and writes a JSON file compatible
-with the NEATS input schema.
+applies quality filters, selects a random sample of flights, and writes
+a JSON file compatible with the NEATS input schema.
 
 Usage
 -----
@@ -13,7 +13,9 @@ Usage
         --input  data/2025-07-09.parquet \
         --output data/neats_from_parquet.json \
         --num-flights 100 \
-        --seed 42
+        --seed 42 \
+        --min-duration 5 \
+        --max-endpoint-altitude 10000
 """
 
 from __future__ import annotations
@@ -43,6 +45,24 @@ EUROPEAN_AIRPORTS = [
 ]
 
 FEET_PER_FL = 100.0
+
+
+def compute_flight_stats(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute per-flight quality statistics for filtering.
+
+    The DataFrame must be sorted by ``["flight_id", "timestamp"]`` before
+    calling this function so that ``.first()`` / ``.last()`` return the
+    chronologically correct endpoints.
+    """
+    grouped = df.groupby("flight_id")
+    stats = pd.DataFrame({
+        "duration_s": (
+            grouped["timestamp"].max() - grouped["timestamp"].min()
+        ).dt.total_seconds(),
+        "first_alt": grouped["altitude"].first(),
+        "last_alt": grouped["altitude"].last(),
+    })
+    return stats
 
 
 def trajectory_data_from_group(group: pd.DataFrame) -> list[dict]:
@@ -129,25 +149,73 @@ def main() -> None:
         default=42,
         help="Random seed for reproducible sampling (default: 42).",
     )
+    parser.add_argument(
+        "--min-duration",
+        type=float,
+        default=5.0,
+        help="Minimum flight duration in minutes (default: 5).",
+    )
+    parser.add_argument(
+        "--max-endpoint-altitude",
+        type=float,
+        default=10000.0,
+        help=(
+            "Maximum altitude in feet for the first and last waypoints "
+            "(default: 10000). Flights whose first or last altitude exceeds "
+            "this are excluded, ensuring only full origin-to-destination "
+            "trajectories are kept."
+        ),
+    )
     args = parser.parse_args()
 
     # --- 1. Load parquet ---
     log.info("Loading %s", args.input)
     df = pd.read_parquet(args.input)
-    flight_ids = df["flight_id"].unique()
-    log.info("Loaded %d state vectors, %d unique flights", len(df), len(flight_ids))
+    df = df.sort_values(["flight_id", "timestamp"])
+    total_flights = df["flight_id"].nunique()
+    log.info("Loaded %d state vectors, %d unique flights", len(df), total_flights)
 
-    # --- 2. Sample flights ---
+    # --- 2. Filter flights ---
+    stats = compute_flight_stats(df)
+
+    dur_mask = stats["duration_s"] >= args.min_duration * 60
+    alt_mask = (
+        (stats["first_alt"] <= args.max_endpoint_altitude)
+        & (stats["last_alt"] <= args.max_endpoint_altitude)
+    )
+
+    n_dur_fail = int((~dur_mask).sum())
+    n_alt_fail = int((~alt_mask).sum())
+    log.info(
+        "  Excluded by --min-duration (%.1f min): %d flights",
+        args.min_duration, n_dur_fail,
+    )
+    log.info(
+        "  Excluded by --max-endpoint-altitude (%.0f ft): %d flights",
+        args.max_endpoint_altitude, n_alt_fail,
+    )
+
+    eligible_ids = stats.index[dur_mask & alt_mask].tolist()
+    log.info(
+        "After filtering: %d / %d flights eligible (%.1f%%)",
+        len(eligible_ids), total_flights,
+        100.0 * len(eligible_ids) / total_flights if total_flights else 0,
+    )
+
+    if not eligible_ids:
+        log.warning("No flights passed the filters — writing empty output.")
+
+    # --- 3. Sample flights ---
     rng = random.Random(args.seed)
-    n = min(args.num_flights, len(flight_ids))
-    sampled_ids = rng.sample(list(flight_ids), n)
+    n = min(args.num_flights, len(eligible_ids))
+    sampled_ids = rng.sample(eligible_ids, n) if eligible_ids else []
     log.info("Sampled %d flights", n)
 
     df = df[df["flight_id"].isin(set(sampled_ids))]
 
-    # --- 3. Convert each flight ---
+    # --- 4. Convert each flight ---
     output_flights: list[dict] = []
-    grouped = df.sort_values("timestamp").groupby("flight_id")
+    grouped = df.groupby("flight_id")
 
     for i, (fid, group) in enumerate(grouped):
         callsign = group["callsign"].iloc[0]
@@ -176,7 +244,7 @@ def main() -> None:
         if (i + 1) % 20 == 0:
             log.info("  processed %d / %d flights", i + 1, n)
 
-    # --- 4. Write output ---
+    # --- 5. Write output ---
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with open(args.output, "w") as fh:
         json.dump(output_flights, fh, indent=2, ensure_ascii=False)
