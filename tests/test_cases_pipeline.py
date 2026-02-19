@@ -45,6 +45,15 @@ Behavioural assertions (TestBehavioralAssertions):
    test_eng_unspec_assigns_default        TC_ENG_UNSPEC: select representative
    test_ac_no_bada4_uses_bada3            TC_AC_NO_BADA4: BADA3 fallback
    test_ac_overspec_remaps_code           TC_AC_OVERSPEC: remap to BADA naming
+   test_var_time_resolution_correction    tc_var_time_resolution: resample
+   test_mixed_time_ordering               tc_mixed_time: order along time
+   test_duplicate_time_correction         tc_duplicate_time: remove duplicates
+   test_missing_trajectory_value_deletion tc_missing_timestamps / tc_missing_latitudes /
+       tc_missing_longitudes / tc_missing_altitudes: remove faulty waypoints and if
+       applicable interpolate
+   test_missing_departure_landing_abortion tc_missing_departure / tc_missing_landing:
+       check if aborted [TODO: check for flag]
+   test_altitude_fluctuations_correction  tc_altitude_fluctuations: smooth fluctuations
 
 Fast pre-pipeline unit tests (no weather/BADA needed):
    test_lf_gt_one_clamped_by_parser
@@ -60,12 +69,16 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pycontrails.core.flight as pyflight
+import pycontrails.physics.units as pyunits
 import pytest
 from pandas.testing import assert_frame_equal
+from scripts.create_golden_outputs import AGGREGATED_FLIGHT_SELECTIONS
 
 from pyneats.core.views import FlightView
 from pyneats.runners.fleet import FleetRunnerParams
 from pyneats.runners.large_emitter import FleetRunnerLargeEmitter
+from pyneats.steps.parsing.neats_io import neats_json_to_flights
 from pyneats.steps.weather.weather_store import ZarrPaths
 from tests.conftest import assert_climate_payload_equal
 
@@ -305,6 +318,18 @@ _MASS_PRESERVES_INPUT_TCS: list[tuple[str, str]] = [
 _MASS_ITERATIVE_FROM_TOM_TCS: list[tuple[str, str]] = [
     ("TC_MASS_NO_AM", "UAE62Y__tc_mass_no_am"),
     ("TC_MASS_NO_AM_NO_LF", "RYR46YN__tc_mass_no_am_no_lf"),
+]
+
+_MISSING_TRAJECTORY_VALUES_TCS: list[tuple[str, str, str]] = [
+    ("missing_timestamps", "time", "ts"),
+    ("missing_latitudes", "latitude", "lat"),
+    ("missing_longitudes", "longitude", "lon"),
+    ("missing_altitudes", "altitude", "fl"),
+]
+
+_MISSING_DEPARTURE_LANDING_TCS: list[str] = [
+    ("missing_departure"),
+    ("missing_landing"),
 ]
 
 
@@ -613,6 +638,208 @@ class TestBehavioralAssertions:
             f"TC_AC_OVERSPEC: bada_code must be remapped from 'B737-800W', got '{bada_code}'"
         )
 
+    def test_var_time_resolution_correction(
+        self,
+        aggregated_fleet_run: FleetRunnerLargeEmitter,
+        aggregated_input_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        """var_time_resolution: Checks time resolution of in- and output"""
+        flight_id = (
+            AGGREGATED_FLIGHT_SELECTIONS["tc_var_time_resolution"] + "__tc_var_time_resolution"
+        )
+        outp_time = pd.to_datetime(
+            _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id).get("time"),
+            utc=True,
+        )
+        inp_time = pd.to_datetime(
+            neats_json_to_flights([aggregated_input_by_id[flight_id]])[0].get("time"), utc=True
+        )
+        outp_dt_s = np.diff(outp_time.values) / np.timedelta64(1, "s")
+        inp_dt_s = np.diff(inp_time.values) / np.timedelta64(1, "s")
+        assert np.max(inp_dt_s) > 60, "tc_var_time_resolution: Input not properly modified"
+        assert np.max(outp_dt_s) <= 60, (
+            "tc_var_time_resolution: Failed to upsample waypoints to at least 60 s resolution"
+        )
+
+    def test_mixed_time_ordering(
+        self,
+        aggregated_fleet_run: FleetRunnerLargeEmitter,
+        aggregated_input_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        """test_mixed_time: checks (un)sorting of in- and output"""
+        flight_id = AGGREGATED_FLIGHT_SELECTIONS["tc_mixed_time"] + "__tc_mixed_time"
+        outp_time = pd.to_datetime(
+            _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id).get("time"),
+            utc=True,
+        )
+        inp_time = pd.to_datetime(
+            neats_json_to_flights([aggregated_input_by_id[flight_id]])[0].get("time"), utc=True
+        )
+        outp_idx_sort = np.argsort(outp_time)
+        inp_idx_sort = np.argsort(inp_time)
+        assert not ((inp_idx_sort == np.arange(len(inp_idx_sort))).all()), (
+            "tc_mixed_time: Input not properly modified"
+        )
+        assert (outp_idx_sort == np.arange(len(outp_idx_sort))).all(), (
+            "tc_mixed_time: Failed to sort waypoints according to time"
+        )
+
+    def test_duplicate_time_correction(
+        self,
+        aggregated_fleet_run: FleetRunnerLargeEmitter,
+        aggregated_input_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        """duplicate_time: checks duplicates in in- and output"""
+        flight_id = AGGREGATED_FLIGHT_SELECTIONS["tc_duplicate_time"] + "__tc_duplicate_time"
+        outp_time = pd.to_datetime(
+            _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id).get("time"),
+            utc=True,
+        )
+        inp_time = pd.to_datetime(
+            neats_json_to_flights([aggregated_input_by_id[flight_id]])[0].get("time"), utc=True
+        )
+        assert inp_time.duplicated().sum() > 0, "tc_duplicate_time: Input not properly modified"
+        assert outp_time.duplicated().sum() == 0, (
+            "tc_duplicate_time: Failed to remove duplicate waypoint"
+        )
+
+    @pytest.mark.parametrize(
+        "tc_id,outp_var,inp_var",
+        _MISSING_TRAJECTORY_VALUES_TCS,
+        ids=[t[0] for t in _MISSING_TRAJECTORY_VALUES_TCS],
+    )
+    def test_missing_trajectory_value_deletion(
+        self,
+        tc_id,
+        outp_var,
+        inp_var,
+        aggregated_fleet_run: FleetRunnerLargeEmitter,
+        aggregated_input_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        """missing_trajectory_value: checks input for missing value and output for correction of missing value"""
+        flight_id = AGGREGATED_FLIGHT_SELECTIONS["tc_" + tc_id] + "__tc_" + tc_id
+        output_flight = _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id)
+        outp_time_raw = pd.to_datetime(output_flight.get("time"), utc=True)
+        outp_time = pd.Series(outp_time_raw).reset_index(drop=True)
+        outp_variable = pd.Series(output_flight.get(outp_var)).reset_index(drop=True)
+        input_flight = neats_json_to_flights([aggregated_input_by_id[flight_id]])[0]
+        inp_time_raw = pd.to_datetime(input_flight.get("time"), utc=True)
+        inp_time = pd.Series(inp_time_raw).reset_index(drop=True)
+        inp_variable = pd.Series(input_flight.get(inp_var)).reset_index(drop=True)
+        idx_inp_None = inp_variable[inp_variable.isnull()].index
+        assert len(idx_inp_None) > 0, f"tc_{tc_id}: Input not properly modified"
+        assert sum(outp_variable.isnull()) == 0, f"tc_{tc_id}: Failed to handle missing timestamps"
+        if outp_var == "time":
+            outp_variable = pd.Series(output_flight.get("altitude")).reset_index(drop=True)
+        for idx in idx_inp_None:
+            time_before = inp_time[idx - 1]
+            time_after = inp_time[idx + 1]
+            idx_outp_between = outp_time[(outp_time > time_before) & (outp_time < time_after)].index
+            if len(idx_outp_between) > 0:
+                time_before = outp_time[min(idx_outp_between) - 1]
+                time_after = outp_time[max(idx_outp_between) + 1]
+                variable_before = outp_variable[min(idx_outp_between) - 1]
+                variable_after = outp_variable[max(idx_outp_between) + 1]
+                interpol_time = pd.Series(
+                    [time_before] + ([None] * len(idx_outp_between)) + [time_after]
+                ).interpolate()
+                interpol_variable = pd.Series(
+                    [variable_before] + ([None] * len(idx_outp_between)) + [variable_after]
+                ).interpolate()
+                assert interpol_time[1:-1] == outp_time[idx_outp_between], (
+                    f"tc_{tc_id}: Failed to handle missing timestamps"
+                )
+                assert interpol_variable[1:-1] == outp_variable[idx_outp_between], (
+                    f"tc_{tc_id}: Failed to handle missing timestamps"
+                )
+
+    @pytest.mark.parametrize(
+        "tc_id",
+        _MISSING_DEPARTURE_LANDING_TCS,
+        ids=[t for t in _MISSING_DEPARTURE_LANDING_TCS],
+    )
+    def test_missing_departure_landing_abortion(
+        self,
+        tc_id,
+        aggregated_fleet_run: FleetRunnerLargeEmitter,
+        aggregated_input_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        """missing_departure_landing: checks id calculation was aborted dur to incomplete trajectory"""
+        # TODO: Check warning was triggered, but comuputation was successfull
+        flight_id = AGGREGATED_FLIGHT_SELECTIONS["tc_" + tc_id] + "__tc_" + tc_id
+        output_flight = _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id)
+        assert output_flight == None, f"tc_{tc_id}: Failed to detect missing flight segment"
+        assert flight_id in aggregated_input_by_id, f"tc_{tc_id}: Input missing"
+
+    def test_altitude_fluctuations_correction(
+        self,
+        aggregated_fleet_run: FleetRunnerLargeEmitter,
+        aggregated_input_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        """altitude_fluctuations: checks, if altitude fluctuations in cruise were smoothed"""
+        flight_id = (
+            AGGREGATED_FLIGHT_SELECTIONS["tc_altitude_fluctuations"] + "__tc_altitude_fluctuations"
+        )
+        output_flight = _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id)
+        assert output_flight is not None, f"Flight '{flight_id}' not found in pipeline output"
+        outp_time = (
+            pd.Series(pd.to_datetime(output_flight.get("time"), utc=True))
+            .reset_index(drop=True)
+            .to_numpy()
+        )
+        outp_thrust = output_flight.get("thrust")
+        assert outp_thrust is not None, f"Flight '{flight_id}' has no 'thrust' column in output"
+        flight_phases = pyflight.segment_phase(
+            pyflight.segment_rocd(
+                pyflight.segment_duration(outp_time), pyunits.m_to_ft(output_flight.get("altitude"))
+            ),
+            pyunits.m_to_ft(output_flight.get("altitude")),
+        )
+        # Index of cruise phase waypoints
+        idx_cruise = np.argwhere(flight_phases == pyflight.FlightPhase.CRUISE).flatten()
+        delta_idx_cruise = idx_cruise[1:] - idx_cruise[:-1]
+        cruise_detected = 0
+        cruise_phases_idx = []
+        for i, delta in enumerate(delta_idx_cruise):
+            if (delta == 1) & (cruise_detected == 0):
+                cruise_detected = i
+            elif (delta != 1) & (cruise_detected > 0):
+                if (
+                    (
+                        output_flight["time"][idx_cruise[i]]
+                        - output_flight["time"][idx_cruise[cruise_detected]]
+                    )
+                    / np.timedelta64(1, "s")
+                ) > 59:
+                    cruise_phases_idx.append([idx_cruise[cruise_detected], idx_cruise[i]])
+                    cruise_detected = 0
+                else:
+                    cruise_detected = 0
+        for idx_start_end in cruise_phases_idx:
+            idx_cruise = np.arange(idx_start_end[0], idx_start_end[1] + 1)
+            cruise_thrust = outp_thrust[idx_cruise]
+            cruise_thrust_diff = np.diff(cruise_thrust)
+            cruise_thrust_diff_rel = cruise_thrust_diff / cruise_thrust[:-1]
+            cruise_thrust_diff_rel[abs(cruise_thrust_diff_rel) < 0.01] = 0
+            assert max(cruise_thrust_diff_rel) < 0.1, (
+                "tc_altitude_fluctuations: Failed to smooth altitude fluctuations"
+            )
+            ups = 0
+            downs = 0
+            current = 0
+            for thrust_diff_rel in cruise_thrust_diff_rel:
+                if (thrust_diff_rel > 0) & (current <= 0):
+                    ups += 1
+                    current = 1
+                elif (thrust_diff_rel < 0) & (current >= 0):
+                    downs += 1
+                    current = 1
+            changes = (ups + downs) / 2
+            if len(idx_cruise) > 7:
+                assert len(idx_cruise) > (changes * 6), (
+                    "tc_altitude_fluctuations: Failed to smooth altitude fluctuations"
+                )
+
 
 class TestPrePipelineValidation:
     """Fast unit tests that verify specific behaviours without running the
@@ -626,8 +853,6 @@ class TestPrePipelineValidation:
         """TC_LF_GT_ONE pre-check: load_factor > 1 is clamped to 1.0
         during JSON-to-DataFrame conversion.
         """
-        from pyneats.steps.parsing.neats_io import neats_json_to_flights
-
         if not _AGGREGATED_INPUT.exists():
             pytest.skip(f"Aggregated input not found: {_AGGREGATED_INPUT}")
 
@@ -700,3 +925,45 @@ class TestPrePipelineValidation:
         # ZZZZ is completely unknown; bada_type() should raise KeyError
         with pytest.raises(KeyError, match="Unable to resolve BADA mapping"):
             mapper.bada_type("ZZZZ")
+
+    @pytest.mark.parametrize(
+        "golden_input_file",
+        sorted(GOLDEN_DIR.glob("*_input.json")),
+        ids=lambda p: p.stem,
+    )
+    def test_golden_inputs_match_schema(self, golden_input_file: Path) -> None:
+        """All golden input JSON files must pass flight schema validation.
+
+        This catches silent dtype regressions (e.g. timestamp fields
+        serialized as integers instead of ISO-8601 strings).
+
+        Flights whose ``flight_identification`` contains ``tc_missing_``
+        are intentionally malformed (null required waypoint fields) and
+        are therefore excluded from strict schema validation.
+        """
+        jsonschema = pytest.importorskip("jsonschema")
+
+        schema_path = Path(__file__).parent.parent / "scripts" / "schemas" / "flight_schema.json"
+        with open(schema_path, encoding="utf-8") as fh:
+            schema = json.load(fh)
+
+        with open(golden_input_file, encoding="utf-8") as fh:
+            flights = json.load(fh)
+
+        validator = jsonschema.Draft202012Validator(schema)
+        errors: list[str] = []
+        for idx, flight in enumerate(flights):
+            fid = flight.get("flight_information", {}).get("flight_identification", f"index-{idx}")
+            # Skip flights that intentionally contain null required fields
+            # (tc_missing_timestamps, tc_missing_latitudes, etc.)
+            if "tc_missing_" in fid:
+                continue
+            for err in validator.iter_errors(flight):
+                errors.append(
+                    f"Flight '{fid}': {err.message} "
+                    f"(path: {'.'.join(str(p) for p in err.absolute_path)})"
+                )
+
+        assert not errors, f"Schema validation failed for {golden_input_file.name}:\n" + "\n".join(
+            errors
+        )
