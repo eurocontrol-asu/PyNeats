@@ -83,7 +83,11 @@ To load the cache programmatically, use `get_weather_from_zarr`:
 from pyneats.steps.weather.weather_store import get_weather_from_zarr, ZarrPaths
 
 weather = get_weather_from_zarr(
-    zp=ZarrPaths(met_path="/path/to/met.zarr", wind_path="/path/to/wind.zarr"),
+    zp=ZarrPaths(
+        met_store="/path/to/met.zarr",
+        rad_store="/path/to/rad.zarr",
+        wind_store="/path/to/wind.zarr",
+    ),
     t0="2025-07-09T00:00:00",
     t1="2025-07-09T23:59:59",
     chunks=None,
