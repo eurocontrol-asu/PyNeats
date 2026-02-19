@@ -320,11 +320,11 @@ _MASS_ITERATIVE_FROM_TOM_TCS: list[tuple[str, str]] = [
     ("TC_MASS_NO_AM_NO_LF", "RYR46YN__tc_mass_no_am_no_lf"),
 ]
 
-_MISSING_TRAJECTORY_VALUES_TCS: list[tuple[str, str, str]] = [
-    ("missing_timestamps", "time", "ts"),
-    ("missing_latitudes", "latitude", "lat"),
-    ("missing_longitudes", "longitude", "lon"),
-    ("missing_altitudes", "altitude", "fl"),
+_MISSING_TRAJECTORY_VALUES_TCS: list[tuple[str, str]] = [
+    ("missing_timestamps", "time"),
+    ("missing_latitudes", "latitude"),
+    ("missing_longitudes", "longitude"),
+    ("missing_altitudes", "altitude"),
 ]
 
 _MISSING_DEPARTURE_LANDING_TCS: list[str] = [
@@ -704,7 +704,7 @@ class TestBehavioralAssertions:
         )
 
     @pytest.mark.parametrize(
-        "tc_id,outp_var,inp_var",
+        "tc_id,outp_var",
         _MISSING_TRAJECTORY_VALUES_TCS,
         ids=[t[0] for t in _MISSING_TRAJECTORY_VALUES_TCS],
     )
@@ -712,7 +712,6 @@ class TestBehavioralAssertions:
         self,
         tc_id,
         outp_var,
-        inp_var,
         aggregated_fleet_run: FleetRunnerLargeEmitter,
         aggregated_input_by_id: dict[str, dict[str, Any]],
     ) -> None:
@@ -725,7 +724,7 @@ class TestBehavioralAssertions:
         input_flight = neats_json_to_flights([aggregated_input_by_id[flight_id]])[0]
         inp_time_raw = pd.to_datetime(input_flight.get("time"), utc=True)
         inp_time = pd.Series(inp_time_raw).reset_index(drop=True)
-        inp_variable = pd.Series(input_flight.get(inp_var)).reset_index(drop=True)
+        inp_variable = pd.Series(input_flight.get(outp_var)).reset_index(drop=True)
         idx_inp_None = inp_variable[inp_variable.isnull()].index
         assert len(idx_inp_None) > 0, f"tc_{tc_id}: Input not properly modified"
         assert sum(outp_variable.isnull()) == 0, f"tc_{tc_id}: Failed to handle missing timestamps"
