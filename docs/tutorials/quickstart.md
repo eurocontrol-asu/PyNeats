@@ -63,6 +63,27 @@ The pipeline executes these steps sequentially for each flight:
 6. **Climate functions** — Estimate climate forcing (CoCiP, aCCFs)
 7. **Climate metrics** — Convert to GWP / CO₂-equivalent
 
+!!! tip "Alternative parsers"
+    By default PyNeats uses `NeatsTrajectoryParser` for NEATS JSON format.
+    For OpenSky ADS-B data, use `OpenSkyParser` instead:
+    ```python
+    from pyneats.steps.parsing.open_sky_parser import OpenSkyParser
+    ```
+    Both implement the same `TrajectoryParser` protocol and are interchangeable.
+
+## Step 4: Run Tests
+
+```bash
+# Unit tests only (no external data required)
+make test-unit
+
+# Full test suite
+make test BADA_PATH=/path/to/bada WEATHER_PATH=/path/to/weather
+
+# Fast (no coverage)
+make test-fast BADA_PATH=/path/to/bada
+```
+
 ## Next Steps
 
 - [Usage guide](../howto/usage.md) — Processing flights from DataFrames, building weather caches
