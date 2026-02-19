@@ -309,6 +309,7 @@ def _make_mixed_time(
     """
     baseline = copy.deepcopy(baseline)
     # Shuffle waypoint order
+    np.random.seed(42)
     idx_rand = np.random.permutation(len(baseline['time']))
     baseline_manip = {}
     for key in baseline.keys():
@@ -562,6 +563,7 @@ def _make_altitude_fluctuations(
                                                pyunits.m_to_ft(baseline_manip['altitude']))
         # Index of cruise phase waypoints
         idx_cruise = np.argwhere(flight_phases == pyflight.FlightPhase.CRUISE).flatten()
+        np.random.seed(42)
         alt_fluctuations = (np.random.rand(len(idx_cruise)) - 0.5) * delta_fluctuation
         baseline_manip['altitude'][idx_cruise] = baseline_manip['altitude'][idx_cruise] + alt_fluctuations
     return _baseline_to_json_input(baseline_manip)
@@ -1003,6 +1005,13 @@ def interpolate_baseline_to_input_size(
         baseline: dict[str, Any],
         input_data: list[dict[str, Any]]
 )-> dict[str, Any]:
+    """Interpolate baseline column values apart from 4D-trajectory along input-data time datapoints.
+        
+    Copies 4D-trajectory columns from input data to baseline and interpolates remaining baseline column values to the 
+    input waypoints.
+
+    Returns a dict with baseline values keyed by {internal_name: {flight_id: value}}.
+    """
     column_keys_json = {s.internal_name: s.json_field for s in PARAMETER_REGISTRY.values() if s.category == "column"}
     columns_from_input = ["time", "latitude", "longitude", "altitude"]
     columns_interpolate_baseline = [key for key in column_keys_json.keys() if key not in columns_from_input]
