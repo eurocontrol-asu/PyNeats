@@ -96,6 +96,11 @@ class PyContrailsInterpolator(
                 self.params.interpolation_time
             )
 
+            if len(interpolated_flight) < 2:
+                raise TrajectoryInterpolationStepError(
+                    "resample_and_fill resulted in a trajectory with less than 2 waypoints"
+                )
+
             # Interpolate optional columns
             t_orig_num = original["time"].values.astype(np.int64)
             t_new_num = interpolated_flight["time"].astype(np.int64)
