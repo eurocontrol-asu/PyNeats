@@ -698,7 +698,8 @@ class FleetRunner(Runner):
             return []
 
         # Call step's run_fleet() method (typed via VectorizedStep protocol)
-        result_flights = step.run_fleet(flights)
+        result_flights, fleet_errors = step.run_fleet(flights)
+        self.error_records.extend(fleet_errors)
 
         # Check for critical column failures and filter
         critical_columns = get_step_critical_columns(step)

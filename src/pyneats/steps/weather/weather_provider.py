@@ -384,7 +384,9 @@ class WeatherProvider(
                 type(self).__name__, f"validation failed: {e}"
             ) from e
 
-    def run_fleet(self, flights: list[Flight4D]) -> list[FlightWithWeather]:
+    def run_fleet(
+        self, flights: list[Flight4D]
+    ) -> tuple[list[FlightWithWeather], list[dict[str, Any]]]:
         """
         Fleet-level vectorized weather intersection.
 
@@ -396,7 +398,7 @@ class WeatherProvider(
             flights: List of interpolated flights (Flight4D)
 
         Returns:
-            List of flights with weather data (FlightWithWeather)
+            Tuple of (flights with weather data, error records for dropped flights)
 
         Raises:
             WeatherStepError: If weather intersection or humidity scaling fails
@@ -440,19 +442,22 @@ class WeatherProvider(
 
         logger.info("Weather intersection complete in %.2fs", time.time() - t0)
 
-        # Convert back to List[Flight]
-        flights_with_weather = fleet_to_flights(fleet_with_weather)
+        # Convert back to List[Flight], detecting dropped flights
+        flights_with_weather, errors = fleet_to_flights(
+            fleet_with_weather, step_name="weather intersection"
+        )
 
         # Optional humidity scaling
         if self.params.humidity_scaling is not None:
-            flights_with_weather = self._apply_humidity_scaling_fleet(
+            flights_with_weather, scaling_errors = self._apply_humidity_scaling_fleet(
                 flights_with_weather
             )
+            errors.extend(scaling_errors)
 
         # Type narrowing
         typed = [FlightWithWeather.from_flight(f) for f in flights_with_weather]
 
-        return typed
+        return typed, errors
 
     def _intersect_weather_variables(
         self, fleet: Fleet, ds_met: MetDataset, ds_wind: MetDataset | None
@@ -500,10 +505,10 @@ class WeatherProvider(
 
     def _apply_humidity_scaling_fleet(
         self, flights: list[FlightWithWeather]
-    ) -> list[FlightWithWeather]:
+    ) -> tuple[list[FlightWithWeather], list[dict[str, Any]]]:
         """Apply humidity scaling to a fleet."""
         if self.params.humidity_scaling is None:
-            return flights
+            return flights, []
 
         t0 = time.time()
         logger.info("Applying humidity scaling...")
@@ -526,4 +531,4 @@ class WeatherProvider(
             )
 
         logger.info("Humidity scaling complete in %.2fs", time.time() - t0)
-        return fleet_to_flights(fleet)
+        return fleet_to_flights(fleet, step_name="humidity scaling")
