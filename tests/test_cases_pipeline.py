@@ -62,7 +62,7 @@ Fast pre-pipeline unit tests (no weather/BADA needed):
 """
 
 from __future__ import annotations
-import pickle
+
 import json
 from pathlib import Path
 from typing import Any
@@ -151,7 +151,7 @@ def _extract_error_flight_ids(error_records: list[dict[str, Any]]) -> set[str]:
 def _skip_if_missing(weather_path: Path | None, bada_path: Path | None) -> None:
     """Skip test if weather or BADA data is not available."""
     if weather_path is None or not weather_path.is_dir():
-        pytest.skip("Weather data not available"+str(weather_path))
+        pytest.skip("Weather data not available")
     if bada_path is None or not bada_path.exists():
         pytest.skip("BADA data not available")
 
