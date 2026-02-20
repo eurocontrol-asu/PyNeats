@@ -62,7 +62,7 @@ Fast pre-pipeline unit tests (no weather/BADA needed):
 """
 
 from __future__ import annotations
-
+import pickle
 import json
 from pathlib import Path
 from typing import Any
@@ -151,7 +151,7 @@ def _extract_error_flight_ids(error_records: list[dict[str, Any]]) -> set[str]:
 def _skip_if_missing(weather_path: Path | None, bada_path: Path | None) -> None:
     """Skip test if weather or BADA data is not available."""
     if weather_path is None or not weather_path.is_dir():
-        pytest.skip("Weather data not available")
+        pytest.skip("Weather data not available"+str(weather_path))
     if bada_path is None or not bada_path.exists():
         pytest.skip("BADA data not available")
 
@@ -727,29 +727,24 @@ class TestBehavioralAssertions:
         inp_variable = pd.Series(input_flight.get(outp_var)).reset_index(drop=True)
         idx_inp_None = inp_variable[inp_variable.isnull()].index
         assert len(idx_inp_None) > 0, f"tc_{tc_id}: Input not properly modified"
-        assert sum(outp_variable.isnull()) == 0, f"tc_{tc_id}: Failed to handle missing timestamps"
+        assert sum(outp_variable.isnull()) == 0, f"tc_{tc_id}: Failed to handle missing values"
         if outp_var == "time":
             outp_variable = pd.Series(output_flight.get("altitude")).reset_index(drop=True)
+        if outp_var in ["time","altitude"]:
+            inp_variable = pyunits.ft_to_m(pd.Series(input_flight.get("altitude")).reset_index(drop=True)*100)
         for idx in idx_inp_None:
             time_before = inp_time[idx - 1]
             time_after = inp_time[idx + 1]
             idx_outp_between = outp_time[(outp_time > time_before) & (outp_time < time_after)].index
             if len(idx_outp_between) > 0:
-                time_before = outp_time[min(idx_outp_between) - 1]
-                time_after = outp_time[max(idx_outp_between) + 1]
-                variable_before = outp_variable[min(idx_outp_between) - 1]
-                variable_after = outp_variable[max(idx_outp_between) + 1]
-                interpol_time = pd.Series(
-                    [time_before] + ([None] * len(idx_outp_between)) + [time_after]
-                ).interpolate()
-                interpol_variable = pd.Series(
-                    [variable_before] + ([None] * len(idx_outp_between)) + [variable_after]
-                ).interpolate()
-                assert interpol_time[1:-1] == outp_time[idx_outp_between], (
-                    f"tc_{tc_id}: Failed to handle missing timestamps"
-                )
-                assert interpol_variable[1:-1] == outp_variable[idx_outp_between], (
-                    f"tc_{tc_id}: Failed to handle missing timestamps"
+                variable_before = inp_variable[idx - 1]
+                variable_after = inp_variable[idx + 1]
+                interpol_df = pd.DataFrame({"time":[time_before] + list(outp_time[idx_outp_between]) + [time_after],
+                                            "variable":[variable_before] + ([None] * len(idx_outp_between)) + [variable_after]}
+                ).set_index("time").interpolate(method='time')
+                interpol_variable = interpol_df["variable"]
+                assert np.isclose(np.array(interpol_variable[1:-1]),np.array(outp_variable[idx_outp_between])).all(), (
+                    f"tc_{tc_id}: Failed to handle missing values"
                 )
 
     @pytest.mark.parametrize(
@@ -786,8 +781,9 @@ class TestBehavioralAssertions:
             .reset_index(drop=True)
             .to_numpy()
         )
-        outp_thrust = output_flight.get("thrust")
-        assert outp_thrust is not None, f"Flight '{flight_id}' has no 'thrust' column in output"
+        outp_ff = output_flight.get("fuel_flow")
+        outp_alt = output_flight.get("altitude")
+        assert outp_ff is not None, f"Flight '{flight_id}' has no 'fuel_flow' column in output"
         flight_phases = pyflight.segment_phase(
             pyflight.segment_rocd(
                 pyflight.segment_duration(outp_time), pyunits.m_to_ft(output_flight.get("altitude"))
@@ -816,27 +812,43 @@ class TestBehavioralAssertions:
                     cruise_detected = 0
         for idx_start_end in cruise_phases_idx:
             idx_cruise = np.arange(idx_start_end[0], idx_start_end[1] + 1)
-            cruise_thrust = outp_thrust[idx_cruise]
-            cruise_thrust_diff = np.diff(cruise_thrust)
-            cruise_thrust_diff_rel = cruise_thrust_diff / cruise_thrust[:-1]
-            cruise_thrust_diff_rel[abs(cruise_thrust_diff_rel) < 0.01] = 0
-            assert max(cruise_thrust_diff_rel) < 0.1, (
+            cruise_ff = outp_ff[idx_cruise]
+            cruise_alt = outp_alt[idx_cruise]
+            cruise_ff_diff = np.diff(cruise_ff)
+            cruise_alt_diff = np.diff(cruise_alt)
+            cruise_ff_diff_rel = cruise_ff_diff / cruise_ff[:-1]
+            cruise_ff_diff_rel[abs(cruise_ff_diff_rel) < 0.01] = 0
+            cruise_alt_diff[abs(cruise_alt_diff) < 10] = 0
+            assert max(cruise_ff_diff_rel) < 0.1, (
                 "tc_altitude_fluctuations: Failed to smooth altitude fluctuations"
             )
-            ups = 0
-            downs = 0
-            current = 0
-            for thrust_diff_rel in cruise_thrust_diff_rel:
-                if (thrust_diff_rel > 0) & (current <= 0):
-                    ups += 1
-                    current = 1
-                elif (thrust_diff_rel < 0) & (current >= 0):
-                    downs += 1
-                    current = 1
-            changes = (ups + downs) / 2
+            ff_ups = 0
+            ff_downs = 0
+            ff_current = 0
+            alt_ups = 0
+            alt_downs = 0
+            alt_current = 0
+            for ff_diff_rel, alt_diff in zip(cruise_ff_diff_rel, cruise_alt_diff):
+                if (ff_diff_rel > 0) & (ff_current <= 0):
+                    ff_ups += 1
+                    ff_current = 1
+                elif (ff_diff_rel < 0) & (ff_current >= 0):
+                    ff_downs += 1
+                    ff_current = -1
+                if (alt_diff > 0) & (alt_current <= 0):
+                    alt_ups += 1
+                    alt_current = 1
+                elif (alt_diff < 0) & (alt_current >= 0):
+                    alt_downs += 1
+                    alt_current = -1
+            ff_changes = (ff_ups + ff_downs) / 2
+            alt_changes = (alt_ups + alt_downs) / 2
             if len(idx_cruise) > 7:
-                assert len(idx_cruise) > (changes * 6), (
-                    "tc_altitude_fluctuations: Failed to smooth altitude fluctuations"
+                assert len(idx_cruise) > (ff_changes * 6), (
+                    "tc_altitude_fluctuations: Failed to smooth altitude fluctuations and failed to smooth consequences on flight performance"
+                )
+                assert len(idx_cruise) > (alt_changes * 8), (
+                    "tc_altitude_fluctuations: Failed to smooth altitude fluctuations, but no major consequences for flight performance"
                 )
 
 
