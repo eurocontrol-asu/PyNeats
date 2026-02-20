@@ -663,6 +663,10 @@ class TestBehavioralAssertions:
             f"TC_ENG_UNKNOWN: output engine_uid must differ from input "
             f"'CFM56-FAKE', got '{output_eng}'"
         )
+        assert output_eng == "4PW067", (
+            f"TC_ENG_UNKNOWN: output engine_uid is '{output_eng}',"
+            f"expected '4PW067'"
+        )
 
     # TC_ENG_MISMATCH: "Drop, use default"
 
@@ -689,6 +693,10 @@ class TestBehavioralAssertions:
             f"TC_ENG_MISMATCH: output engine_uid must differ from input "
             f"'PW4060', got '{output_eng}'"
         )
+        assert output_eng == "01P11CM116", (
+            f"TC_ENG_MISMATCH: output engine_uid for B738 should be 01P11CM116 "
+            f", got '{output_eng}'"
+        )
 
     # TC_ENG_UNSPEC: "Select representative"
 
@@ -712,6 +720,10 @@ class TestBehavioralAssertions:
         output_eng = actual.attrs.get("engine_uid")
         assert output_eng is not None and output_eng != "", (
             "TC_ENG_UNSPEC: output must have a non-empty engine_uid"
+        )
+        assert output_eng == "01P21GE217", (
+            f"TC_ENG_UNSPEC: output engine uid is {output_eng} ,"
+            "expected 01P21GE217."
         )
 
     # TC_AC_NO_BADA4: "Use BADA 3 aircraft"
@@ -1184,7 +1196,7 @@ class TestBehavioralAssertions:
             np.testing.assert_allclose(
                 out_vals[in_range],
                 inp_interp,
-                rtol=0.05,
+                rtol=1e-3,
                 err_msg=(
                     f"{tc_id}: output column '{col}' must preserve "
                     f"input values (interpolated to output time grid)"
@@ -1257,6 +1269,11 @@ class TestPrePipelineValidation:
         nb_eng, bada3, bada4, engine_id = mapper.bada_type("B737-800W")
         assert bada3 or bada4, (
             "BADA mapper resolved B737-800W but both BADA3 and BADA4 names are empty"
+        )
+        correct_icao = "B738"
+        assert bada3 == correct_icao or bada4 == correct_icao, (
+            f"BADA mapper found bada3={bada3} and bada4={bada4}, but not correct ICAO "
+            f"naming ({correct_icao})"
         )
 
     def test_bada_mapper_rejects_unknown(self) -> None:
