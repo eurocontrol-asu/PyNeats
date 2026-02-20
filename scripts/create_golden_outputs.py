@@ -671,6 +671,14 @@ class ParamSpec:
         Default constant from neats_default_parameters, or None.
     is_numeric : bool
         Whether a perturbation factor applies (False for strings like engine_uid).
+    is_optional : bool
+        Whether this field is optional in the flight schema (i.e. not listed under
+        required in schemas/flight_schema.json). When True and the
+        parameter is not present in the params dict passed to
+        :func:apply_parameters, the field is actively removed from the flight
+        JSON so that each test case is built from scratch with full control
+        over which optional fields are present. Required waypoints (ts,
+        lat, lon, fl) are never stripped.
     """
 
     internal_name: str
@@ -679,17 +687,19 @@ class ParamSpec:
     json_field: str
     default_value: Any
     is_numeric: bool
+    is_optional: bool
 
 
 PARAMETER_REGISTRY: dict[str, ParamSpec] = {
-    # aircraft attrs
+    # aircraft attrs: all optional per AircraftPropertiesType (required: ["aircraft_type"])
     "payload_factor": ParamSpec(
         "payload_factor",
         "attr",
         "aircraft_properties",
         "load_factor",
         DEFAULT_PAYLOAD_FACTOR,
-        True,
+        is_numeric=True,
+        is_optional=True,
     ),
     "takeoff_mass": ParamSpec(
         "takeoff_mass",
@@ -697,7 +707,8 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
         "aircraft_properties",
         "takeoff_mass",
         None,
-        True,
+        is_numeric=True,
+        is_optional=True,
     ),
     "engine_uid": ParamSpec(
         "engine_uid",
@@ -705,16 +716,18 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
         "aircraft_properties",
         "engine_uid",
         None,
-        False,
+        is_numeric=False,
+        is_optional=True,
     ),
-    # fuel attrs
+    # fuel attrs: all optional per FuelPropertiesType
     "hydrogen_content": ParamSpec(
         "hydrogen_content",
         "attr",
         "fuel_properties",
         "hydrogen_content",
         DEFAULT_HYDROGEN_CONTENT,
-        True,
+        is_numeric=True,
+        is_optional=True,
     ),
     "h_c_ratio": ParamSpec(
         "h_c_ratio",
@@ -722,7 +735,8 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
         "fuel_properties",
         "hydrogen_per_carbon_ratio",
         None,
-        True,
+        is_numeric=True,
+        is_optional=True,
     ),
     "aromatic_content": ParamSpec(
         "aromatic_content",
@@ -730,7 +744,8 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
         "fuel_properties",
         "aromatic_content",
         DEFAULT_AROMATICS_CONTENT,
-        True,
+        is_numeric=True,
+        is_optional=True,
     ),
     "q_fuel": ParamSpec(
         "q_fuel",
@@ -738,7 +753,8 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
         "fuel_properties",
         "calorific_value",
         DEFAULT_Q_FUEL,
-        True,
+        is_numeric=True,
+        is_optional=True,
     ),
     "naphthalene": ParamSpec(
         "naphthalene",
@@ -746,7 +762,8 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
         "fuel_properties",
         "naphthalene",
         DEFAULT_NAPHTHALEN_CONTENT,
-        True,
+        is_numeric=True,
+        is_optional=True,
     ),
     "sulphur_content": ParamSpec(
         "sulphur_content",
@@ -754,16 +771,18 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
         "fuel_properties",
         "sulphur",
         DEFAULT_SULPHUR_CONTENT,
-        True,
+        is_numeric=True,
+        is_optional=True,
     ),
-    # trajectory columns
+    # trajectory columns: required per WaypointType (required: ["ts","lat","lon","fl"])
     "time": ParamSpec(
         "time",
         "column",
         "trajectory",
         "ts",
         None,
-        True,
+        is_numeric=True,
+        is_optional=False,
     ),
     "latitude": ParamSpec(
         "latitude",
@@ -771,7 +790,8 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
         "trajectory",
         "lat",
         None,
-        True,
+        is_numeric=True,
+        is_optional=False,
     ),
     "longitude": ParamSpec(
         "longitude",
@@ -779,7 +799,8 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
         "trajectory",
         "lon",
         None,
-        True,
+        is_numeric=True,
+        is_optional=False,
     ),
     "altitude": ParamSpec(
         "altitude",
@@ -787,15 +808,18 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
         "trajectory",
         "fl",
         None,
-        True,
+        is_numeric=True,
+        is_optional=False,
     ),
+    # trajectory columns: optional per WaypointType
     "fuel_flow": ParamSpec(
         "fuel_flow",
         "column",
         "trajectory",
         "ff",
         None,
-        True,
+        is_numeric=True,
+        is_optional=True,
     ),
     "engine_efficiency": ParamSpec(
         "engine_efficiency",
@@ -803,7 +827,8 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
         "trajectory",
         "ee",
         None,
-        True,
+        is_numeric=True,
+        is_optional=True,
     ),
     "aircraft_mass": ParamSpec(
         "aircraft_mass",
@@ -811,7 +836,8 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
         "trajectory",
         "am",
         None,
-        True,
+        is_numeric=True,
+        is_optional=True,
     ),
     "true_airspeed": ParamSpec(
         "true_airspeed",
@@ -819,7 +845,8 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
         "trajectory",
         "tas",
         None,
-        True,
+        is_numeric=True,
+        is_optional=True,
     ),
 }
 
@@ -868,6 +895,31 @@ AGGREGATED_FLIGHT_SELECTIONS: dict[str, str] = {
     "tc_tom_exceeds_mtow": "RYR46YN",  # expect_error: fleet propagates error
     # Load factor clamping
     "tc_lf_gt_one": "ACA812",
+    # Fuel validation error cases
+    "tc_hc_ratio_out_of_range": "UAE62Y",
+    "tc_hydrogen_out_of_range": "FDX5067",
+    "tc_qfuel_out_of_range": "RYR46YN",
+    # Fuel default fallback cases
+    "tc_no_hc_ratio": "ACA812",
+    "tc_no_hydrogen": "UAE62Y",
+    "tc_no_hc_no_hydrogen": "FDX5067",
+    "tc_no_qfuel": "RYR46YN",
+    # Performance data gap cases
+    "tc_perf_no_am": "ACA812",
+    "tc_perf_no_ff": "UAE62Y",
+    "tc_perf_no_ee": "FDX5067",
+    "tc_perf_no_tas": "RYR46YN",
+    "tc_perf_no_am_ff": "ACA812",
+    "tc_perf_no_am_ee": "UAE62Y",
+    "tc_perf_no_am_tas": "FDX5067",
+    "tc_perf_no_ff_ee": "RYR46YN",
+    "tc_perf_no_ff_tas": "ACA812",
+    "tc_perf_no_ee_tas": "UAE62Y",
+    "tc_perf_no_am_ff_ee": "FDX5067",
+    "tc_perf_no_am_ff_tas": "RYR46YN",
+    "tc_perf_no_am_ee_tas": "ACA812",
+    "tc_perf_no_ff_ee_tas": "UAE62Y",
+    "tc_perf_no_all": "FDX5067",
     # Trajectory modifications
     "tc_var_time_resolution": "RYR46YN",
     "tc_mixed_time": "ACA812",
@@ -1251,12 +1303,27 @@ def apply_parameters(
     baseline: dict[str, Any],
     params: dict[str, float],
 ) -> list[dict[str, Any]]:
-    """Apply one or more parameter perturbations to input flights.
+    """Apply parameter perturbations to input flights with schema-aware cleanup.
 
-    This is a unified applicator that can inject any combination of parameters
-    defined in :data:PARAMETER_REGISTRY. Each parameter is looked up in the
-    registry to determine its JSON location and whether it is a scalar attribute
-    or a per-waypoint column.
+    This is the unified applicator for all parameters defined in
+    :data:PARAMETER_REGISTRY. It operates in two passes per flight:
+
+    Pass 1: strip optional fields not in params:
+        Every registry entry with is_optional=True whose key is absent
+        from params is removed from the flight JSON (attr section field or
+        per-waypoint column key). This ensures each generated test case is
+        built from scratch and never inherits optional fields from the baseline
+        input that were not explicitly requested. Required fields (ts,
+        lat, lon, fl) are never stripped regardless.
+
+    Pass 2: inject requested parameters:
+        For each (param_name, factor) pair in params, the registry spec
+        determines the JSON location and value:
+
+        attr + is_numeric: section[field] = baseline_value * factor
+        attr + not is_numeric: section[field] = baseline_value (as-is)
+        column: each waypoint's field is set to the (optionally scaled)
+          baseline array value; datetime columns are serialised as ISO-8601.
 
     Args:
         input_data: Original NM JSON input flights.
@@ -1265,9 +1332,11 @@ def apply_parameters(
             For numeric params the applied value is baseline * factor.
             For non-numeric params (e.g. engine_uid) the factor is ignored
             and the baseline value is injected as-is.
+            Keys must be present in :data:PARAMETER_REGISTRY.
 
     Returns:
-        Deep-copied input with the requested parameters applied.
+        Deep-copied input with optional fields stripped and requested
+        parameters applied.
 
     Raises:
         KeyError: If a param name is not in :data:PARAMETER_REGISTRY.
@@ -1278,6 +1347,21 @@ def apply_parameters(
         flight_id = flight["flight_information"]["flight_identification"]
         fi = flight["flight_information"]
 
+        # Pass 1: strip optional fields that are NOT in params.
+        # Required fields (is_optional=False) are never touched here.
+        for spec in PARAMETER_REGISTRY.values():
+            if not spec.is_optional or spec.internal_name in params:
+                continue
+
+            if spec.category == "attr":
+                section = fi.get(spec.json_section, {})
+                section.pop(spec.json_field, None)
+
+            elif spec.category == "column":
+                for wp in fi.get("trajectory", {}).get("trajectory_data", []):
+                    wp.pop(spec.json_field, None)
+
+        # Pass 2: inject the explicitly requested parameters.
         for param_name, factor in params.items():
             spec = PARAMETER_REGISTRY[param_name]
             base_value = baseline[spec.internal_name].get(flight_id)
@@ -1694,6 +1778,180 @@ def build_test_cases() -> list[TestCaseSpec]:
             params=all_params,
             modifications=[Modification("aircraft_properties.load_factor", 1.5)],
             description="TC_LF_GT_ONE: LF > 1: clamped to 1.0",
+        )
+    )
+
+    # Fuel validation error cases (TC_HC_RATIO_OUT_OF_RANGE, TC_HYDROGEN_OUT_OF_RANGE, TC_QFUEL_OUT_OF_RANGE)
+    # TC_HC_RATIO_OUT_OF_RANGE: H/C ratio = 2.5 (outside [1.9061, 2.1857]) => abort
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_hc_ratio_out_of_range",
+            params=all_params,
+            modifications=[Modification("fuel_properties.hydrogen_per_carbon_ratio", 2.5)],
+            description="TC_HC_RATIO_OUT_OF_RANGE: H/C ratio outside valid range [1.9061, 2.1857]",
+            expect_error=True,
+        )
+    )
+    # TC_HYDROGEN_OUT_OF_RANGE: hydrogen_content = 16.0 (outside [13.79, 15.5]) => abort
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_hydrogen_out_of_range",
+            params=all_params,
+            modifications=[Modification("fuel_properties.hydrogen_content", 16.0)],
+            description="TC_HYDROGEN_OUT_OF_RANGE: hydrogen content outside valid range [13.79, 15.5]",
+            expect_error=True,
+        )
+    )
+    # TC_QFUEL_OUT_OF_RANGE: calorific_value = 45_500_000 (outside [42.6397, 44.5] MJ/kg) => abort
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_qfuel_out_of_range",
+            params=all_params,
+            modifications=[Modification("fuel_properties.calorific_value", 45_500_000.0)],
+            description="TC_QFUEL_OUT_OF_RANGE: calorific value outside valid range [42.6397, 44.5] MJ/kg",
+            expect_error=True,
+        )
+    )
+
+    # Fuel default fallback cases (TC_NO_HC_RATIO, TC_NO_HYDROGEN, TC_NO_HC_NO_HYDROGEN, TC_NO_QFUEL)
+    # TC_NO_HC_RATIO: H/C ratio unspecified => use hydrogen_content
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_no_hc_ratio",
+            params=_ref_params_except("h_c_ratio"),
+            description="TC_NO_HC_RATIO: no H/C ratio, pipeline derives from hydrogen_content",
+        )
+    )
+    # TC_NO_HYDROGEN: hydrogen_content unspecified => use H/C ratio, convert
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_no_hydrogen",
+            params=_ref_params_except("hydrogen_content"),
+            description="TC_NO_HYDROGEN: no hydrogen_content, pipeline derives from H/C ratio",
+        )
+    )
+    # TC_NO_HC_NO_HYDROGEN: both H/C ratio and hydrogen_content unspecified => default
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_no_hc_no_hydrogen",
+            params=_ref_params_except("h_c_ratio", "hydrogen_content"),
+            description="TC_NO_HC_NO_HYDROGEN: no H/C or hydrogen_content, use default",
+        )
+    )
+    # TC_NO_QFUEL: calorific value unspecified => use default
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_no_qfuel",
+            params=_ref_params_except("q_fuel"),
+            description="TC_NO_QFUEL: no calorific value, pipeline uses default",
+        )
+    )
+
+    # Performance data gap cases (TC_PERF_NO_*)
+    # Each case omits specific trajectory columns so the pipeline must derive them.
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_am",
+            params=_ref_params_except("aircraft_mass"),
+            description="TC_PERF_NO_AM: AM missing; FF, EE, TAS provided",
+        )
+    )
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_ff",
+            params=_ref_params_except("fuel_flow"),
+            description="TC_PERF_NO_FF: FF missing; AM, EE, TAS provided",
+        )
+    )
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_ee",
+            params=_ref_params_except("engine_efficiency"),
+            description="TC_PERF_NO_EE: EE missing; AM, FF, TAS provided",
+        )
+    )
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_tas",
+            params=_ref_params_except("true_airspeed"),
+            description="TC_PERF_NO_TAS: TAS missing; AM, FF, EE provided",
+        )
+    )
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_am_ff",
+            params=_ref_params_except("aircraft_mass", "fuel_flow"),
+            description="TC_PERF_NO_AM_FF: AM, FF missing; EE, TAS provided",
+        )
+    )
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_am_ee",
+            params=_ref_params_except("aircraft_mass", "engine_efficiency"),
+            description="TC_PERF_NO_AM_EE: AM, EE missing; FF, TAS provided",
+        )
+    )
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_am_tas",
+            params=_ref_params_except("aircraft_mass", "true_airspeed"),
+            description="TC_PERF_NO_AM_TAS: AM, TAS missing; FF, EE provided",
+        )
+    )
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_ff_ee",
+            params=_ref_params_except("fuel_flow", "engine_efficiency"),
+            description="TC_PERF_NO_FF_EE: FF, EE missing; AM, TAS provided",
+        )
+    )
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_ff_tas",
+            params=_ref_params_except("fuel_flow", "true_airspeed"),
+            description="TC_PERF_NO_FF_TAS: FF, TAS missing; AM, EE provided",
+        )
+    )
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_ee_tas",
+            params=_ref_params_except("engine_efficiency", "true_airspeed"),
+            description="TC_PERF_NO_EE_TAS: EE, TAS missing; AM, FF provided",
+        )
+    )
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_am_ff_ee",
+            params=_ref_params_except("aircraft_mass", "fuel_flow", "engine_efficiency"),
+            description="TC_PERF_NO_AM_FF_EE: AM, FF, EE missing; TAS provided",
+        )
+    )
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_am_ff_tas",
+            params=_ref_params_except("aircraft_mass", "fuel_flow", "true_airspeed"),
+            description="TC_PERF_NO_AM_FF_TAS: AM, FF, TAS missing; EE provided",
+        )
+    )
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_am_ee_tas",
+            params=_ref_params_except("aircraft_mass", "engine_efficiency", "true_airspeed"),
+            description="TC_PERF_NO_AM_EE_TAS: AM, EE, TAS missing; FF provided",
+        )
+    )
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_ff_ee_tas",
+            params=_ref_params_except("fuel_flow", "engine_efficiency", "true_airspeed"),
+            description="TC_PERF_NO_FF_EE_TAS: FF, EE, TAS missing; AM provided",
+        )
+    )
+    cases.append(
+        TestCaseSpec(
+            suffix="tc_perf_no_all",
+            params=_ref_params_except("aircraft_mass", "fuel_flow", "engine_efficiency", "true_airspeed"),
+            description="TC_PERF_NO_ALL: AM, FF, EE, TAS all missing",
         )
     )
 

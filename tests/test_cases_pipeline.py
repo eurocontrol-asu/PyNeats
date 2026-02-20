@@ -22,6 +22,25 @@ Success test cases (TC) flight must appear in pipeline output:
    TC_MASS_NO_TOM
    TC_MASS_NO_LF
    TC_LF_GT_ONE
+   TC_NO_HC_RATIO
+   TC_NO_HYDROGEN
+   TC_NO_HC_NO_HYDROGEN
+   TC_NO_QFUEL
+   TC_PERF_NO_AM
+   TC_PERF_NO_FF
+   TC_PERF_NO_EE
+   TC_PERF_NO_TAS
+   TC_PERF_NO_AM_FF
+   TC_PERF_NO_AM_EE
+   TC_PERF_NO_AM_TAS
+   TC_PERF_NO_FF_EE
+   TC_PERF_NO_FF_TAS
+   TC_PERF_NO_EE_TAS
+   TC_PERF_NO_AM_FF_EE
+   TC_PERF_NO_AM_FF_TAS
+   TC_PERF_NO_AM_EE_TAS
+   TC_PERF_NO_FF_EE_TAS
+   TC_PERF_NO_ALL
 
 Error test cases flight must appear in error_records (abort evaluation):
    TC_AC_NO_BADA
@@ -29,6 +48,9 @@ Error test cases flight must appear in error_records (abort evaluation):
    TC_MASS_NOT_DECREASING
    TC_MASS_EXCEEDS_MTOW
    TC_TOM_EXCEEDS_MTOW
+   TC_HC_RATIO_OUT_OF_RANGE
+   TC_HYDROGEN_OUT_OF_RANGE
+   TC_QFUEL_OUT_OF_RANGE
 
 Behavioural assertions (TestBehavioralAssertions):
    test_lf_gt_one_output_clamped          TC_LF_GT_ONE: output payload_factor ≤ 1
@@ -54,11 +76,19 @@ Behavioural assertions (TestBehavioralAssertions):
    test_missing_departure_landing_abortion tc_missing_departure / tc_missing_landing:
        check if aborted [TODO: check for flag]
    test_altitude_fluctuations_correction  tc_altitude_fluctuations: smooth fluctuations
+   test_no_hc_ratio_uses_hydrogen_content TC_NO_HC_RATIO: output hydrogen_content matches input
+   test_no_hydrogen_uses_hc_ratio         TC_NO_HYDROGEN: hydrogen_content derived from H/C ratio
+   test_no_hc_no_hydrogen_uses_default    TC_NO_HC_NO_HYDROGEN: hydrogen_content = DEFAULT (13.79)
+   test_no_qfuel_uses_default             TC_NO_QFUEL: q_fuel = DEFAULT (42_800_000)
+   test_perf_data_gap_derives_missing     TC_PERF_NO_*: missing cols derived, provided cols preserved
 
 Fast pre-pipeline unit tests (no weather/BADA needed):
    test_lf_gt_one_clamped_by_parser
    test_bada_mapper_resolves_overspec
    test_bada_mapper_rejects_unknown
+   test_hc_ratio_range_validation         TC_HC_RATIO_OUT_OF_RANGE pre-check: 2.5 outside range
+   test_hydrogen_content_range_validation TC_HYDROGEN_OUT_OF_RANGE pre-check: 16.0 outside range
+   test_qfuel_range_validation            TC_QFUEL_OUT_OF_RANGE pre-check: 45.5 MJ/kg outside range
 """
 
 from __future__ import annotations
@@ -103,6 +133,27 @@ SUCCESS_TCS: list[tuple[str, str]] = [
     ("TC_MASS_NO_TOM", "FDX5067__tc_mass_no_tom"),
     ("TC_MASS_NO_LF", "RYR46YN__tc_mass_no_lf"),
     ("TC_LF_GT_ONE", "ACA812__tc_lf_gt_one"),
+    # Fuel default fallback cases
+    ("TC_NO_HC_RATIO", "ACA812__tc_no_hc_ratio"),
+    ("TC_NO_HYDROGEN", "UAE62Y__tc_no_hydrogen"),
+    ("TC_NO_HC_NO_HYDROGEN", "FDX5067__tc_no_hc_no_hydrogen"),
+    ("TC_NO_QFUEL", "RYR46YN__tc_no_qfuel"),
+    # Performance data gap cases
+    ("TC_PERF_NO_AM", "ACA812__tc_perf_no_am"),
+    ("TC_PERF_NO_FF", "UAE62Y__tc_perf_no_ff"),
+    ("TC_PERF_NO_EE", "FDX5067__tc_perf_no_ee"),
+    ("TC_PERF_NO_TAS", "RYR46YN__tc_perf_no_tas"),
+    ("TC_PERF_NO_AM_FF", "ACA812__tc_perf_no_am_ff"),
+    ("TC_PERF_NO_AM_EE", "UAE62Y__tc_perf_no_am_ee"),
+    ("TC_PERF_NO_AM_TAS", "FDX5067__tc_perf_no_am_tas"),
+    ("TC_PERF_NO_FF_EE", "RYR46YN__tc_perf_no_ff_ee"),
+    ("TC_PERF_NO_FF_TAS", "ACA812__tc_perf_no_ff_tas"),
+    ("TC_PERF_NO_EE_TAS", "UAE62Y__tc_perf_no_ee_tas"),
+    ("TC_PERF_NO_AM_FF_EE", "FDX5067__tc_perf_no_am_ff_ee"),
+    ("TC_PERF_NO_AM_FF_TAS", "RYR46YN__tc_perf_no_am_ff_tas"),
+    ("TC_PERF_NO_AM_EE_TAS", "ACA812__tc_perf_no_am_ee_tas"),
+    ("TC_PERF_NO_FF_EE_TAS", "UAE62Y__tc_perf_no_ff_ee_tas"),
+    ("TC_PERF_NO_ALL", "FDX5067__tc_perf_no_all"),
 ]
 
 # Error TCs flight must appear in error_records, NOT in output.
@@ -112,6 +163,10 @@ ERROR_TCS: list[tuple[str, str]] = [
     ("TC_MASS_NOT_DECREASING", "UAE62Y__tc_mass_not_decreasing"),
     ("TC_MASS_EXCEEDS_MTOW", "FDX5067__tc_mass_exceeds_mtow"),
     ("TC_TOM_EXCEEDS_MTOW", "RYR46YN__tc_tom_exceeds_mtow"),
+    # Fuel validation error cases
+    ("TC_HC_RATIO_OUT_OF_RANGE", "UAE62Y__tc_hc_ratio_out_of_range"),
+    ("TC_HYDROGEN_OUT_OF_RANGE", "FDX5067__tc_hydrogen_out_of_range"),
+    ("TC_QFUEL_OUT_OF_RANGE", "RYR46YN__tc_qfuel_out_of_range"),
 ]
 
 
@@ -325,6 +380,70 @@ _MISSING_TRAJECTORY_VALUES_TCS: list[tuple[str, str]] = [
     ("missing_latitudes", "latitude"),
     ("missing_longitudes", "longitude"),
     ("missing_altitudes", "altitude"),
+]
+
+_PERF_DATA_GAP_TCS: list[tuple[str, str, list[str], list[str]]] = [
+    # (tc_id, flight_id, missing_cols, provided_cols)
+    (
+        "TC_PERF_NO_AM", "ACA812__tc_perf_no_am",
+        ["aircraft_mass"], ["fuel_flow", "engine_efficiency", "true_airspeed"],
+    ),
+    (
+        "TC_PERF_NO_FF", "UAE62Y__tc_perf_no_ff",
+        ["fuel_flow"], ["aircraft_mass", "engine_efficiency", "true_airspeed"],
+    ),
+    (
+        "TC_PERF_NO_EE", "FDX5067__tc_perf_no_ee",
+        ["engine_efficiency"], ["aircraft_mass", "fuel_flow", "true_airspeed"],
+    ),
+    (
+        "TC_PERF_NO_TAS", "RYR46YN__tc_perf_no_tas",
+        ["true_airspeed"], ["aircraft_mass", "fuel_flow", "engine_efficiency"],
+    ),
+    (
+        "TC_PERF_NO_AM_FF", "ACA812__tc_perf_no_am_ff",
+        ["aircraft_mass", "fuel_flow"], ["engine_efficiency", "true_airspeed"],
+    ),
+    (
+        "TC_PERF_NO_AM_EE", "UAE62Y__tc_perf_no_am_ee",
+        ["aircraft_mass", "engine_efficiency"], ["fuel_flow", "true_airspeed"],
+    ),
+    (
+        "TC_PERF_NO_AM_TAS", "FDX5067__tc_perf_no_am_tas",
+        ["aircraft_mass", "true_airspeed"], ["fuel_flow", "engine_efficiency"],
+    ),
+    (
+        "TC_PERF_NO_FF_EE", "RYR46YN__tc_perf_no_ff_ee",
+        ["fuel_flow", "engine_efficiency"], ["aircraft_mass", "true_airspeed"],
+    ),
+    (
+        "TC_PERF_NO_FF_TAS", "ACA812__tc_perf_no_ff_tas",
+        ["fuel_flow", "true_airspeed"], ["aircraft_mass", "engine_efficiency"],
+    ),
+    (
+        "TC_PERF_NO_EE_TAS", "UAE62Y__tc_perf_no_ee_tas",
+        ["engine_efficiency", "true_airspeed"], ["aircraft_mass", "fuel_flow"],
+    ),
+    (
+        "TC_PERF_NO_AM_FF_EE", "FDX5067__tc_perf_no_am_ff_ee",
+        ["aircraft_mass", "fuel_flow", "engine_efficiency"], ["true_airspeed"],
+    ),
+    (
+        "TC_PERF_NO_AM_FF_TAS", "RYR46YN__tc_perf_no_am_ff_tas",
+        ["aircraft_mass", "fuel_flow", "true_airspeed"], ["engine_efficiency"],
+    ),
+    (
+        "TC_PERF_NO_AM_EE_TAS", "ACA812__tc_perf_no_am_ee_tas",
+        ["aircraft_mass", "engine_efficiency", "true_airspeed"], ["fuel_flow"],
+    ),
+    (
+        "TC_PERF_NO_FF_EE_TAS", "UAE62Y__tc_perf_no_ff_ee_tas",
+        ["fuel_flow", "engine_efficiency", "true_airspeed"], ["aircraft_mass"],
+    ),
+    (
+        "TC_PERF_NO_ALL", "FDX5067__tc_perf_no_all",
+        ["aircraft_mass", "fuel_flow", "engine_efficiency", "true_airspeed"], [],
+    ),
 ]
 
 _MISSING_DEPARTURE_LANDING_TCS: list[str] = [
@@ -839,6 +958,227 @@ class TestBehavioralAssertions:
                     "tc_altitude_fluctuations: Failed to smooth altitude fluctuations"
                 )
 
+    # TC_NO_HC_RATIO: H/C ratio absent, hydrogen_content present
+    # Output fuel hydrogen_content must match input hydrogen_content
+
+    def test_no_hc_ratio_uses_hydrogen_content(
+        self,
+        aggregated_fleet_run: FleetRunnerLargeEmitter,
+        aggregated_input_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        """TC_NO_HC_RATIO: H/C ratio absent, hydrogen_content present.
+        Output fuel hydrogen_content must match input hydrogen_content."""
+        flight_id = "ACA812__tc_no_hc_ratio"
+        runner = aggregated_fleet_run
+
+        # Verify input has hydrogen_content but no hydrogen_per_carbon_ratio
+        inp = aggregated_input_by_id[flight_id]
+        fp = inp["flight_information"].get("fuel_properties", {})
+        assert "hydrogen_content" in fp, "Input must have hydrogen_content"
+        assert "hydrogen_per_carbon_ratio" not in fp, "Input must NOT have hydrogen_per_carbon_ratio"
+        input_hc = fp["hydrogen_content"]
+
+        actual = _find_flight(runner.fleet_with_climate_impact, flight_id)
+        assert actual is not None, f"Flight '{flight_id}' not in pipeline output"
+        output_hc = actual.attrs.get("hydrogen_content")
+        assert output_hc is not None, "Output must have hydrogen_content attr"
+        assert abs(output_hc - input_hc) < 1e-3, (
+            f"TC_NO_HC_RATIO: output hydrogen_content {output_hc} must match "
+            f"input hydrogen_content {input_hc}"
+        )
+
+    # TC_NO_HYDROGEN: hydrogen_content absent, H/C ratio present
+    # Output fuel hydrogen_content must be derived from H/C ratio conversion
+
+    def test_no_hydrogen_uses_hc_ratio(
+        self,
+        aggregated_fleet_run: FleetRunnerLargeEmitter,
+        aggregated_input_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        """TC_NO_HYDROGEN: hydrogen_content absent, H/C ratio present.
+        Output fuel hydrogen_content must be derived from H/C ratio conversion."""
+        flight_id = "UAE62Y__tc_no_hydrogen"
+        runner = aggregated_fleet_run
+
+        # Verify input has h_c_ratio but no hydrogen_content
+        inp = aggregated_input_by_id[flight_id]
+        fp = inp["flight_information"].get("fuel_properties", {})
+        assert "hydrogen_per_carbon_ratio" in fp, "Input must have hydrogen_per_carbon_ratio"
+        assert "hydrogen_content" not in fp, "Input must NOT have hydrogen_content"
+
+        actual = _find_flight(runner.fleet_with_climate_impact, flight_id)
+        assert actual is not None, f"Flight '{flight_id}' not in pipeline output"
+        output_hc = actual.attrs.get("hydrogen_content")
+        assert output_hc is not None, (
+            "TC_NO_HYDROGEN: output must have hydrogen_content attr (derived from H/C ratio)"
+        )
+        # Must be a physically plausible hydrogen content (roughly 13–16 mass%)
+        assert 13.0 <= output_hc <= 16.0, (
+            f"TC_NO_HYDROGEN: derived hydrogen_content {output_hc} outside plausible range [13, 16]"
+        )
+
+    # TC_NO_HC_NO_HYDROGEN: both H/C ratio and hydrogen_content absent
+    # Output fuel hydrogen_content must equal DEFAULT_HYDROGEN_CONTENT (13.79)
+
+    def test_no_hc_no_hydrogen_uses_default(
+        self,
+        aggregated_fleet_run: FleetRunnerLargeEmitter,
+        aggregated_input_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        """TC_NO_HC_NO_HYDROGEN: both H/C ratio and hydrogen_content absent.
+        Output fuel hydrogen_content must equal DEFAULT_HYDROGEN_CONTENT (13.79)."""
+        from pyneats.core.neats_default_parameters import DEFAULT_HYDROGEN_CONTENT
+
+        flight_id = "FDX5067__tc_no_hc_no_hydrogen"
+        runner = aggregated_fleet_run
+
+        # Verify input has neither fuel property
+        inp = aggregated_input_by_id[flight_id]
+        fp = inp["flight_information"].get("fuel_properties", {})
+        assert "hydrogen_per_carbon_ratio" not in fp, (
+            "Input must NOT have hydrogen_per_carbon_ratio"
+        )
+        assert "hydrogen_content" not in fp, "Input must NOT have hydrogen_content"
+
+        actual = _find_flight(runner.fleet_with_climate_impact, flight_id)
+        assert actual is not None, f"Flight '{flight_id}' not in pipeline output"
+        output_hc = actual.attrs.get("hydrogen_content")
+        assert output_hc is not None, "Output must have hydrogen_content attr"
+        assert abs(output_hc - DEFAULT_HYDROGEN_CONTENT) < 1e-3, (
+            f"TC_NO_HC_NO_HYDROGEN: output hydrogen_content {output_hc} must equal "
+            f"DEFAULT_HYDROGEN_CONTENT {DEFAULT_HYDROGEN_CONTENT}"
+        )
+
+    # TC_NO_QFUEL: calorific value absent
+    # Output fuel q_fuel must equal DEFAULT_Q_FUEL (42_800_000)
+
+    def test_no_qfuel_uses_default(
+        self,
+        aggregated_fleet_run: FleetRunnerLargeEmitter,
+        aggregated_input_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        """TC_NO_QFUEL: calorific value absent.
+        Output fuel q_fuel must equal DEFAULT_Q_FUEL (42_800_000)."""
+        from pyneats.core.neats_default_parameters import DEFAULT_Q_FUEL
+
+        flight_id = "RYR46YN__tc_no_qfuel"
+        runner = aggregated_fleet_run
+
+        # Verify input has no calorific_value
+        inp = aggregated_input_by_id[flight_id]
+        fp = inp["flight_information"].get("fuel_properties", {})
+        assert "calorific_value" not in fp, "Input must NOT have calorific_value"
+
+        actual = _find_flight(runner.fleet_with_climate_impact, flight_id)
+        assert actual is not None, f"Flight '{flight_id}' not in pipeline output"
+        output_qf = actual.attrs.get("q_fuel")
+        assert output_qf is not None, "Output must have q_fuel attr"
+        assert abs(output_qf - DEFAULT_Q_FUEL) < 1.0, (
+            f"TC_NO_QFUEL: output q_fuel {output_qf} must equal DEFAULT_Q_FUEL {DEFAULT_Q_FUEL}"
+        )
+
+    # TC_PERF_NO_*: performance data gap cases
+    # am/ff/ee are always present as JSON fields (null = missing).
+    # true_airspeed (tas) is optional and may be entirely absent from the input DataFrame.
+
+    @pytest.mark.parametrize(
+        "tc_id,flight_id,missing,provided",
+        _PERF_DATA_GAP_TCS,
+        ids=[t[0] for t in _PERF_DATA_GAP_TCS],
+    )
+    def test_perf_data_gap_derives_missing(
+        self,
+        tc_id: str,
+        flight_id: str,
+        missing: list[str],
+        provided: list[str],
+        aggregated_fleet_run: FleetRunnerLargeEmitter,
+        aggregated_input_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        """Performance data gap: missing cols (all-null in input) must be derived
+        (non-null in output); provided cols must be preserved from input
+        (interpolated to output time grid).
+        """
+        runner = aggregated_fleet_run
+
+        # Parse input via neats_json_to_flights to get the canonical DataFrame.
+        raw_inp = aggregated_input_by_id[flight_id]
+        inp_flights = neats_json_to_flights([raw_inp])
+        assert len(inp_flights) == 1, f"{tc_id}: expected 1 parsed input flight"
+        inp_df = inp_flights[0]
+
+        inp_time = pd.to_datetime(inp_df["time"], utc=True).to_numpy(dtype="datetime64[ns]")
+
+        # Verify missing columns are all-null in input
+        for col in missing:
+            if col not in inp_df.columns:
+                continue
+            assert inp_df[col].isna().all(), (
+                f"{tc_id}: input column '{col}' must be all-null (missing), "
+                f"but has {inp_df[col].notna().sum()} non-null value(s)"
+            )
+
+        # Verify provided columns have real values in input
+        for col in provided:
+            if col not in inp_df.columns:
+                continue
+            assert inp_df[col].notna().any(), (
+                f"{tc_id}: input column '{col}' must have non-null values (provided), "
+                f"but is all-null"
+            )
+
+        # Flight must have succeeded
+        actual = _find_flight(runner.fleet_with_climate_impact, flight_id)
+        assert actual is not None, (
+            f"{tc_id}: flight '{flight_id}' not found in pipeline output. "
+            f"Errors: {runner.error_records}"
+        )
+
+        out_df = actual.to_dataframe()
+        out_time = out_df["time"].to_numpy(dtype="datetime64[ns]")
+
+        # Missing cols must be derived (non-null) in output
+        for col in missing:
+            assert col in out_df.columns, (
+                f"{tc_id}: output must contain derived column '{col}'"
+            )
+            assert out_df[col].notna().any(), (
+                f"{tc_id}: derived column '{col}' must have non-null values in output"
+            )
+
+        # Provided cols must be preserved from input
+        # Interpolate input values onto the output time grid and compare.
+        inp_ts_f = inp_time.astype(np.float64)
+        out_ts_f = out_time.astype(np.float64)
+
+        for col in provided:
+            if col not in inp_df.columns:
+                continue
+            assert col in out_df.columns, (
+                f"{tc_id}: output must contain provided column '{col}'"
+            )
+            inp_vals = inp_df[col].to_numpy(dtype=float)
+            valid_mask = ~np.isnan(inp_vals)
+            if valid_mask.sum() < 2:
+                continue
+            inp_vals_valid = inp_vals[valid_mask]
+            inp_ts_valid = inp_ts_f[valid_mask]
+            out_vals = out_df[col].to_numpy(dtype=float)
+            # Restrict to output points within the input time range
+            in_range = (out_ts_f >= inp_ts_valid[0]) & (out_ts_f <= inp_ts_valid[-1])
+            if not in_range.any():
+                continue
+            inp_interp = np.interp(out_ts_f[in_range], inp_ts_valid, inp_vals_valid)
+            np.testing.assert_allclose(
+                out_vals[in_range],
+                inp_interp,
+                rtol=0.05,
+                err_msg=(
+                    f"{tc_id}: output column '{col}' must preserve "
+                    f"input values (interpolated to output time grid)"
+                ),
+            )
+
 
 class TestPrePipelineValidation:
     """Fast unit tests that verify specific behaviours without running the
@@ -924,6 +1264,46 @@ class TestPrePipelineValidation:
         # ZZZZ is completely unknown; bada_type() should raise KeyError
         with pytest.raises(KeyError, match="Unable to resolve BADA mapping"):
             mapper.bada_type("ZZZZ")
+
+    def test_hc_ratio_range_validation(self) -> None:
+        """TC_HC_RATIO_OUT_OF_RANGE pre-check: H/C ratio 2.5 is outside [1.9061, 2.1857].
+
+        Validates that the out-of-range value used in the golden test case is
+        genuinely outside the valid range so the error case makes sense.
+        """
+        hc_ratio_value = 2.5
+        valid_min = 1.9061
+        valid_max = 2.1857
+        assert hc_ratio_value < valid_min or hc_ratio_value > valid_max, (
+            f"Test value {hc_ratio_value} must be outside [{valid_min}, {valid_max}]"
+        )
+
+    def test_hydrogen_content_range_validation(self) -> None:
+        """TC_HYDROGEN_OUT_OF_RANGE pre-check: hydrogen 16.0 is outside [13.79, 15.5].
+
+        Validates that the out-of-range value used in the golden test case is
+        genuinely outside the valid range so the error case makes sense.
+        """
+        hydrogen_value = 16.0
+        valid_min = 13.79
+        valid_max = 15.5
+        assert hydrogen_value < valid_min or hydrogen_value > valid_max, (
+            f"Test value {hydrogen_value} must be outside [{valid_min}, {valid_max}]"
+        )
+
+    def test_qfuel_range_validation(self) -> None:
+        """TC_QFUEL_OUT_OF_RANGE pre-check: q_fuel 45_500_000 J/kg (45.5 MJ/kg) is outside
+        [42.6397, 44.5] MJ/kg.
+
+        Validates that the out-of-range value used in the golden test case is
+        genuinely outside the valid range so the error case makes sense.
+        """
+        qfuel_value_mj_per_kg = 45_500_000.0 / 1_000_000.0  # convert J/kg → MJ/kg
+        valid_min = 42.6397
+        valid_max = 44.5
+        assert qfuel_value_mj_per_kg < valid_min or qfuel_value_mj_per_kg > valid_max, (
+            f"Test value {qfuel_value_mj_per_kg} MJ/kg must be outside [{valid_min}, {valid_max}]"
+        )
 
     @pytest.mark.parametrize(
         "golden_input_file",
