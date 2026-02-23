@@ -360,6 +360,9 @@ class WeatherProvider(
                     )
                 df[k] = v
 
+            # Directly compute and assign air_pressure
+            df["air_pressure"] = flight.air_pressure
+
             base = Flight(
                 data=df, attrs=getattr(flight, "attrs", None), fuel=flight.fuel
             )
@@ -435,6 +438,9 @@ class WeatherProvider(
         df = pyc_fleet.dataframe.reset_index(drop=True)
         for k, v in new_cols.items():
             df[k] = v
+
+        # Directly compute and assign air_pressure for the entire fleet
+        df["air_pressure"] = pyc_fleet.air_pressure
 
         fleet_with_weather = Fleet(
             data=df, attrs=pyc_fleet.attrs, fl_attrs=pyc_fleet.fl_attrs

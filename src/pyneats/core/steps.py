@@ -115,7 +115,9 @@ class VectorizedStep(Protocol[InFlightT, OutFlightT]):
         Run the step on a list of flights.
     """
 
-    def run_fleet(self, flights: list[InFlightT]) -> tuple[list[OutFlightT], list[dict[str, Any]]]: ...
+    def run_fleet(
+        self, flights: list[InFlightT]
+    ) -> tuple[list[OutFlightT], list[dict[str, Any]]]: ...
 
 
 def get_step_critical_columns(step: Any) -> tuple[str, ...]:

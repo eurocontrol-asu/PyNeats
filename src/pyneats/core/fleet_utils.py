@@ -21,7 +21,13 @@ __all__ = [
     "fleet_to_flights",
 ]
 
-_ERROR_RECORD_ATTRS = ("departure_airport", "arrival_airport", "aobt", "aircraft_type", "engine_uid")
+_ERROR_RECORD_ATTRS = (
+    "departure_airport",
+    "arrival_airport",
+    "aobt",
+    "aircraft_type",
+    "engine_uid",
+)
 
 
 def flights_to_fleet(flights: list[Flight]) -> Fleet:
@@ -67,7 +73,9 @@ def flights_to_fleet(flights: list[Flight]) -> Fleet:
     flight_key_attrs = ["flight_id", "arrival_airport", "departure_airport", "aobt"]
     for flight in flights:
         flight.attrs["_original_flight_id"] = flight.attrs["flight_id"]
-        flight.attrs["flight_id"] = "_".join(str(flight.attrs[k]) for k in flight_key_attrs)
+        flight.attrs["flight_id"] = "_".join(
+            str(flight.attrs[k]) for k in flight_key_attrs
+        )
 
     # 3b. Build manifest keyed by composite flight_id for dropped-flight detection
     manifest: dict[str, dict[str, Any]] = {}
@@ -132,9 +140,11 @@ def fleet_to_flights(
     errors: list[dict[str, Any]] = []
     for composite_id, attrs in manifest.items():
         if composite_id not in surviving_ids:
-            errors.append({
-                "flight_information": attrs,
-                "error": f"Failed at {step_name}: flight dropped during fleet processing",
-            })
+            errors.append(
+                {
+                    "flight_information": attrs,
+                    "error": f"Failed at {step_name}: flight dropped during fleet processing",
+                }
+            )
 
     return flights, errors

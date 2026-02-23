@@ -8,7 +8,8 @@ import pytest
 from pycontrails import Fleet
 from pycontrails import Flight
 
-from pyneats.core.fleet_utils import fleet_to_flights, flights_to_fleet
+from pyneats.core.fleet_utils import fleet_to_flights
+from pyneats.core.fleet_utils import flights_to_fleet
 from pyneats.core.neats_fuel import NEATSFuel
 
 
@@ -71,7 +72,9 @@ def test_duplicate_flight_id_gets_unique_composite():
 
 def test_original_columns_preserved():
     """Extra NaN-padded columns are removed after roundtrip."""
-    f1 = _make_flight("A1", "EGLL", "KJFK", "2024-01-01T12:00:00", extra_columns={"sac": 1.0})
+    f1 = _make_flight(
+        "A1", "EGLL", "KJFK", "2024-01-01T12:00:00", extra_columns={"sac": 1.0}
+    )
     f2 = _make_flight("B2", "LFPG", "LEMD", "2024-01-01T14:00:00")
 
     fleet = flights_to_fleet([f1, f2])
@@ -113,7 +116,7 @@ def test_dropped_flight_creates_error_record():
     # Find the composite key for f2 to drop it
     df = fleet.dataframe
     composite_ids = df["flight_id"].unique()
-    composite_id_to_drop = [cid for cid in composite_ids if "DROP" in cid][0]
+    composite_id_to_drop = next(cid for cid in composite_ids if "DROP" in cid)
 
     # Simulate a vectorized step dropping f2 by removing its rows
     mask = df["flight_id"] != composite_id_to_drop

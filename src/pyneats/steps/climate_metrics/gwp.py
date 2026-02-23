@@ -185,7 +185,7 @@ class GWPMetrics(
         self, flight: FlightWithSegmentATR
     ) -> list[dict[str, Any]]:
         """
-        LEGACY LOGIC:
+        Computations for Method C
         1. Sums 'ef' column for Contrails.
         2. Sums 'ATR_20_X' columns for Non-CO2.
         3. Applies conversion factors.
@@ -253,7 +253,7 @@ class GWPMetrics(
         self, flight: FlightWithGlobalAGWP
     ) -> list[dict[str, Any]]:
         """
-        NEW LOGIC:
+        Computations for Method D
         1. Reads 'AGWP_{h}_{spec}' directly from attributes.
         2. Applies Efficacy.
         3. Divides by CO2 contribution (CO2eq).
@@ -276,8 +276,7 @@ class GWPMetrics(
                 eagwp = raw_agwp * eps
 
                 # Convert to CO2eq
-                s_yr = self.params.seconds_per_year
-                denom = self.params.agwp_coeff_wm2yr_per_kg[h] * s_yr
+                denom = self.params.agwp_coeff_wm2yr_per_kg[h]
                 co2eq = eagwp / denom
 
                 val_list.append(
@@ -300,8 +299,7 @@ class GWPMetrics(
                 eps = float(self.params.efficacy.get("Contrails", 1.0))
                 eagwp = raw_agwp * eps
 
-                s_yr = self.params.seconds_per_year
-                denom = self.params.agwp_coeff_wm2yr_per_kg[h] * s_yr
+                denom = self.params.agwp_coeff_wm2yr_per_kg[h]
                 co2eq = eagwp / denom
 
                 cont_val_list.append(
