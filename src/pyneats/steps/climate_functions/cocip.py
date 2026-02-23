@@ -62,6 +62,7 @@ class CoCiPModel(
     """Calculates contrail climate impact using the Pycontrails's CoCiP implementation"""
 
     default_params = ContrailsParams
+    output_schema = FlightWithRFContrailsImpact
 
     def _post_init(self) -> None:
         if self.params.met is None or self.params.rad is None:
@@ -89,7 +90,7 @@ class CoCiPModel(
 
     def run_fleet(
         self, flights: list[FlightWithEmissions]
-    ) -> list[FlightWithRFContrailsImpact]:
+    ) -> tuple[list[FlightWithRFContrailsImpact], list[dict[str, Any]]]:
         """
         Fleet-level vectorized CoCiP evaluation.
 
@@ -100,7 +101,7 @@ class CoCiPModel(
             flights: List of flights with emissions data
 
         Returns:
-            List of flights with contrails impact data
+            Tuple of (flights with contrails impact data, error records for dropped flights)
 
         Raises:
             ContrailsStepError: If CoCiP evaluation fails
@@ -117,11 +118,11 @@ class CoCiPModel(
             self.logger.exception("Fleet CoCiP evaluation failed")
             raise ContrailsStepError(f"Fleet CoCiP evaluation failed: {e}") from e
 
-        # Convert back to List[Flight]
-        out = fleet_to_flights(results_fleet)
+        # Convert back to List[Flight], detecting dropped flights
+        out, errors = fleet_to_flights(results_fleet, step_name="CoCiP evaluation")
 
         # Zero-copy validation + type narrowing
         typed = [FlightWithRFContrailsImpact.from_flight(f) for f in out]
 
         self.logger.info("Fleet CoCiP step completed successfully")
-        return typed
+        return typed, errors

@@ -37,6 +37,7 @@ __all__ = [
     "StepError",
     "Step",
     "VectorizedStep",
+    "get_step_critical_columns",
     "BaseStep",
     "BaseParams",
 ]
@@ -114,7 +115,23 @@ class VectorizedStep(Protocol[InFlightT, OutFlightT]):
         Run the step on a list of flights.
     """
 
-    def run_fleet(self, flights: list[InFlightT]) -> list[OutFlightT]: ...
+    def run_fleet(
+        self, flights: list[InFlightT]
+    ) -> tuple[list[OutFlightT], list[dict[str, Any]]]: ...
+
+
+def get_step_critical_columns(step: Any) -> tuple[str, ...]:
+    """Derive critical columns from a step's ``output_schema``.
+
+    Returns the step's ``output_schema.REQUIRED`` tuple (the class's own,
+    **not** ``_all_required()``), since inherited columns were already
+    validated by prior pipeline steps.  Returns ``()`` when the step has
+    no ``output_schema``.
+    """
+    schema = getattr(step, "output_schema", None)
+    if schema is not None and hasattr(schema, "REQUIRED"):
+        return schema.REQUIRED
+    return ()
 
 
 def update_param_dict(

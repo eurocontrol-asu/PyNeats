@@ -44,6 +44,7 @@ from pyneats.core.neats_default_parameters import DEFAULT_COCIP_KWARGS
 from pyneats.core.neats_default_parameters import DEFAULT_HUMIDITY_SCALING
 from pyneats.core.steps import Step
 from pyneats.core.steps import VectorizedStep
+from pyneats.core.steps import get_step_critical_columns
 from pyneats.core.steps_registry import build
 from pyneats.runners.flight import RunnerConfig
 from pyneats.runners.runner import Runner
@@ -166,16 +167,6 @@ class FleetRunnerParams(RunnerConfig):
     humidity_scaling: HumidityScaling | None = field(
         default_factory=lambda: DEFAULT_HUMIDITY_SCALING
     )
-
-    # Critical columns for vectorized-step failure detection
-    weather_critical_columns: tuple[str, ...] = (
-        "air_temperature",
-        "specific_humidity",
-        "geopotential",
-        "potential_vorticity",
-    )
-    humidity_scaling_critical_columns: tuple[str, ...] = ()
-    cocip_critical_columns: tuple[str, ...] = ()
 
     def validate(self) -> None:
         if self.zarr_paths is None:
@@ -544,16 +535,7 @@ class FleetRunner(Runner):
             self.interpolated_fleet,
             "weather intersection",
             self.weather_step,
-            self.cfg.weather_critical_columns,
         )
-
-        # Check humidity scaling failures (separate from weather intersection)
-        flights, errs = self._check_and_filter_failed_flights(
-            flights,
-            self.cfg.humidity_scaling_critical_columns,
-            "humidity scaling",
-        )
-        self.error_records.extend(errs)
 
         self.fleet_with_weather = flights
         self.interpolated_fleet = None  # free memory
@@ -690,16 +672,18 @@ class FleetRunner(Runner):
         flights: list[InFlightT],
         step_name: str,
         step: VectorizedStep[InFlightT, OutFlightT],
-        critical_columns: tuple[str, ...],
     ) -> list[OutFlightT]:
         """
         Run a vectorized step with error handling.
+
+        Critical columns are derived from the step's ``output_schema.REQUIRED``
+        attribute (the class's own, not inherited), so each step declares what
+        columns must be present and non-NaN in its output.
 
         Args:
             flights: List of input flights (must be Flight subclass)
             step_name: Name of the step (for logging/error messages)
             step: Step instance implementing VectorizedStep protocol
-            critical_columns: Columns to check for failures
 
         Returns:
             List of successful output flights (type-safe, no cast needed)
@@ -714,9 +698,11 @@ class FleetRunner(Runner):
             return []
 
         # Call step's run_fleet() method (typed via VectorizedStep protocol)
-        result_flights = step.run_fleet(flights)
+        result_flights, fleet_errors = step.run_fleet(flights)
+        self.error_records.extend(fleet_errors)
 
         # Check for critical column failures and filter
+        critical_columns = get_step_critical_columns(step)
         successful, errs = self._check_and_filter_failed_flights(
             result_flights,
             critical_columns,

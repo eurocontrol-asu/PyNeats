@@ -42,7 +42,10 @@ REQUIRED_AGWP_ATTRS: Final[tuple[str, ...]] = (
     "AGWP_100_CONT",
 )
 
-REQUIRED_CONTRAIL_COLS: Final[tuple[str, ...]] = ("ef",)
+REQUIRED_CONTRAIL_COLS: Final[tuple[str, ...]] = (
+    "ef",
+    "sac",
+)
 
 
 class FlightWithRFContrailsImpact(FlightWithEmissions):
