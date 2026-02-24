@@ -76,6 +76,8 @@ Behavioural assertions (TestBehavioralAssertions):
    test_missing_departure_landing_abortion tc_missing_departure / tc_missing_landing:
        check if aborted [TODO: check for flag]
    test_altitude_fluctuations_correction  tc_altitude_fluctuations: smooth fluctuations
+   test_longitude_convention_correction   tc_changed_longitude_convention: correct longitude convention
+   test_trajectory_jump_correction        tc_trajectory_jump: correct jump in trajectory
    test_no_hc_ratio_uses_hydrogen_content TC_NO_HC_RATIO: output hydrogen_content matches input
    test_no_hydrogen_uses_hc_ratio         TC_NO_HYDROGEN: hydrogen_content derived from H/C ratio
    test_no_hc_no_hydrogen_uses_default    TC_NO_HC_NO_HYDROGEN: hydrogen_content = DEFAULT (13.79)
@@ -901,11 +903,20 @@ class TestBehavioralAssertions:
         aggregated_fleet_run: FleetRunnerLargeEmitter,
         aggregated_input_by_id: dict[str, dict[str, Any]],
     ) -> None:
-        """altitude_fluctuations: checks, if altitude fluctuations in cruise were smoothed"""
+        """altitude_fluctuations: checks, if altitude fluctuations in cruise were smoothed
+
+        The function checks the consequences of a fluctuating altitude on the flight performance first,
+        before checking the smoothing of the altitude fluctuations themselfes. For the flight performance
+        the fuel flow is inspected for major peaks in cruise flight, which should without steep climbs/descends
+        caused by the altitude fluctuations not occur. Then the function checks, if there are many larger ups
+        and downs in the fuel flow or altitude (at least every 8 waypoints one up and down in average) for
+        cruise phases longer than 10 waypoints.
+        """
         flight_id = (
             AGGREGATED_FLIGHT_SELECTIONS["tc_altitude_fluctuations"] + "__tc_altitude_fluctuations"
         )
         output_flight = _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id)
+        # Fuel flow is used for flight performance influence check
         assert output_flight is not None, f"Flight '{flight_id}' not found in pipeline output"
         outp_time = (
             pd.Series(pd.to_datetime(output_flight.get("time"), utc=True))
@@ -926,6 +937,7 @@ class TestBehavioralAssertions:
         delta_idx_cruise = idx_cruise[1:] - idx_cruise[:-1]
         cruise_detected = 0
         cruise_phases_idx = []
+        # Iteration over all cruise waypoints to find connected cruise segments
         for i, delta in enumerate(delta_idx_cruise):
             if (delta == 1) & (cruise_detected == 0):
                 cruise_detected = i
@@ -941,6 +953,7 @@ class TestBehavioralAssertions:
                     cruise_detected = 0
                 else:
                     cruise_detected = 0
+        # Iteration over all cruise segments
         for idx_start_end in cruise_phases_idx:
             idx_cruise = np.arange(idx_start_end[0], idx_start_end[1] + 1)
             cruise_ff = outp_ff[idx_cruise]
@@ -974,13 +987,44 @@ class TestBehavioralAssertions:
                     alt_current = -1
             ff_changes = (ff_ups + ff_downs) / 2
             alt_changes = (alt_ups + alt_downs) / 2
-            if len(idx_cruise) > 7:
-                assert len(idx_cruise) > (ff_changes * 6), (
+            if len(idx_cruise) > 10:
+                assert len(idx_cruise) > (ff_changes * 8), (
                     "tc_altitude_fluctuations: Failed to smooth altitude fluctuations and failed to smooth consequences on flight performance"
                 )
                 assert len(idx_cruise) > (alt_changes * 8), (
                     "tc_altitude_fluctuations: Failed to smooth altitude fluctuations, but no major consequences for flight performance"
                 )
+
+    def test_longitude_convention_correction(
+        self,
+        aggregated_fleet_run: FleetRunnerLargeEmitter,
+        aggregated_input_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        """Check if changed longitude convention ([0;360] instead of [-180;180]) was corrected"""
+        flight_id = AGGREGATED_FLIGHT_SELECTIONS["tc_changed_longitude_convention"] + "__tc_changed_longitude_convention"
+        output_flight = _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id)
+        input_flight = neats_json_to_flights([aggregated_input_by_id[flight_id]])[0]
+        assert input_flight is not None, f"tc_changed_longitude_convention: No input flight"
+        assert output_flight is not None, f"tc_changed_longitude_convention: Detected change in longitude conventions, but deleted instead of correction"
+        assert abs(output_flight.get("longitude")[0] - input_flight.get("longitude")[0]) > 170, (
+            f"tc_changed_longitude_convention: Changed longitude convention in input not corrected"
+        )
+
+    def test_trajectory_jump_correction(
+        self,
+        aggregated_fleet_run: FleetRunnerLargeEmitter,
+        aggregated_input_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        """Check if jump in trajectory (longitude shift) is identified and corrected"""
+        flight_id = AGGREGATED_FLIGHT_SELECTIONS["tc_trajectory_jump"] + "__tc_trajectory_jump"
+        input_flight = neats_json_to_flights([aggregated_input_by_id[flight_id]])[0]
+        output_flight = _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id)
+        assert input_flight is not None, f"tc_trajectory_jump: No input flight"
+        assert output_flight is not None, f"tc_trajectory_jump: Detected jump in trajectory, but deleted instead of correction"
+        outp_longitude = output_flight.get("longitude")
+        longitude_diff = np.diff(outp_longitude)
+        assert np.max(abs(longitude_diff)) < 1.0, (f"tc_trajectory_jump: Trajectory jumps in input not corrected")
+
 
     # TC_NO_HC_RATIO: H/C ratio absent, hydrogen_content present
     # Output fuel hydrogen_content must match input hydrogen_content
