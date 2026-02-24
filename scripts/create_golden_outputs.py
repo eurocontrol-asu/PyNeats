@@ -147,10 +147,10 @@ class Modification:
 
 
 def _apply_single_modification(
-    fi: dict[str, Any],
-    flight_id: str,
-    baseline: dict[str, Any],
-    mod: Modification,
+        fi: dict[str, Any],
+        flight_id: str,
+        baseline: dict[str, Any],
+        mod: Modification,
 ) -> None:
     """Apply one :class:Modification to a single flight's flight_information dict."""
     parts = mod.target.split(".")
@@ -194,9 +194,9 @@ def _apply_single_modification(
 
 
 def _modify_flight(
-    input_data: list[dict[str, Any]],
-    baseline: dict[str, Any],
-    modifications: list[Modification],
+        input_data: list[dict[str, Any]],
+        baseline: dict[str, Any],
+        modifications: list[Modification],
 ) -> list[dict[str, Any]]:
     """Apply a list of declarative :class:Modification objects to all flights.
 
@@ -225,8 +225,8 @@ def _modify_flight(
 
 
 def _make_non_decreasing_mass(
-    baseline_arr: np.ndarray | None,
-    n_waypoints: int,
+        baseline_arr: np.ndarray | None,
+        n_waypoints: int,
 ) -> list[float]:
     """Create a mass array that increases at some points (violates monotonicity)."""
     if baseline_arr is None:
@@ -239,8 +239,8 @@ def _make_non_decreasing_mass(
 
 
 def _make_exceeds_mtow_mass(
-    baseline_arr: np.ndarray | None,
-    n_waypoints: int,
+        baseline_arr: np.ndarray | None,
+        n_waypoints: int,
 ) -> list[float]:
     """Create a mass array with some values above ~78000 kg MTOW
     (mass takeoff weight) for A320.
@@ -279,8 +279,8 @@ def _make_var_time_resolution(baseline: dict[str, np.ndarray]) -> list[dict[str,
     flighttime_s = (time - time[0]) / np.timedelta64(1, "s")
     # Startindex of applied modification
     idx_manip_1 = (
-        np.searchsorted(flighttime_s, (duration_flight_s - duration_manipulate_s) / 2, side="right")
-        - 1
+            np.searchsorted(flighttime_s, (duration_flight_s - duration_manipulate_s) / 2, side="right")
+            - 1
     )
     # End index of applied modification
     idx_manip_2 = np.searchsorted(
@@ -517,7 +517,7 @@ def _make_missing_landing(baseline: dict[str, np.ndarray]) -> list[dict[str, Any
     # Remove departure waypoints
     try:
         alt_reversed = baseline["altitude"][::-1]
-        idx_rev = np.searchsorted(alt_reversed, alt_reversed[0] + 2 * 304.8, side="right") - 1
+        idx_rev = np.searchsorted(alt_reversed, alt_reversed[0] + 2 * 304.8, side="right") + 1
         # Last point of flight above 2000ft from last datapoint
         idx_landing = len(alt_reversed) - idx_rev
     except:
@@ -562,8 +562,8 @@ def _make_altitude_fluctuations(baseline: dict[str, np.ndarray]) -> list[dict[st
             cruise_detected = i
         elif (delta != 1) & (cruise_detected > 0):
             if (
-                (baseline["time"][idx_cruise[i]] - baseline["time"][idx_cruise[cruise_detected]])
-                / np.timedelta64(1, "s")
+                    (baseline["time"][idx_cruise[i]] - baseline["time"][idx_cruise[cruise_detected]])
+                    / np.timedelta64(1, "s")
             ) > 119:
                 break
             else:
@@ -585,7 +585,7 @@ def _make_altitude_fluctuations(baseline: dict[str, np.ndarray]) -> list[dict[st
                         for n in np.arange(1, cruise_time_5s)
                     ]
                 ),
-                baseline["time"][idx_cruise[i] :],
+                baseline["time"][idx_cruise[i]:],
             )
         )
         flighttime_manip_s = (time_manip - time_manip[0]) / np.timedelta64(1, "s")
@@ -609,10 +609,56 @@ def _make_altitude_fluctuations(baseline: dict[str, np.ndarray]) -> list[dict[st
         np.random.seed(42)
         alt_fluctuations = (np.random.rand(len(idx_cruise)) - 0.5) * delta_fluctuation
         baseline_manip["altitude"][idx_cruise] = (
-            baseline_manip["altitude"][idx_cruise] + alt_fluctuations
+                baseline_manip["altitude"][idx_cruise] + alt_fluctuations
         )
+    for key in ["fuel_flow", "engine_efficiency", "aircraft_mass", "true_airspeed"]:
+        if key in baseline_manip.keys():
+            baseline_manip[key]=np.ones(len(baseline_manip[key]))*np.nan
     return _baseline_to_json_input(baseline_manip)
 
+def _make_changed_longitude_convention(baseline: dict[str,np.ndarray]) -> list[dict[str, Any]]:
+    """Apply test for chenged longitude convention of [0; 360] instead of [-180; 180].
+
+    Creates "trajectory_data"-part of input-JSON from baseline output with applied manipulation to the flight
+    trajectory
+
+    Args:
+        baseline: Baseline trajectory datapoints extracted from default case outputs
+
+    Returns:
+        Modified input flight trajectory ("trajectory_data"-part of input-JSON)
+    """
+    baseline_manip = copy.deepcopy(baseline)
+    # Change longitude range from [-180; 180] to [0; 360]
+    baseline_manip['longitude'] = baseline_manip['longitude'] + 180
+    return _baseline_to_json_input(baseline_manip)
+
+def _make_trajectory_jump(baseline: dict[str, np.ndarray]) -> list[dict[str, Any]]:
+    """Apply test for jump in flight trajectories.
+
+    Creates "trajectory_data"-part of input-JSON from baseline output with applied manipulation to the flight
+    trajectory
+
+    Args:
+        baseline: Baseline trajectory datapoints extracted from default case outputs
+
+    Returns:
+        Modified input flight trajectory ("trajectory_data"-part of input-JSON)
+    """
+    baseline = copy.deepcopy(baseline)
+    # Sort waypoints by time
+    idx_sort = np.argsort(baseline["time"])
+    for key in baseline.keys():
+        baseline[key] = baseline[key][idx_sort]
+    # Manipulate longitude of 4 waypoints with +10°
+    baseline_manip = baseline
+    idx_jump = list(np.arange(int(np.floor(len(baseline["longitude"]) / 3)),int(np.floor(len(baseline["longitude"]) / 3))+4))
+    baseline_manip["longitude"] = baseline_manip["longitude"].astype(float)
+    print(baseline_manip["longitude"])
+    baseline_manip["longitude"][idx_jump] = baseline_manip["longitude"][idx_jump]+10
+    print(baseline_manip["longitude"])
+    print(baseline_manip["longitude"][idx_jump])
+    return _baseline_to_json_input(baseline_manip)
 
 def _baseline_to_json_input(baseline: dict[str, np.ndarray]) -> list[dict[str, Any]]:
     """Translate baseline trajectory format to Input-JSON "trajectory_data" format.
@@ -850,7 +896,6 @@ PARAMETER_REGISTRY: dict[str, ParamSpec] = {
     ),
 }
 
-
 # Perturbation factors for single-parameter test cases
 PERTURBATIONS: dict[str, float] = {
     "payload_factor": 0.85,  # 85% of default (1.0 -> 0.85)
@@ -867,7 +912,6 @@ PERTURBATIONS: dict[str, float] = {
     "mixed_columns": 1.0,  # Legacy: not a factor, kept for interface consistency
     "mixed_attrs": 1.0,  # Legacy: not a factor, kept for interface consistency
 }
-
 
 # Aggregated-mode flight selections one flight per TC, never EAF2143 (fails).
 # Round-robin across the four reliable flights.
@@ -931,6 +975,8 @@ AGGREGATED_FLIGHT_SELECTIONS: dict[str, str] = {
     "tc_missing_departure": "FDX5067",
     "tc_missing_landing": "RYR46YN",
     "tc_altitude_fluctuations": "ACA812",
+    "tc_changed_longitude_convention": "ACA812",
+    "tc_trajectory_jump": "UAE62Y",
 }
 
 
@@ -1034,9 +1080,9 @@ class PipelineResult:
 
 
 def run_pipeline(
-    input_path: Path,
-    zarr_paths: ZarrPaths,
-    bada_path: Path,
+        input_path: Path,
+        zarr_paths: ZarrPaths,
+        bada_path: Path,
 ) -> PipelineResult:
     """Run FleetRunner pipeline and return results with error information.
 
@@ -1106,10 +1152,10 @@ def extract_baseline_values(flights: list[FlightView]) -> dict[str, Any]:
 def interpolate_baseline_to_input_size(
         baseline: dict[str, Any],
         input_data: list[dict[str, Any]]
-)-> dict[str, Any]:
+) -> dict[str, Any]:
     """Interpolate baseline column values apart from 4D-trajectory along input-data time datapoints.
-        
-    Copies 4D-trajectory columns from input data to baseline and interpolates remaining baseline column values to the 
+
+    Copies 4D-trajectory columns from input data to baseline and interpolates remaining baseline column values to the
     input waypoints.
 
     Returns a dict with baseline values keyed by {internal_name: {flight_id: value}}.
@@ -1151,9 +1197,9 @@ def interpolate_baseline_to_input_size(
 
 
 def apply_mixed_columns(
-    input_data: list[dict[str, Any]],
-    baseline: dict[str, Any],
-    factor: float,  # Not used, kept for interface consistency
+        input_data: list[dict[str, Any]],
+        baseline: dict[str, Any],
+        factor: float,  # Not used, kept for interface consistency
 ) -> list[dict[str, Any]]:
     """Apply different optional columns to different flights.
 
@@ -1222,9 +1268,9 @@ def apply_mixed_columns(
 
 
 def apply_mixed_attrs(
-    input_data: list[dict[str, Any]],
-    baseline: dict[str, Any],
-    factor: float,  # Not used, kept for interface consistency
+        input_data: list[dict[str, Any]],
+        baseline: dict[str, Any],
+        factor: float,  # Not used, kept for interface consistency
 ) -> list[dict[str, Any]]:
     """Apply different optional attributes to different flights.
 
@@ -1299,9 +1345,9 @@ def apply_mixed_attrs(
 
 
 def apply_parameters(
-    input_data: list[dict[str, Any]],
-    baseline: dict[str, Any],
-    params: dict[str, float],
+        input_data: list[dict[str, Any]],
+        baseline: dict[str, Any],
+        params: dict[str, float],
 ) -> list[dict[str, Any]]:
     """Apply parameter perturbations to input flights with schema-aware cleanup.
 
@@ -1385,7 +1431,7 @@ def apply_parameters(
                 # .tolist() on datetime64[ns] returns raw int nanoseconds in
                 # modern numpy, which breaks downstream strptime() parsing.
                 if isinstance(base_value, np.ndarray) and np.issubdtype(
-                    base_value.dtype, np.datetime64
+                        base_value.dtype, np.datetime64
                 ):
                     perturbed = [
                         pd.Timestamp(t).strftime("%Y-%m-%dT%H:%M:%S+0000")
@@ -1417,8 +1463,8 @@ def apply_parameters(
 
 
 def _validate_against_schema(
-    flights: list[dict[str, Any]],
-    schema_path: str,
+        flights: list[dict[str, Any]],
+        schema_path: str,
 ) -> None:
     """Validate each flight dict against the JSON schema.
 
@@ -1455,10 +1501,10 @@ def _validate_against_schema(
 
 
 def apply_ref(
-    input_data: list[dict[str, Any]],
-    baseline: dict[str, Any],
-    factor: float = 1.0,  # kept for interface consistency with other apply_* functions
-    schema_path: str = str(Path(__file__).parent / "schemas/flight_schema.json"),
+        input_data: list[dict[str, Any]],
+        baseline: dict[str, Any],
+        factor: float = 1.0,  # kept for interface consistency with other apply_* functions
+        schema_path: str = str(Path(__file__).parent / "schemas/flight_schema.json"),
 ) -> list[dict[str, Any]]:
     """Apply ALL optional parameters at factor 1.0 to produce the reference case.
 
@@ -1967,6 +2013,8 @@ def build_test_cases() -> list[TestCaseSpec]:
         "missing_departure": _make_missing_departure,
         "missing_landing": _make_missing_landing,
         "altitude_fluctuations": _make_altitude_fluctuations,
+        "changed_longitude_convention": _make_changed_longitude_convention,
+        "trajectory_jump": _make_trajectory_jump,
     }
     for case in trajectory_mod_cases:
         cases.append(
@@ -1984,8 +2032,8 @@ def build_test_cases() -> list[TestCaseSpec]:
 
 
 def filter_input_to_match_outputs(
-    input_data: list[dict[str, Any]],
-    result: PipelineResult,
+        input_data: list[dict[str, Any]],
+        result: PipelineResult,
 ) -> list[dict[str, Any]]:
     """Filter input flights to only include those that succeeded in pipeline.
 
@@ -2300,8 +2348,8 @@ def generate_per_file_golden(ctx: GoldenContext) -> None:
 
 
 def _extract_single_flight(
-    original_input: list[dict[str, Any]],
-    flight_id: str,
+        original_input: list[dict[str, Any]],
+        flight_id: str,
 ) -> dict[str, Any] | None:
     """Extract a single flight from the original input by flight_identification.
 
