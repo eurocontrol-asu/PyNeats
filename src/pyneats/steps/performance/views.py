@@ -22,6 +22,7 @@ REQUIRED_PERF_COLS: Final[tuple[str, ...]] = (
     "true_airspeed",
     "fuel_flow",
     "engine_efficiency",
+    "aircraft_mass",
 )
 
 

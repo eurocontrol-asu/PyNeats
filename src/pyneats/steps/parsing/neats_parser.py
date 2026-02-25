@@ -92,7 +92,7 @@ class NeatsTrajectoryParser(
                     .mul(100.0)  # FL → ft
                     .to_numpy(dtype=float, copy=False)
                 )
-                df = flight
+                df = flight.copy()
                 df["altitude"] = ft_to_m(alt_ft)
 
             except Exception as e:

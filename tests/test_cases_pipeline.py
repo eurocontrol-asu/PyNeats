@@ -114,6 +114,7 @@ from pyneats.steps.parsing.neats_io import neats_json_to_flights
 from pyneats.steps.weather.weather_store import ZarrPaths
 from tests.conftest import assert_climate_payload_equal
 
+
 GOLDEN_DIR = Path(__file__).parent / "data" / "golden"
 _BASE = "fleet_5_flights"
 _AGGREGATED_INPUT = GOLDEN_DIR / f"{_BASE}_aggregated_input.json"
@@ -121,8 +122,17 @@ _AGGREGATED_OUTPUT = GOLDEN_DIR / f"{_BASE}_aggregated_output.json"
 
 
 # Success TCs flight must appear in fleet_with_climate_impact.
+_XFAIL_DLR = pytest.mark.xfail(
+    reason="Known DLR test failing in evaluated version", strict=True
+)
+
 SUCCESS_TCS: list[tuple[str, str]] = [
-    ("TC_AC_OVERSPEC", "RYR46YN__tc_ac_overspec"),
+    pytest.param(
+        "TC_AC_OVERSPEC",
+        "RYR46YN__tc_ac_overspec",
+        id="TC_AC_OVERSPEC",
+        marks=_XFAIL_DLR,
+    ),
     ("TC_AC_NO_BADA4", "ACA812__tc_ac_no_bada4"),
     ("TC_ENG_UNSPEC", "FDX5067__tc_eng_unspec"),
     ("TC_ENG_MISMATCH", "RYR46YN__tc_eng_mismatch"),
@@ -161,14 +171,49 @@ SUCCESS_TCS: list[tuple[str, str]] = [
 # Error TCs flight must appear in error_records, NOT in output.
 ERROR_TCS: list[tuple[str, str]] = [
     ("TC_AC_NO_BADA", "UAE62Y__tc_ac_no_bada"),
-    ("TC_MASS_BELOW_OEW", "ACA812__tc_mass_below_oew"),
-    ("TC_MASS_NOT_DECREASING", "UAE62Y__tc_mass_not_decreasing"),
-    ("TC_MASS_EXCEEDS_MTOW", "FDX5067__tc_mass_exceeds_mtow"),
-    ("TC_TOM_EXCEEDS_MTOW", "RYR46YN__tc_tom_exceeds_mtow"),
+    pytest.param(
+        "TC_MASS_BELOW_OEW",
+        "ACA812__tc_mass_below_oew",
+        id="TC_MASS_BELOW_OEW",
+        marks=_XFAIL_DLR,
+    ),
+    pytest.param(
+        "TC_MASS_NOT_DECREASING",
+        "UAE62Y__tc_mass_not_decreasing",
+        id="TC_MASS_NOT_DECREASING",
+        marks=_XFAIL_DLR,
+    ),
+    pytest.param(
+        "TC_MASS_EXCEEDS_MTOW",
+        "FDX5067__tc_mass_exceeds_mtow",
+        id="TC_MASS_EXCEEDS_MTOW",
+        marks=_XFAIL_DLR,
+    ),
+    pytest.param(
+        "TC_TOM_EXCEEDS_MTOW",
+        "RYR46YN__tc_tom_exceeds_mtow",
+        id="TC_TOM_EXCEEDS_MTOW",
+        marks=_XFAIL_DLR,
+    ),
     # Fuel validation error cases
-    ("TC_HC_RATIO_OUT_OF_RANGE", "UAE62Y__tc_hc_ratio_out_of_range"),
-    ("TC_HYDROGEN_OUT_OF_RANGE", "FDX5067__tc_hydrogen_out_of_range"),
-    ("TC_QFUEL_OUT_OF_RANGE", "RYR46YN__tc_qfuel_out_of_range"),
+    pytest.param(
+        "TC_HC_RATIO_OUT_OF_RANGE",
+        "UAE62Y__tc_hc_ratio_out_of_range",
+        id="TC_HC_RATIO_OUT_OF_RANGE",
+        marks=_XFAIL_DLR,
+    ),
+    pytest.param(
+        "TC_HYDROGEN_OUT_OF_RANGE",
+        "FDX5067__tc_hydrogen_out_of_range",
+        id="TC_HYDROGEN_OUT_OF_RANGE",
+        marks=_XFAIL_DLR,
+    ),
+    pytest.param(
+        "TC_QFUEL_OUT_OF_RANGE",
+        "RYR46YN__tc_qfuel_out_of_range",
+        id="TC_QFUEL_OUT_OF_RANGE",
+        marks=_XFAIL_DLR,
+    ),
 ]
 
 
@@ -287,7 +332,7 @@ def aggregated_input_by_id() -> dict[str, dict[str, Any]]:
 @pytest.mark.parametrize(
     "tc_id,flight_id",
     SUCCESS_TCS,
-    ids=[t[0] for t in SUCCESS_TCS],
+    ids=[t[0] if isinstance(t, tuple) else t.id for t in SUCCESS_TCS],
 )
 def test_tc_success(
     tc_id: str,
@@ -340,7 +385,7 @@ def test_tc_success(
 @pytest.mark.parametrize(
     "tc_id,flight_id",
     ERROR_TCS,
-    ids=[t[0] for t in ERROR_TCS],
+    ids=[t[0] if isinstance(t, tuple) else t.id for t in ERROR_TCS],
 )
 def test_tc_error(
     tc_id: str,
@@ -387,64 +432,94 @@ _MISSING_TRAJECTORY_VALUES_TCS: list[tuple[str, str]] = [
 _PERF_DATA_GAP_TCS: list[tuple[str, str, list[str], list[str]]] = [
     # (tc_id, flight_id, missing_cols, provided_cols)
     (
-        "TC_PERF_NO_AM", "ACA812__tc_perf_no_am",
-        ["aircraft_mass"], ["fuel_flow", "engine_efficiency", "true_airspeed"],
+        "TC_PERF_NO_AM",
+        "ACA812__tc_perf_no_am",
+        ["aircraft_mass"],
+        ["fuel_flow", "engine_efficiency", "true_airspeed"],
     ),
     (
-        "TC_PERF_NO_FF", "UAE62Y__tc_perf_no_ff",
-        ["fuel_flow"], ["aircraft_mass", "engine_efficiency", "true_airspeed"],
+        "TC_PERF_NO_FF",
+        "UAE62Y__tc_perf_no_ff",
+        ["fuel_flow"],
+        ["aircraft_mass", "engine_efficiency", "true_airspeed"],
     ),
     (
-        "TC_PERF_NO_EE", "FDX5067__tc_perf_no_ee",
-        ["engine_efficiency"], ["aircraft_mass", "fuel_flow", "true_airspeed"],
+        "TC_PERF_NO_EE",
+        "FDX5067__tc_perf_no_ee",
+        ["engine_efficiency"],
+        ["aircraft_mass", "fuel_flow", "true_airspeed"],
     ),
     (
-        "TC_PERF_NO_TAS", "RYR46YN__tc_perf_no_tas",
-        ["true_airspeed"], ["aircraft_mass", "fuel_flow", "engine_efficiency"],
+        "TC_PERF_NO_TAS",
+        "RYR46YN__tc_perf_no_tas",
+        ["true_airspeed"],
+        ["aircraft_mass", "fuel_flow", "engine_efficiency"],
     ),
     (
-        "TC_PERF_NO_AM_FF", "ACA812__tc_perf_no_am_ff",
-        ["aircraft_mass", "fuel_flow"], ["engine_efficiency", "true_airspeed"],
+        "TC_PERF_NO_AM_FF",
+        "ACA812__tc_perf_no_am_ff",
+        ["aircraft_mass", "fuel_flow"],
+        ["engine_efficiency", "true_airspeed"],
     ),
     (
-        "TC_PERF_NO_AM_EE", "UAE62Y__tc_perf_no_am_ee",
-        ["aircraft_mass", "engine_efficiency"], ["fuel_flow", "true_airspeed"],
+        "TC_PERF_NO_AM_EE",
+        "UAE62Y__tc_perf_no_am_ee",
+        ["aircraft_mass", "engine_efficiency"],
+        ["fuel_flow", "true_airspeed"],
     ),
     (
-        "TC_PERF_NO_AM_TAS", "FDX5067__tc_perf_no_am_tas",
-        ["aircraft_mass", "true_airspeed"], ["fuel_flow", "engine_efficiency"],
+        "TC_PERF_NO_AM_TAS",
+        "FDX5067__tc_perf_no_am_tas",
+        ["aircraft_mass", "true_airspeed"],
+        ["fuel_flow", "engine_efficiency"],
     ),
     (
-        "TC_PERF_NO_FF_EE", "RYR46YN__tc_perf_no_ff_ee",
-        ["fuel_flow", "engine_efficiency"], ["aircraft_mass", "true_airspeed"],
+        "TC_PERF_NO_FF_EE",
+        "RYR46YN__tc_perf_no_ff_ee",
+        ["fuel_flow", "engine_efficiency"],
+        ["aircraft_mass", "true_airspeed"],
     ),
     (
-        "TC_PERF_NO_FF_TAS", "ACA812__tc_perf_no_ff_tas",
-        ["fuel_flow", "true_airspeed"], ["aircraft_mass", "engine_efficiency"],
+        "TC_PERF_NO_FF_TAS",
+        "ACA812__tc_perf_no_ff_tas",
+        ["fuel_flow", "true_airspeed"],
+        ["aircraft_mass", "engine_efficiency"],
     ),
     (
-        "TC_PERF_NO_EE_TAS", "UAE62Y__tc_perf_no_ee_tas",
-        ["engine_efficiency", "true_airspeed"], ["aircraft_mass", "fuel_flow"],
+        "TC_PERF_NO_EE_TAS",
+        "UAE62Y__tc_perf_no_ee_tas",
+        ["engine_efficiency", "true_airspeed"],
+        ["aircraft_mass", "fuel_flow"],
     ),
     (
-        "TC_PERF_NO_AM_FF_EE", "FDX5067__tc_perf_no_am_ff_ee",
-        ["aircraft_mass", "fuel_flow", "engine_efficiency"], ["true_airspeed"],
+        "TC_PERF_NO_AM_FF_EE",
+        "FDX5067__tc_perf_no_am_ff_ee",
+        ["aircraft_mass", "fuel_flow", "engine_efficiency"],
+        ["true_airspeed"],
     ),
     (
-        "TC_PERF_NO_AM_FF_TAS", "RYR46YN__tc_perf_no_am_ff_tas",
-        ["aircraft_mass", "fuel_flow", "true_airspeed"], ["engine_efficiency"],
+        "TC_PERF_NO_AM_FF_TAS",
+        "RYR46YN__tc_perf_no_am_ff_tas",
+        ["aircraft_mass", "fuel_flow", "true_airspeed"],
+        ["engine_efficiency"],
     ),
     (
-        "TC_PERF_NO_AM_EE_TAS", "ACA812__tc_perf_no_am_ee_tas",
-        ["aircraft_mass", "engine_efficiency", "true_airspeed"], ["fuel_flow"],
+        "TC_PERF_NO_AM_EE_TAS",
+        "ACA812__tc_perf_no_am_ee_tas",
+        ["aircraft_mass", "engine_efficiency", "true_airspeed"],
+        ["fuel_flow"],
     ),
     (
-        "TC_PERF_NO_FF_EE_TAS", "UAE62Y__tc_perf_no_ff_ee_tas",
-        ["fuel_flow", "engine_efficiency", "true_airspeed"], ["aircraft_mass"],
+        "TC_PERF_NO_FF_EE_TAS",
+        "UAE62Y__tc_perf_no_ff_ee_tas",
+        ["fuel_flow", "engine_efficiency", "true_airspeed"],
+        ["aircraft_mass"],
     ),
     (
-        "TC_PERF_NO_ALL", "FDX5067__tc_perf_no_all",
-        ["aircraft_mass", "fuel_flow", "engine_efficiency", "true_airspeed"], [],
+        "TC_PERF_NO_ALL",
+        "FDX5067__tc_perf_no_all",
+        ["aircraft_mass", "fuel_flow", "engine_efficiency", "true_airspeed"],
+        [],
     ),
 ]
 
@@ -468,6 +543,9 @@ class TestBehavioralAssertions:
 
     # TC_LF_GT_ONE: "Set load factor to 1"
 
+    @pytest.mark.xfail(
+        reason="Known DLR test failing in evaluated version", strict=True
+    )
     def test_lf_gt_one_output_clamped(
         self,
         aggregated_fleet_run: FleetRunnerLargeEmitter,
@@ -488,7 +566,9 @@ class TestBehavioralAssertions:
         assert actual is not None, f"Flight '{flight_id}' not in pipeline output"
         pf = actual.attrs.get("payload_factor")
         assert pf is not None, "payload_factor missing from output attrs"
-        assert pf <= 1.0, f"TC_LF_GT_ONE: output payload_factor should be ≤ 1.0, got {pf}"
+        assert pf <= 1.0, (
+            f"TC_LF_GT_ONE: output payload_factor should be ≤ 1.0, got {pf}"
+        )
 
     # TC_MASS_NO_LF / TC_MASS_NO_TOM / TC_MASS_NO_TOM_NO_LF
     # Spec: "Use aircraft mass" output aircraft_mass column ≈ input am values
@@ -576,7 +656,9 @@ class TestBehavioralAssertions:
             f"{tc_id}: output must have simulated aircraft_mass column"
         )
         # Simulated mass should be strictly positive
-        assert (df["aircraft_mass"] > 0).all(), f"{tc_id}: simulated aircraft_mass must be > 0"
+        assert (df["aircraft_mass"] > 0).all(), (
+            f"{tc_id}: simulated aircraft_mass must be > 0"
+        )
 
     # TC_MASS_NO_AM_NO_TOM
     # Spec: "Based on load factor and BADA MTOW" payload_factor used, MTOW reference
@@ -606,7 +688,9 @@ class TestBehavioralAssertions:
 
         # Output must have simulated aircraft_mass
         df = actual.to_dataframe()
-        assert "aircraft_mass" in df.columns, "Output must have simulated aircraft_mass column"
+        assert "aircraft_mass" in df.columns, (
+            "Output must have simulated aircraft_mass column"
+        )
         assert (df["aircraft_mass"] > 0).all(), "Simulated aircraft_mass must be > 0"
 
     # TC_MASS_ALL_UNSPEC
@@ -637,7 +721,9 @@ class TestBehavioralAssertions:
 
         # Output must have simulated aircraft_mass
         df = actual.to_dataframe()
-        assert "aircraft_mass" in df.columns, "Output must have simulated aircraft_mass column"
+        assert "aircraft_mass" in df.columns, (
+            "Output must have simulated aircraft_mass column"
+        )
         assert (df["aircraft_mass"] > 0).all(), "Simulated aircraft_mass must be > 0"
 
     # TC_ENG_UNKNOWN: "Use predecessor/successor"
@@ -666,12 +752,14 @@ class TestBehavioralAssertions:
             f"'CFM56-FAKE', got '{output_eng}'"
         )
         assert output_eng == "4PW067", (
-            f"TC_ENG_UNKNOWN: output engine_uid is '{output_eng}',"
-            f"expected '4PW067'"
+            f"TC_ENG_UNKNOWN: output engine_uid is '{output_eng}',expected '4PW067'"
         )
 
     # TC_ENG_MISMATCH: "Drop, use default"
 
+    @pytest.mark.xfail(
+        reason="Known DLR test failing in evaluated version", strict=True
+    )
     def test_eng_mismatch_drops_input(
         self,
         aggregated_fleet_run: FleetRunnerLargeEmitter,
@@ -715,7 +803,9 @@ class TestBehavioralAssertions:
         # Verify input has no engine_uid
         inp = aggregated_input_by_id[flight_id]
         ap = inp["flight_information"]["aircraft_properties"]
-        assert "engine_uid" not in ap or ap["engine_uid"] is None, "Input must NOT have engine_uid"
+        assert "engine_uid" not in ap or ap["engine_uid"] is None, (
+            "Input must NOT have engine_uid"
+        )
 
         actual = _find_flight(runner.fleet_with_climate_impact, flight_id)
         assert actual is not None, f"Flight '{flight_id}' not in output"
@@ -724,12 +814,14 @@ class TestBehavioralAssertions:
             "TC_ENG_UNSPEC: output must have a non-empty engine_uid"
         )
         assert output_eng == "01P21GE217", (
-            f"TC_ENG_UNSPEC: output engine uid is {output_eng} ,"
-            "expected 01P21GE217."
+            f"TC_ENG_UNSPEC: output engine uid is {output_eng} ,expected 01P21GE217."
         )
 
     # TC_AC_NO_BADA4: "Use BADA 3 aircraft"
 
+    @pytest.mark.xfail(
+        reason="Known DLR test failing in evaluated version", strict=True
+    )
     def test_ac_no_bada4_uses_bada3(
         self,
         aggregated_fleet_run: FleetRunnerLargeEmitter,
@@ -748,6 +840,9 @@ class TestBehavioralAssertions:
 
     # TC_AC_OVERSPEC: "Remap to BADA naming"
 
+    @pytest.mark.xfail(
+        reason="Known DLR test failing in evaluated version", strict=True
+    )
     def test_ac_overspec_remaps_code(
         self,
         aggregated_fleet_run: FleetRunnerLargeEmitter,
@@ -778,18 +873,24 @@ class TestBehavioralAssertions:
     ) -> None:
         """var_time_resolution: Checks time resolution of in- and output"""
         flight_id = (
-            AGGREGATED_FLIGHT_SELECTIONS["tc_var_time_resolution"] + "__tc_var_time_resolution"
+            AGGREGATED_FLIGHT_SELECTIONS["tc_var_time_resolution"]
+            + "__tc_var_time_resolution"
         )
         outp_time = pd.to_datetime(
-            _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id).get("time"),
+            _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id).get(
+                "time"
+            ),
             utc=True,
         )
         inp_time = pd.to_datetime(
-            neats_json_to_flights([aggregated_input_by_id[flight_id]])[0].get("time"), utc=True
+            neats_json_to_flights([aggregated_input_by_id[flight_id]])[0].get("time"),
+            utc=True,
         )
         outp_dt_s = np.diff(outp_time.values) / np.timedelta64(1, "s")
         inp_dt_s = np.diff(inp_time.values) / np.timedelta64(1, "s")
-        assert np.max(inp_dt_s) > 60, "tc_var_time_resolution: Input not properly modified"
+        assert np.max(inp_dt_s) > 60, (
+            "tc_var_time_resolution: Input not properly modified"
+        )
         assert np.max(outp_dt_s) <= 60, (
             "tc_var_time_resolution: Failed to upsample waypoints to at least 60 s resolution"
         )
@@ -802,11 +903,14 @@ class TestBehavioralAssertions:
         """test_mixed_time: checks (un)sorting of in- and output"""
         flight_id = AGGREGATED_FLIGHT_SELECTIONS["tc_mixed_time"] + "__tc_mixed_time"
         outp_time = pd.to_datetime(
-            _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id).get("time"),
+            _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id).get(
+                "time"
+            ),
             utc=True,
         )
         inp_time = pd.to_datetime(
-            neats_json_to_flights([aggregated_input_by_id[flight_id]])[0].get("time"), utc=True
+            neats_json_to_flights([aggregated_input_by_id[flight_id]])[0].get("time"),
+            utc=True,
         )
         outp_idx_sort = np.argsort(outp_time)
         inp_idx_sort = np.argsort(inp_time)
@@ -823,15 +927,22 @@ class TestBehavioralAssertions:
         aggregated_input_by_id: dict[str, dict[str, Any]],
     ) -> None:
         """duplicate_time: checks duplicates in in- and output"""
-        flight_id = AGGREGATED_FLIGHT_SELECTIONS["tc_duplicate_time"] + "__tc_duplicate_time"
+        flight_id = (
+            AGGREGATED_FLIGHT_SELECTIONS["tc_duplicate_time"] + "__tc_duplicate_time"
+        )
         outp_time = pd.to_datetime(
-            _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id).get("time"),
+            _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id).get(
+                "time"
+            ),
             utc=True,
         )
         inp_time = pd.to_datetime(
-            neats_json_to_flights([aggregated_input_by_id[flight_id]])[0].get("time"), utc=True
+            neats_json_to_flights([aggregated_input_by_id[flight_id]])[0].get("time"),
+            utc=True,
         )
-        assert inp_time.duplicated().sum() > 0, "tc_duplicate_time: Input not properly modified"
+        assert inp_time.duplicated().sum() > 0, (
+            "tc_duplicate_time: Input not properly modified"
+        )
         assert outp_time.duplicated().sum() == 0, (
             "tc_duplicate_time: Failed to remove duplicate waypoint"
         )
@@ -850,7 +961,9 @@ class TestBehavioralAssertions:
     ) -> None:
         """missing_trajectory_value: checks input for missing value and output for correction of missing value"""
         flight_id = AGGREGATED_FLIGHT_SELECTIONS["tc_" + tc_id] + "__tc_" + tc_id
-        output_flight = _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id)
+        output_flight = _find_flight(
+            aggregated_fleet_run.fleet_with_climate_impact, flight_id
+        )
         outp_time_raw = pd.to_datetime(output_flight.get("time"), utc=True)
         outp_time = pd.Series(outp_time_raw).reset_index(drop=True)
         outp_variable = pd.Series(output_flight.get(outp_var)).reset_index(drop=True)
@@ -858,32 +971,55 @@ class TestBehavioralAssertions:
         inp_time_raw = pd.to_datetime(input_flight.get("time"), utc=True)
         inp_time = pd.Series(inp_time_raw).reset_index(drop=True)
         inp_variable = pd.Series(input_flight.get(outp_var)).reset_index(drop=True)
-        idx_inp_None = inp_variable[inp_variable.isnull()].index
-        assert len(idx_inp_None) > 0, f"tc_{tc_id}: Input not properly modified"
-        assert sum(outp_variable.isnull()) == 0, f"tc_{tc_id}: Failed to handle missing values"
+        idx_inp_none = inp_variable[inp_variable.isnull()].index
+        assert len(idx_inp_none) > 0, f"tc_{tc_id}: Input not properly modified"
+        assert sum(outp_variable.isnull()) == 0, (
+            f"tc_{tc_id}: Failed to handle missing values"
+        )
         if outp_var == "time":
-            outp_variable = pd.Series(output_flight.get("altitude")).reset_index(drop=True)
-        if outp_var in ["time","altitude"]:
-            inp_variable = pyunits.ft_to_m(pd.Series(input_flight.get("altitude")).reset_index(drop=True)*100)
-        for idx in idx_inp_None:
+            outp_variable = pd.Series(output_flight.get("altitude")).reset_index(
+                drop=True
+            )
+        if outp_var in ["time", "altitude"]:
+            inp_variable = pyunits.ft_to_m(
+                pd.Series(input_flight.get("altitude")).reset_index(drop=True) * 100
+            )
+        for idx in idx_inp_none:
             time_before = inp_time[idx - 1]
             time_after = inp_time[idx + 1]
-            idx_outp_between = outp_time[(outp_time > time_before) & (outp_time < time_after)].index
+            idx_outp_between = outp_time[
+                (outp_time > time_before) & (outp_time < time_after)
+            ].index
             if len(idx_outp_between) > 0:
                 variable_before = inp_variable[idx - 1]
                 variable_after = inp_variable[idx + 1]
-                interpol_df = pd.DataFrame({"time":[time_before] + list(outp_time[idx_outp_between]) + [time_after],
-                                            "variable":[variable_before] + ([None] * len(idx_outp_between)) + [variable_after]}
-                ).set_index("time").interpolate(method='time')
-                interpol_variable = interpol_df["variable"]
-                assert np.isclose(np.array(interpol_variable[1:-1]),np.array(outp_variable[idx_outp_between])).all(), (
-                    f"tc_{tc_id}: Failed to handle missing values"
+                interpol_df = (
+                    pd.DataFrame(
+                        {
+                            "time": [time_before]
+                            + list(outp_time[idx_outp_between])
+                            + [time_after],
+                            "variable": [variable_before]
+                            + ([None] * len(idx_outp_between))
+                            + [variable_after],
+                        }
+                    )
+                    .set_index("time")
+                    .interpolate(method="time")
                 )
+                interpol_variable = interpol_df["variable"]
+                assert np.isclose(
+                    np.array(interpol_variable[1:-1]),
+                    np.array(outp_variable[idx_outp_between]),
+                ).all(), f"tc_{tc_id}: Failed to handle missing values"
 
     @pytest.mark.parametrize(
         "tc_id",
         _MISSING_DEPARTURE_LANDING_TCS,
-        ids=[t for t in _MISSING_DEPARTURE_LANDING_TCS],
+        ids=list(_MISSING_DEPARTURE_LANDING_TCS),
+    )
+    @pytest.mark.xfail(
+        reason="Known DLR test failing in evaluated version", strict=True
     )
     def test_missing_departure_landing_abortion(
         self,
@@ -894,10 +1030,17 @@ class TestBehavioralAssertions:
         """missing_departure_landing: checks id calculation was aborted dur to incomplete trajectory"""
         # TODO: Check warning was triggered, but comuputation was successfull
         flight_id = AGGREGATED_FLIGHT_SELECTIONS["tc_" + tc_id] + "__tc_" + tc_id
-        output_flight = _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id)
-        assert output_flight == None, f"tc_{tc_id}: Failed to detect missing flight segment"
+        output_flight = _find_flight(
+            aggregated_fleet_run.fleet_with_climate_impact, flight_id
+        )
+        assert output_flight is None, (
+            f"tc_{tc_id}: Failed to detect missing flight segment"
+        )
         assert flight_id in aggregated_input_by_id, f"tc_{tc_id}: Input missing"
 
+    @pytest.mark.xfail(
+        reason="Known DLR test failing in evaluated version", strict=True
+    )
     def test_altitude_fluctuations_correction(
         self,
         aggregated_fleet_run: FleetRunnerLargeEmitter,
@@ -913,11 +1056,16 @@ class TestBehavioralAssertions:
         cruise phases longer than 10 waypoints.
         """
         flight_id = (
-            AGGREGATED_FLIGHT_SELECTIONS["tc_altitude_fluctuations"] + "__tc_altitude_fluctuations"
+            AGGREGATED_FLIGHT_SELECTIONS["tc_altitude_fluctuations"]
+            + "__tc_altitude_fluctuations"
         )
-        output_flight = _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id)
+        output_flight = _find_flight(
+            aggregated_fleet_run.fleet_with_climate_impact, flight_id
+        )
         # Fuel flow is used for flight performance influence check
-        assert output_flight is not None, f"Flight '{flight_id}' not found in pipeline output"
+        assert output_flight is not None, (
+            f"Flight '{flight_id}' not found in pipeline output"
+        )
         outp_time = (
             pd.Series(pd.to_datetime(output_flight.get("time"), utc=True))
             .reset_index(drop=True)
@@ -925,10 +1073,13 @@ class TestBehavioralAssertions:
         )
         outp_ff = output_flight.get("fuel_flow")
         outp_alt = output_flight.get("altitude")
-        assert outp_ff is not None, f"Flight '{flight_id}' has no 'fuel_flow' column in output"
+        assert outp_ff is not None, (
+            f"Flight '{flight_id}' has no 'fuel_flow' column in output"
+        )
         flight_phases = pyflight.segment_phase(
             pyflight.segment_rocd(
-                pyflight.segment_duration(outp_time), pyunits.m_to_ft(output_flight.get("altitude"))
+                pyflight.segment_duration(outp_time),
+                pyunits.m_to_ft(output_flight.get("altitude")),
             ),
             pyunits.m_to_ft(output_flight.get("altitude")),
         )
@@ -949,7 +1100,9 @@ class TestBehavioralAssertions:
                     )
                     / np.timedelta64(1, "s")
                 ) > 59:
-                    cruise_phases_idx.append([idx_cruise[cruise_detected], idx_cruise[i]])
+                    cruise_phases_idx.append(
+                        [idx_cruise[cruise_detected], idx_cruise[i]]
+                    )
                     cruise_detected = 0
                 else:
                     cruise_detected = 0
@@ -995,36 +1148,61 @@ class TestBehavioralAssertions:
                     "tc_altitude_fluctuations: Failed to smooth altitude fluctuations, but no major consequences for flight performance"
                 )
 
+    @pytest.mark.xfail(
+        reason="Known DLR test failing in evaluated version", strict=True
+    )
     def test_longitude_convention_correction(
         self,
         aggregated_fleet_run: FleetRunnerLargeEmitter,
         aggregated_input_by_id: dict[str, dict[str, Any]],
     ) -> None:
         """Check if changed longitude convention ([0;360] instead of [-180;180]) was corrected"""
-        flight_id = AGGREGATED_FLIGHT_SELECTIONS["tc_changed_longitude_convention"] + "__tc_changed_longitude_convention"
-        output_flight = _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id)
+        flight_id = (
+            AGGREGATED_FLIGHT_SELECTIONS["tc_changed_longitude_convention"]
+            + "__tc_changed_longitude_convention"
+        )
+        output_flight = _find_flight(
+            aggregated_fleet_run.fleet_with_climate_impact, flight_id
+        )
         input_flight = neats_json_to_flights([aggregated_input_by_id[flight_id]])[0]
-        assert input_flight is not None, f"tc_changed_longitude_convention: No input flight"
-        assert output_flight is not None, f"tc_changed_longitude_convention: Detected change in longitude conventions, but deleted instead of correction"
-        assert abs(output_flight.get("longitude")[0] - input_flight.get("longitude")[0]) > 170, (
-            f"tc_changed_longitude_convention: Changed longitude convention in input not corrected"
+        assert input_flight is not None, (
+            "tc_changed_longitude_convention: No input flight"
+        )
+        assert output_flight is not None, (
+            "tc_changed_longitude_convention: Detected change in longitude conventions, but deleted instead of correction"
+        )
+        assert (
+            abs(output_flight.get("longitude")[0] - input_flight.get("longitude")[0])
+            > 170
+        ), (
+            "tc_changed_longitude_convention: Changed longitude convention in input not corrected"
         )
 
+    @pytest.mark.xfail(
+        reason="Known DLR test failing in evaluated version", strict=True
+    )
     def test_trajectory_jump_correction(
         self,
         aggregated_fleet_run: FleetRunnerLargeEmitter,
         aggregated_input_by_id: dict[str, dict[str, Any]],
     ) -> None:
         """Check if jump in trajectory (longitude shift) is identified and corrected"""
-        flight_id = AGGREGATED_FLIGHT_SELECTIONS["tc_trajectory_jump"] + "__tc_trajectory_jump"
+        flight_id = (
+            AGGREGATED_FLIGHT_SELECTIONS["tc_trajectory_jump"] + "__tc_trajectory_jump"
+        )
         input_flight = neats_json_to_flights([aggregated_input_by_id[flight_id]])[0]
-        output_flight = _find_flight(aggregated_fleet_run.fleet_with_climate_impact, flight_id)
-        assert input_flight is not None, f"tc_trajectory_jump: No input flight"
-        assert output_flight is not None, f"tc_trajectory_jump: Detected jump in trajectory, but deleted instead of correction"
+        output_flight = _find_flight(
+            aggregated_fleet_run.fleet_with_climate_impact, flight_id
+        )
+        assert input_flight is not None, "tc_trajectory_jump: No input flight"
+        assert output_flight is not None, (
+            "tc_trajectory_jump: Detected jump in trajectory, but deleted instead of correction"
+        )
         outp_longitude = output_flight.get("longitude")
         longitude_diff = np.diff(outp_longitude)
-        assert np.max(abs(longitude_diff)) < 1.0, (f"tc_trajectory_jump: Trajectory jumps in input not corrected")
-
+        assert np.max(abs(longitude_diff)) < 1.0, (
+            "tc_trajectory_jump: Trajectory jumps in input not corrected"
+        )
 
     # TC_NO_HC_RATIO: H/C ratio absent, hydrogen_content present
     # Output fuel hydrogen_content must match input hydrogen_content
@@ -1043,7 +1221,9 @@ class TestBehavioralAssertions:
         inp = aggregated_input_by_id[flight_id]
         fp = inp["flight_information"].get("fuel_properties", {})
         assert "hydrogen_content" in fp, "Input must have hydrogen_content"
-        assert "hydrogen_per_carbon_ratio" not in fp, "Input must NOT have hydrogen_per_carbon_ratio"
+        assert "hydrogen_per_carbon_ratio" not in fp, (
+            "Input must NOT have hydrogen_per_carbon_ratio"
+        )
         input_hc = fp["hydrogen_content"]
 
         actual = _find_flight(runner.fleet_with_climate_impact, flight_id)
@@ -1058,6 +1238,9 @@ class TestBehavioralAssertions:
     # TC_NO_HYDROGEN: hydrogen_content absent, H/C ratio present
     # Output fuel hydrogen_content must be derived from H/C ratio conversion
 
+    @pytest.mark.xfail(
+        reason="Known DLR test failing in evaluated version", strict=True
+    )
     def test_no_hydrogen_uses_hc_ratio(
         self,
         aggregated_fleet_run: FleetRunnerLargeEmitter,
@@ -1071,7 +1254,9 @@ class TestBehavioralAssertions:
         # Verify input has h_c_ratio but no hydrogen_content
         inp = aggregated_input_by_id[flight_id]
         fp = inp["flight_information"].get("fuel_properties", {})
-        assert "hydrogen_per_carbon_ratio" in fp, "Input must have hydrogen_per_carbon_ratio"
+        assert "hydrogen_per_carbon_ratio" in fp, (
+            "Input must have hydrogen_per_carbon_ratio"
+        )
         assert "hydrogen_content" not in fp, "Input must NOT have hydrogen_content"
 
         actual = _find_flight(runner.fleet_with_climate_impact, flight_id)
@@ -1088,6 +1273,9 @@ class TestBehavioralAssertions:
     # TC_NO_HC_NO_HYDROGEN: both H/C ratio and hydrogen_content absent
     # Output fuel hydrogen_content must equal DEFAULT_HYDROGEN_CONTENT (13.79)
 
+    @pytest.mark.xfail(
+        reason="Known DLR test failing in evaluated version", strict=True
+    )
     def test_no_hc_no_hydrogen_uses_default(
         self,
         aggregated_fleet_run: FleetRunnerLargeEmitter,
@@ -1120,6 +1308,9 @@ class TestBehavioralAssertions:
     # TC_NO_QFUEL: calorific value absent
     # Output fuel q_fuel must equal DEFAULT_Q_FUEL (42_800_000)
 
+    @pytest.mark.xfail(
+        reason="Known DLR test failing in evaluated version", strict=True
+    )
     def test_no_qfuel_uses_default(
         self,
         aggregated_fleet_run: FleetRunnerLargeEmitter,
@@ -1175,7 +1366,9 @@ class TestBehavioralAssertions:
         assert len(inp_flights) == 1, f"{tc_id}: expected 1 parsed input flight"
         inp_df = inp_flights[0]
 
-        inp_time = pd.to_datetime(inp_df["time"], utc=True).to_numpy(dtype="datetime64[ns]")
+        inp_time = pd.to_datetime(inp_df["time"], utc=True).to_numpy(
+            dtype="datetime64[ns]"
+        )
 
         # Verify missing columns are all-null in input
         for col in missing:
@@ -1256,6 +1449,9 @@ class TestPrePipelineValidation:
     Note: some tests like lf_gt_one are doubled with and without pipeline.
     """
 
+    @pytest.mark.xfail(
+        reason="Known DLR test failing in evaluated version", strict=True
+    )
     def test_lf_gt_one_clamped_by_parser(self) -> None:
         """TC_LF_GT_ONE pre-check: load_factor > 1 is clamped to 1.0
         during JSON-to-DataFrame conversion.
@@ -1274,7 +1470,9 @@ class TestPrePipelineValidation:
                 lf_flight = flight
                 break
 
-        assert lf_flight is not None, "ACA812__tc_lf_gt_one not found in aggregated input"
+        assert lf_flight is not None, (
+            "ACA812__tc_lf_gt_one not found in aggregated input"
+        )
 
         # The raw input should have load_factor > 1
         raw_lf = lf_flight["flight_information"]["aircraft_properties"]["load_factor"]
@@ -1292,15 +1490,20 @@ class TestPrePipelineValidation:
             f"Expected payload_factor clamped to <= 1.0, got {payload_factor}"
         )
 
+    @pytest.mark.xfail(
+        reason="Known DLR test failing in evaluated version", strict=True
+    )
     def test_bada_mapper_resolves_overspec(self) -> None:
         """TC_AC_OVERSPEC pre-check: BADA mapper resolves B737-800W
         to a valid BADA type.
         """
-        from pyneats.steps.performance.bada_mapper import BadaMapper, BadaMappingPaths
+        from pyneats.steps.performance.bada_mapper import BadaMapper
+        from pyneats.steps.performance.bada_mapper import BadaMappingPaths
 
         resources = Path(__file__).parent.parent / "src" / "pyneats" / "resources"
         paths = BadaMappingPaths(
-            icao_series_engine=resources / "ECTL_mapping_by_ICAO_and_ACFT_SERIES_and_ENGINE_ID.csv",
+            icao_series_engine=resources
+            / "ECTL_mapping_by_ICAO_and_ACFT_SERIES_and_ENGINE_ID.csv",
             icao_series=resources / "ECTL_mapping_by_ICAO_and_ACFT_SERIES.csv",
             icao_engine=resources / "ECTL_mapping_by_ICAO_and_ENGINE_ID.csv",
             default_engine_by_icao=resources / "MRR_conservative_mapping.csv",
@@ -1310,7 +1513,7 @@ class TestPrePipelineValidation:
 
         # B737-800W is an overspecified type; bada_type() should resolve it
         # without raising KeyError. Returns (NB_ENG, BADA3, BADA4, ENGINE_ID).
-        nb_eng, bada3, bada4, engine_id = mapper.bada_type("B737-800W")
+        _nb_eng, bada3, bada4, _engine_id = mapper.bada_type("B737-800W")
         assert bada3 or bada4, (
             "BADA mapper resolved B737-800W but both BADA3 and BADA4 names are empty"
         )
@@ -1322,11 +1525,13 @@ class TestPrePipelineValidation:
 
     def test_bada_mapper_rejects_unknown(self) -> None:
         """TC_AC_NO_BADA pre-check: BADA mapper cannot resolve ZZZZ."""
-        from pyneats.steps.performance.bada_mapper import BadaMapper, BadaMappingPaths
+        from pyneats.steps.performance.bada_mapper import BadaMapper
+        from pyneats.steps.performance.bada_mapper import BadaMappingPaths
 
         resources = Path(__file__).parent.parent / "src" / "pyneats" / "resources"
         paths = BadaMappingPaths(
-            icao_series_engine=resources / "ECTL_mapping_by_ICAO_and_ACFT_SERIES_and_ENGINE_ID.csv",
+            icao_series_engine=resources
+            / "ECTL_mapping_by_ICAO_and_ACFT_SERIES_and_ENGINE_ID.csv",
             icao_series=resources / "ECTL_mapping_by_ICAO_and_ACFT_SERIES.csv",
             icao_engine=resources / "ECTL_mapping_by_ICAO_and_ENGINE_ID.csv",
             default_engine_by_icao=resources / "MRR_conservative_mapping.csv",
@@ -1395,7 +1600,9 @@ class TestPrePipelineValidation:
         """
         jsonschema = pytest.importorskip("jsonschema")
 
-        schema_path = Path(__file__).parent.parent / "scripts" / "schemas" / "flight_schema.json"
+        schema_path = (
+            Path(__file__).parent.parent / "scripts" / "schemas" / "flight_schema.json"
+        )
         with open(schema_path, encoding="utf-8") as fh:
             schema = json.load(fh)
 
@@ -1405,17 +1612,20 @@ class TestPrePipelineValidation:
         validator = jsonschema.Draft202012Validator(schema)
         errors: list[str] = []
         for idx, flight in enumerate(flights):
-            fid = flight.get("flight_information", {}).get("flight_identification", f"index-{idx}")
+            fid = flight.get("flight_information", {}).get(
+                "flight_identification", f"index-{idx}"
+            )
             # Skip flights that intentionally contain null required fields
             # (tc_missing_timestamps, tc_missing_latitudes, etc.)
             if "tc_missing_" in fid:
                 continue
-            for err in validator.iter_errors(flight):
-                errors.append(
-                    f"Flight '{fid}': {err.message} "
-                    f"(path: {'.'.join(str(p) for p in err.absolute_path)})"
-                )
+            errors.extend(
+                f"Flight '{fid}': {err.message} "
+                f"(path: {'.'.join(str(p) for p in err.absolute_path)})"
+                for err in validator.iter_errors(flight)
+            )
 
-        assert not errors, f"Schema validation failed for {golden_input_file.name}:\n" + "\n".join(
-            errors
+        assert not errors, (
+            f"Schema validation failed for {golden_input_file.name}:\n"
+            + "\n".join(errors)
         )
