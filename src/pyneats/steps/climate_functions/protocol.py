@@ -3,23 +3,26 @@ Climate Functions Protocol Module
 
 Defines protocols and error classes for contrail and non-CO2 climate function steps.
 """
+
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol
+from typing import runtime_checkable
 
-from pyneats.core.steps import Step, StepError, VectorizedStep
-from pyneats.steps.climate_functions.views import (
-    FlightWithRFContrailsImpact,
-    FlightWithNonCO2Impact,
-)
+from pyneats.core.steps import Step
+from pyneats.core.steps import StepError
+from pyneats.core.steps import VectorizedStep
+from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
+from pyneats.steps.climate_functions.views import FlightWithRFContrailsImpact
 from pyneats.steps.emissions.views import FlightWithEmissions
+
 
 __all__ = [
     "ContrailsModel",
     "NonCO2Model",
     "ContrailsStepError",
     "ACCFStepError",
-    "OpenAirClimStepError"
+    "OpenAirClimStepError",
 ]
 
 
@@ -56,6 +59,7 @@ class ACCFStepError(StepError):
     """
     Raised when ACCF evaluation fails or yields invalid output.
     """
+
 
 class OpenAirClimStepError(StepError):
     """

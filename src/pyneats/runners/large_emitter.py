@@ -1,4 +1,3 @@
-
 """
 Large Emitter Runner Module
 
@@ -17,25 +16,25 @@ from __future__ import annotations
 
 import logging
 from typing import Self
+
 import pandas as pd
 
 from pyneats.core.steps_registry import build
-from pyneats.steps.climate_functions.protocol import (
-    ACCFStepError,
-    ContrailsModel,
-    ContrailsStepError,
-    NonCO2Model,
-)
-from pyneats.steps.climate_functions.views import (
-    FlightWithNonCO2Impact,
-    FlightWithRFContrailsImpact,
-)
-from pyneats.steps.weather import WeatherProviderProtocol
-from pyneats.steps.emissions import FlightWithEmissions
 
 # --- Import Base Classes from Framework Modules ---
-from pyneats.runners.fleet import FleetRunner, FleetRunnerParams
-from pyneats.runners.flight import FlightRunner, RunnerConfig
+from pyneats.runners.fleet import FleetRunner
+from pyneats.runners.fleet import FleetRunnerParams
+from pyneats.runners.flight import FlightRunner
+from pyneats.runners.flight import RunnerConfig
+from pyneats.steps.climate_functions.protocol import ACCFStepError
+from pyneats.steps.climate_functions.protocol import ContrailsModel
+from pyneats.steps.climate_functions.protocol import ContrailsStepError
+from pyneats.steps.climate_functions.protocol import NonCO2Model
+from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
+from pyneats.steps.climate_functions.views import FlightWithRFContrailsImpact
+from pyneats.steps.emissions import FlightWithEmissions
+from pyneats.steps.weather import WeatherProviderProtocol
+
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +66,6 @@ class FlightRunnerLargeEmitter(FlightRunner):
         Compute other non-CO2 effects using the configured non-CO2 model.
     """
 
-    
     def __init__(
         self,
         weather: WeatherProviderProtocol,
@@ -75,7 +73,6 @@ class FlightRunnerLargeEmitter(FlightRunner):
         cfg: RunnerConfig | None = None,
         bada_path: str | None = None,
     ) -> None:
-        
         # 1. Run Shared Init
         super().__init__(weather, source, cfg, bada_path)
 
@@ -96,7 +93,6 @@ class FlightRunnerLargeEmitter(FlightRunner):
 
         self.flight_with_contrails: FlightWithRFContrailsImpact | None = None
 
-
     # Compute non CO2 climate impact
     def _climate_impact(self) -> Self:
         """
@@ -108,10 +104,9 @@ class FlightRunnerLargeEmitter(FlightRunner):
             The runner instance after processing.
         """
         return (
-            self._contrails()  # pylint: disable=protected-access
-            ._other_nonco2()  # pylint: disable=protected-access
+            self._contrails()._other_nonco2()  # pylint: disable=protected-access  # pylint: disable=protected-access
         )
-    
+
     # Compute Contrails EF
     def _contrails(self) -> Self:
         """
@@ -128,10 +123,14 @@ class FlightRunnerLargeEmitter(FlightRunner):
             If emissions step was not run first or if contrails evaluation fails.
         """
         if self.flight_with_emissions is None:
-            logger.error("Missing flight_with_emissions; did you call _emissions() first?")
+            logger.error(
+                "Missing flight_with_emissions; did you call _emissions() first?"
+            )
             raise RuntimeError("_emissions() must be called before _contrails().")
         try:
-            enriched: FlightWithRFContrailsImpact = self.contrails_model(self.flight_with_emissions)
+            enriched: FlightWithRFContrailsImpact = self.contrails_model(
+                self.flight_with_emissions
+            )
         except ContrailsStepError:
             raise
         except Exception as e:
@@ -157,7 +156,9 @@ class FlightRunnerLargeEmitter(FlightRunner):
             If contrails step was not run first or if non-CO2 evaluation fails.
         """
         if self.flight_with_contrails is None:
-            logger.error("Missing flight_with_contrails; did you call _contrails() first?")
+            logger.error(
+                "Missing flight_with_contrails; did you call _contrails() first?"
+            )
             raise RuntimeError("_contrails() must be called before.")
         other_params = self.cfg.params.get("non_co2_model", {})
         other_params.update(
@@ -182,9 +183,7 @@ class FlightRunnerLargeEmitter(FlightRunner):
         self.flight_with_nonco2 = f_out
         logger.info("Other Non-CO₂step completed successfully")
         return self
-    
 
-    
 
 # -----------------------------------------------------------------------------
 # Fleet Runner (Vectorized Logic)
@@ -206,16 +205,13 @@ class FleetRunnerLargeEmitter(FleetRunner):
     """
 
     def __init__(self, cfg: FleetRunnerParams) -> None:
-
         super().__init__(cfg)
 
         self.cocip_step: ContrailsModel | None = None
 
         self.fleet_with_contrails: list[FlightWithRFContrailsImpact] | None = None
 
-
     def _contrails(self) -> Self:
-
         if self.fleet_with_emissions is None:
             raise RuntimeError("_emissions must be set before _contrails()")
         if self.cocip_step is None:
@@ -226,24 +222,19 @@ class FleetRunnerLargeEmitter(FleetRunner):
             self.fleet_with_emissions,
             "CoCiP evaluation",
             self.cocip_step,
-            self.cfg.cocip_critical_columns,
         )
 
         self.fleet_with_contrails = flights
         self.fleet_with_emissions = None  # free memory
 
         return self
-    
+
     def _climate_impact(self) -> Self:
-        
         return (
-            self._contrails()  # pylint: disable=protected-access
-            ._other_nonco2()  # pylint: disable=protected-access
+            self._contrails()._other_nonco2()  # pylint: disable=protected-access  # pylint: disable=protected-access
         )
 
-
     def _other_nonco2(self) -> Self:
-
         if self.fleet_with_contrails is None:
             raise RuntimeError("_contrails must be set before _nonco2()")
 
@@ -255,8 +246,3 @@ class FleetRunnerLargeEmitter(FleetRunner):
         self.fleet_with_contrails = None  # free memory
 
         return self
-
-
-
-
-

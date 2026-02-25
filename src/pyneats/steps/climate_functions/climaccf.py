@@ -13,7 +13,8 @@ Key Components
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field
 from typing import Any
 
 import pandas as pd
@@ -21,19 +22,20 @@ import xarray as xr
 from pycontrails import Flight
 from pycontrails.core.met import MetDataset
 from pycontrails.core.met_var import TOAOutgoingLongwaveFlux
-from pycontrails.datalib.ecmwf import (
-    SurfaceSolarDownwardRadiation,
-    TopNetThermalRadiation,
-)
+from pycontrails.datalib.ecmwf import SurfaceSolarDownwardRadiation
+from pycontrails.datalib.ecmwf import TopNetThermalRadiation
 from pycontrails.models.accf import ACCF  # pycontrails’ wrapper for ClimAccf
 
 from pyneats.core.neats_default_parameters import DEFAULT_CLIMACCF_KWARGS
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.climate_functions.params import ClimateParams
-from pyneats.steps.climate_functions.protocol import ACCFStepError, NonCO2Model
-from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact, FlightWithSegmentATR
+from pyneats.steps.climate_functions.protocol import ACCFStepError
+from pyneats.steps.climate_functions.protocol import NonCO2Model
+from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
+from pyneats.steps.climate_functions.views import FlightWithSegmentATR
 from pyneats.steps.emissions.views import FlightWithEmissions
+
 
 __all__ = [
     "ACCFParams",
@@ -50,7 +52,9 @@ class ACCFParams(ClimateParams):
     met: MetDataset | None = None
     surface: MetDataset | None = None
 
-    accf_kwargs: Mapping[str, Any] = field(default_factory=lambda: DEFAULT_CLIMACCF_KWARGS)
+    accf_kwargs: Mapping[str, Any] = field(
+        default_factory=lambda: DEFAULT_CLIMACCF_KWARGS
+    )
 
 
 # ---- surface adapter for ACCF -------------------------------------
@@ -77,11 +81,13 @@ def make_accf_surface_view(surface: MetDataset) -> MetDataset:
             }
         )
         ds = ds.rename(
-            {TOAOutgoingLongwaveFlux.standard_name: TopNetThermalRadiation.standard_name}
+            {
+                TOAOutgoingLongwaveFlux.standard_name: TopNetThermalRadiation.standard_name
+            }
         )
     # 2) Align units on the surface shortwave flux if needed
     if SurfaceSolarDownwardRadiation.standard_name in ds:
-        # Ensure units are consistent with the radiation flux variables expected by ClimAccf (e.g., W m-2) # noqa: E501
+        # Ensure units are consistent with the radiation flux variables expected by ClimAccf (e.g., W m-2)
         ds[SurfaceSolarDownwardRadiation.standard_name].attrs.update(
             {"units": TOAOutgoingLongwaveFlux.units}
         )

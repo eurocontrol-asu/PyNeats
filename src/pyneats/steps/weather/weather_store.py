@@ -32,6 +32,7 @@ class ZarrPaths:
     wind_store : str or None
         Path to wind data store (optional).
     """
+
     met_store: str
     rad_store: str
     wind_store: str | None = None

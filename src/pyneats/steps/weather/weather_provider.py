@@ -15,30 +15,38 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass, field
-from typing import Any, Final, Protocol, runtime_checkable
+from dataclasses import dataclass
+from dataclasses import field
+from typing import Any
+from typing import Final
+from typing import Protocol
+from typing import runtime_checkable
 
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-from pycontrails import Fleet, Flight
+from pycontrails import Fleet
+from pycontrails import Flight
 from pycontrails.core.met import MetDataset
 from pycontrails.models.humidity_scaling import HumidityScaling
 
-from pyneats.core.fleet_utils import fleet_to_flights, flights_to_fleet
-from pyneats.core.neats_default_parameters import (
-    DEFAULT_HUMIDITY_SCALING,
-    DEFAULT_LAT_BUF,
-    DEFAULT_LEVEL_BUF,
-    DEFAULT_LON_BUF,
-    DEFAULT_TIME_BUF,
-    DEFAULT_WEATHER_INTEPOLATION_METHOD,
-    DEFAULT_WEATHER_USE_INDICES,
-    InterpolationMethod,
-)
-from pyneats.core.steps import BaseParams, BaseStep, Step, StepError
+from pyneats.core.fleet_utils import fleet_to_flights
+from pyneats.core.fleet_utils import flights_to_fleet
+from pyneats.core.neats_default_parameters import DEFAULT_HUMIDITY_SCALING
+from pyneats.core.neats_default_parameters import DEFAULT_LAT_BUF
+from pyneats.core.neats_default_parameters import DEFAULT_LEVEL_BUF
+from pyneats.core.neats_default_parameters import DEFAULT_LON_BUF
+from pyneats.core.neats_default_parameters import DEFAULT_TIME_BUF
+from pyneats.core.neats_default_parameters import DEFAULT_WEATHER_INTEPOLATION_METHOD
+from pyneats.core.neats_default_parameters import DEFAULT_WEATHER_USE_INDICES
+from pyneats.core.neats_default_parameters import InterpolationMethod
+from pyneats.core.steps import BaseParams
+from pyneats.core.steps import BaseStep
+from pyneats.core.steps import Step
+from pyneats.core.steps import StepError
 from pyneats.core.views import ValidationError
 from pyneats.steps.parsing import Flight4D
+
 
 __all__ = [
     "DEFAULT_REQUIRED_WEATHER_COLS",
@@ -80,6 +88,7 @@ class FlightWithWeather(Flight4D):
     OPTIONAL : tuple[str, ...]
         Optional weather columns.
     """
+
     REQUIRED = DEFAULT_REQUIRED_WEATHER_COLS
     OPTIONAL = DEFAULT_OPTIONAL_WEATHER_COLS
 
@@ -106,6 +115,7 @@ class HumidityScalingModel(Protocol):
     eval(source: Flight) -> Flight
         Evaluate humidity scaling on a Flight.
     """
+
     def eval(self, source: Flight) -> Flight: ...
 
 
@@ -157,7 +167,9 @@ class WeatherProviderParams(BaseParams):
 
     # Strict contract: either None, or a model that returns a Flight
     humidity_scaling: HumidityScalingModel | None = field(
-        default_factory=lambda: PcHumidityScalingAdapter(humidity_scaling=DEFAULT_HUMIDITY_SCALING)
+        default_factory=lambda: PcHumidityScalingAdapter(
+            humidity_scaling=DEFAULT_HUMIDITY_SCALING
+        )
         if DEFAULT_HUMIDITY_SCALING is not None
         else None
     )
@@ -209,6 +221,7 @@ class WeatherProvider(
     """
 
     default_params = WeatherProviderParams
+    output_schema = FlightWithWeather
 
     def __init__(
         self,
@@ -274,7 +287,9 @@ class WeatherProvider(
                 level_buffer=self.params.level_buf,
             )
         except Exception as e:
-            raise WeatherStepError(type(self).__name__, f"downselect failed: {e}") from e
+            raise WeatherStepError(
+                type(self).__name__, f"downselect failed: {e}"
+            ) from e
 
     # --- main step ----------------------------------------------------
 
@@ -283,7 +298,9 @@ class WeatherProvider(
         try:
             flight = Flight4D.from_flight(flight)
         except ValidationError as e:
-            raise WeatherStepError(type(self).__name__, f"input is not Flight4D: {e}") from e
+            raise WeatherStepError(
+                type(self).__name__, f"input is not Flight4D: {e}"
+            ) from e
 
         # Downselect datasets
         self._ds_met = self.downselect(flight, self._met)
@@ -338,10 +355,17 @@ class WeatherProvider(
             # Assign columns directly (safer than concat with a new DF)
             for k, v in new_cols.items():
                 if v.shape[0] != len(df):
-                    raise ValueError(f"Length mismatch for column {k}: {v.shape[0]} vs {len(df)}")
+                    raise ValueError(
+                        f"Length mismatch for column {k}: {v.shape[0]} vs {len(df)}"
+                    )
                 df[k] = v
 
-            base = Flight(data=df, attrs=getattr(flight, "attrs", None), fuel=flight.fuel)
+            # Directly compute and assign air_pressure
+            df["air_pressure"] = flight.air_pressure
+
+            base = Flight(
+                data=df, attrs=getattr(flight, "attrs", None), fuel=flight.fuel
+            )
 
         except Exception as e:
             raise WeatherStepError(type(self).__name__, f"intersect failed: {e}") from e
@@ -351,15 +375,21 @@ class WeatherProvider(
             try:
                 base = self.params.humidity_scaling.eval(base)
             except Exception as e:
-                raise WeatherStepError(type(self).__name__, f"humidity scaling failed: {e}") from e
+                raise WeatherStepError(
+                    type(self).__name__, f"humidity scaling failed: {e}"
+                ) from e
 
         # Final validation (single source of truth)
         try:
             return FlightWithWeather.from_flight(base)
         except ValidationError as e:
-            raise WeatherStepError(type(self).__name__, f"validation failed: {e}") from e
+            raise WeatherStepError(
+                type(self).__name__, f"validation failed: {e}"
+            ) from e
 
-    def run_fleet(self, flights: list[Flight4D]) -> list[FlightWithWeather]:
+    def run_fleet(
+        self, flights: list[Flight4D]
+    ) -> tuple[list[FlightWithWeather], list[dict[str, Any]]]:
         """
         Fleet-level vectorized weather intersection.
 
@@ -371,7 +401,7 @@ class WeatherProvider(
             flights: List of interpolated flights (Flight4D)
 
         Returns:
-            List of flights with weather data (FlightWithWeather)
+            Tuple of (flights with weather data, error records for dropped flights)
 
         Raises:
             WeatherStepError: If weather intersection or humidity scaling fails
@@ -409,21 +439,31 @@ class WeatherProvider(
         for k, v in new_cols.items():
             df[k] = v
 
-        fleet_with_weather = Fleet(data=df, attrs=pyc_fleet.attrs, fl_attrs=pyc_fleet.fl_attrs)
+        # Directly compute and assign air_pressure for the entire fleet
+        df["air_pressure"] = pyc_fleet.air_pressure
+
+        fleet_with_weather = Fleet(
+            data=df, attrs=pyc_fleet.attrs, fl_attrs=pyc_fleet.fl_attrs
+        )
 
         logger.info("Weather intersection complete in %.2fs", time.time() - t0)
 
-        # Convert back to List[Flight]
-        flights_with_weather = fleet_to_flights(fleet_with_weather)
+        # Convert back to List[Flight], detecting dropped flights
+        flights_with_weather, errors = fleet_to_flights(
+            fleet_with_weather, step_name="weather intersection"
+        )
 
         # Optional humidity scaling
         if self.params.humidity_scaling is not None:
-            flights_with_weather = self._apply_humidity_scaling_fleet(flights_with_weather)
+            flights_with_weather, scaling_errors = self._apply_humidity_scaling_fleet(
+                flights_with_weather
+            )
+            errors.extend(scaling_errors)
 
         # Type narrowing
         typed = [FlightWithWeather.from_flight(f) for f in flights_with_weather]
 
-        return typed
+        return typed, errors
 
     def _intersect_weather_variables(
         self, fleet: Fleet, ds_met: MetDataset, ds_wind: MetDataset | None
@@ -471,10 +511,10 @@ class WeatherProvider(
 
     def _apply_humidity_scaling_fleet(
         self, flights: list[FlightWithWeather]
-    ) -> list[FlightWithWeather]:
+    ) -> tuple[list[FlightWithWeather], list[dict[str, Any]]]:
         """Apply humidity scaling to a fleet."""
         if self.params.humidity_scaling is None:
-            return flights
+            return flights, []
 
         t0 = time.time()
         logger.info("Applying humidity scaling...")
@@ -497,4 +537,4 @@ class WeatherProvider(
             )
 
         logger.info("Humidity scaling complete in %.2fs", time.time() - t0)
-        return fleet_to_flights(fleet)
+        return fleet_to_flights(fleet, step_name="humidity scaling")

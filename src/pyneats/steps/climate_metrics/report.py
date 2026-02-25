@@ -3,10 +3,12 @@ Flight and Fleet Report Module
 
 Provides reporting utilities for flight and fleet-level metadata and version resolution.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
+from dataclasses import fields
 from functools import lru_cache
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError
@@ -16,10 +18,9 @@ from typing import Any
 from pycontrails.core.flight import Flight
 
 import pyneats
-from pyneats.core.neats_default_parameters import (
-    DEFAULT_BADA3_VERSION,
-    DEFAULT_BADA4_VERSION,
-)
+from pyneats.core.neats_default_parameters import DEFAULT_BADA3_VERSION
+from pyneats.core.neats_default_parameters import DEFAULT_BADA4_VERSION
+
 
 __all__ = [
     "FlightReport",
@@ -140,7 +141,9 @@ class FlightReport:
     bada_code: str | None = None
 
     @classmethod
-    def extract(cls, flight: Flight, include_fleet_metadata: bool = False) -> dict[str, Any]:
+    def extract(
+        cls, flight: Flight, include_fleet_metadata: bool = False
+    ) -> dict[str, Any]:
         """
         Extract only flight-level fields from Flight.attrs (ignoring missing keys).
 

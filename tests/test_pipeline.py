@@ -22,6 +22,7 @@ from pyneats.runners.large_emitter import FlightRunnerLargeEmitter
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
 from tests.conftest import assert_climate_payload_equal
 
+
 # Test cases that require FleetRunner (heterogeneous column/attr handling)
 FLEET_RUNNER_ONLY_CASES = frozenset({"mixed_columns", "mixed_attrs", "aggregated"})
 
@@ -77,7 +78,9 @@ def test_flight_runner_golden(
     )
 
     # Test each flight
-    for i, (df, expected_flight) in enumerate(zip(dataframes, golden_output, strict=True)):
+    for i, (df, expected_flight) in enumerate(
+        zip(dataframes, golden_output, strict=True)
+    ):
         flight_id = expected_flight.attrs.get("flight_id", f"flight_{i}")
         if isinstance(flight_id, list):
             flight_id = flight_id[0] if flight_id else f"flight_{i}"
@@ -93,7 +96,9 @@ def test_flight_runner_golden(
             )
 
         output = pipeline.flight_with_climate_impact.to_dataframe()
-        expected = FlightWithClimateImpact.from_flight(expected_flight.copy()).to_dataframe()
+        expected = FlightWithClimateImpact.from_flight(
+            expected_flight.copy()
+        ).to_dataframe()
 
         # Compare dataframe columns
         assert_frame_equal(
@@ -106,7 +111,9 @@ def test_flight_runner_golden(
         )
 
         # Compare climate_payload
-        actual_payload = pipeline.flight_with_climate_impact.attrs.get("climate_impact", {})
+        actual_payload = pipeline.flight_with_climate_impact.attrs.get(
+            "climate_impact", {}
+        )
         expected_payload = expected_flight.attrs.get("climate_impact", {})
         assert_climate_payload_equal(
             actual_payload,

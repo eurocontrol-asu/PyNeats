@@ -98,7 +98,9 @@ def test_fleet_runner_golden(
             flight_id = flight_id[0] if flight_id else f"flight_{i}"
 
         output = output_flight.to_dataframe()
-        expected = FlightWithClimateImpact.from_flight(expected_flight.copy()).to_dataframe()
+        expected = FlightWithClimateImpact.from_flight(
+            expected_flight.copy()
+        ).to_dataframe()
 
         assert_frame_equal(
             output[check_cols],

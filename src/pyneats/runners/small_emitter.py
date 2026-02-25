@@ -3,24 +3,28 @@ Small Emitter Runner Module
 
 Implements the OpenAirClim pipeline for small emitters, handling non-weather-based climate impact calculations.
 """
+
 from __future__ import annotations
-from dataclasses import dataclass
+
 import logging
+from dataclasses import dataclass
 from typing import Self
+
 import pandas as pd
 
 # Imports from framework modules
 from pyneats.core.neats_default_parameters import DEFAULT_NON_CO2_MODEL_SMALL_EMITTERS
-from pyneats.runners.flight import FlightRunner, RunnerConfig
-from pyneats.runners.fleet import FleetRunner, FleetRunnerParams
-from pyneats.steps.weather import WeatherProviderProtocol
 from pyneats.core.steps_registry import build
-from pyneats.steps.climate_functions import (
-    FlightWithNonCO2Impact,
-    NonCO2Model
-)
+from pyneats.runners.fleet import FleetRunner
+from pyneats.runners.fleet import FleetRunnerParams
+from pyneats.runners.flight import FlightRunner
+from pyneats.runners.flight import RunnerConfig
+from pyneats.steps.climate_functions import FlightWithNonCO2Impact
+from pyneats.steps.climate_functions import NonCO2Model
 from pyneats.steps.climate_functions.protocol import OpenAirClimStepError
 from pyneats.steps.emissions import FlightWithEmissions
+from pyneats.steps.weather import WeatherProviderProtocol
+
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +41,8 @@ class SmallEmitterConfig(RunnerConfig):
     non_co2_model : str
         Name of the non-CO2 model to use (default: open_airclim).
     """
-    non_co2_model: str = DEFAULT_NON_CO2_MODEL_SMALL_EMITTERS
 
+    non_co2_model: str = DEFAULT_NON_CO2_MODEL_SMALL_EMITTERS
 
 
 @dataclass(kw_only=True)
@@ -55,11 +59,13 @@ class SmallFleetRunnerParams(FleetRunnerParams):
     tmp_base_dir_path : str
         Path for temporary file I/O required by OpenAirClim.
     """
+
     non_co2_model: str = DEFAULT_NON_CO2_MODEL_SMALL_EMITTERS
     tmp_base_dir_path: str
 
 
 # --- RUNNERS ---
+
 
 class FlightRunnerSmallEmitter(FlightRunner):
     """
@@ -73,12 +79,13 @@ class FlightRunnerSmallEmitter(FlightRunner):
     _climate_impact()
         Compute non-CO2 effects using the configured non-CO2 model.
     """
+
     def __init__(
         self,
         weather: WeatherProviderProtocol,
         tmp_base_dir_path: str,
         source: pd.DataFrame | None = None,
-        cfg: SmallEmitterConfig | None = None, 
+        cfg: SmallEmitterConfig | None = None,
         bada_path: str | None = None,
     ) -> None:
         # Run Shared Init
@@ -88,24 +95,20 @@ class FlightRunnerSmallEmitter(FlightRunner):
 
         # Initialize ONLY one non_CO2 model no call to CoCiP wich requires weather information
         non_co2_params = self.cfg.params.get("non_co2_model", {})
-        non_co2_params.update(
-            {
-                "tmp_base_dir_path" : tmp_base_dir_path
-            }
-        )
+        non_co2_params.update({"tmp_base_dir_path": tmp_base_dir_path})
 
         self.non_co2_model = build(
             NonCO2Model,  # type: ignore[type-abstract]
             self.cfg.non_co2_model,
             **non_co2_params,
         )
-        
 
     # Compute other non-CO₂ effects (aCCF)
     def _climate_impact(self) -> Self:
-
         if self.flight_with_emissions is None:
-            logger.error("Missing flight_with_emissions; did you call _emissions() first?")
+            logger.error(
+                "Missing flight_with_emissions; did you call _emissions() first?"
+            )
             raise RuntimeError("_emissions() must be called before.")
 
         f_in: FlightWithEmissions = self.flight_with_emissions
@@ -124,6 +127,7 @@ class FlightRunnerSmallEmitter(FlightRunner):
 
         return self
 
+
 class FleetRunnerSmallEmitter(FleetRunner):
     """
     Fleet runner for small emitters: Emissions -> Integrated Non-CO2 -> Metrics.
@@ -132,28 +136,26 @@ class FleetRunnerSmallEmitter(FleetRunner):
     """
 
     def __init__(self, cfg: SmallFleetRunnerParams) -> None:
-
         # ---------------------------------------------------------------
         # Parameter Injection
         # ---------------------------------------------------------------
-        # inject the temp path into the params dict BEFORE calling 
-        # super().__init__(), because the base class builds the model 
+        # inject the temp path into the params dict BEFORE calling
+        # super().__init__(), because the base class builds the model
         # immediately upon initialization.
-        
+
         # Ensure the parameter dictionary for non_co2_model exists
         if "non_co2_model" not in cfg.params:
             cfg.params["non_co2_model"] = {}
 
         # Inject the path (matches logic from FlightRunnerSmallEmitter)
         cfg.params["non_co2_model"]["tmp_base_dir_path"] = cfg.tmp_base_dir_path
-        
+
         # ---------------------------------------------------------------
         # Shared Initialization
         # ---------------------------------------------------------------
         super().__init__(cfg)
-        
-        # self.non_co2_model is now built (by super) containing the tmp path param.
 
+        # self.non_co2_model is now built (by super) containing the tmp path param.
 
     def _climate_impact(self) -> Self:
         """
@@ -166,14 +168,11 @@ class FleetRunnerSmallEmitter(FleetRunner):
         # Run the integrated model (ex: OpenAirClim)
         # map over the fleet using the generic parallel runner
         self.fleet_with_nonco2, errs = self._run_parallel_step(
-            self.fleet_with_emissions,
-            "integrated_non_co2",
-            self.non_co2_model
+            self.fleet_with_emissions, "integrated_non_co2", self.non_co2_model
         )
         self.error_records.extend(errs)
 
         # Cleanup intermediate state
-        self.fleet_with_emissions = None 
-
+        self.fleet_with_emissions = None
 
         return self

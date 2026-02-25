@@ -1,4 +1,3 @@
-
 """
 NEATS JSON to Flight DataFrame Conversion Module
 
@@ -7,7 +6,8 @@ Converts NEATS/NM JSON flight objects into a list of per-flight DataFrames in th
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
@@ -17,7 +17,7 @@ from pyneats.steps.parsing.views import Flight4D
 
 
 def neats_json_to_flights(
-    flights: 'Sequence[Mapping[str, Any]]',
+    flights: Sequence[Mapping[str, Any]],
     *,
     model_type: str = "NM",
 ) -> list[pd.DataFrame]:
@@ -93,31 +93,34 @@ def neats_json_to_flights(
             # Drop columns that are entirely NaN
             df = df.dropna(axis=1, how="all")
 
-
         # Attach attrs (canonical)
         # Reconstruct flight-level attrs as in original logic
         allowed_attrs = set(Flight4D.ATTRS_REQUIRED) | set(Flight4D.ATTRS_OPTIONAL)
-        attrs = {k: v for k, v in {
-            "flight_id": fi.get("flight_identification"),
-            "departure_airport": fi.get("departure_airport"),
-            "arrival_airport": fi.get("arrival_airport"),
-            "model_type": model_type,
-            "aobt": fi.get("departure_date_time"),
-            "arrival_date_time": fi.get("arrival_date_time"),
-            # Aircraft
-            "aircraft_type": ap.get("aircraft_type"),
-            "aircraft_series": ap.get("aircraft_version"),
-            "engine_uid": ap.get("engine_uid"),
-            "takeoff_weight": ap.get("takeoff_mass"),
-            "payload_factor": ap.get("load_factor"),
-            # Fuel (canonical names aligned with NEATSFuel / Flight4D)
-            "hydrogen_content": fp.get("hydrogen_content"),
-            "h_c_ratio": fp.get("hydrogen_per_carbon_ratio"),
-            "aromatic_content": fp.get("aromatic_content"),
-            "q_fuel": fp.get("calorific_value"),
-            "sulphur_content": fp.get("sulphur"),
-            "naphthalene": fp.get("naphthalene"),
-        }.items() if v is not None and k in allowed_attrs}
+        attrs = {
+            k: v
+            for k, v in {
+                "flight_id": fi.get("flight_identification"),
+                "departure_airport": fi.get("departure_airport"),
+                "arrival_airport": fi.get("arrival_airport"),
+                "model_type": model_type,
+                "aobt": fi.get("departure_date_time"),
+                "arrival_date_time": fi.get("arrival_date_time"),
+                # Aircraft
+                "aircraft_type": ap.get("aircraft_type"),
+                "aircraft_series": ap.get("aircraft_version"),
+                "engine_uid": ap.get("engine_uid"),
+                "takeoff_weight": ap.get("takeoff_mass"),
+                "payload_factor": ap.get("load_factor"),
+                # Fuel (canonical names aligned with NEATSFuel / Flight4D)
+                "hydrogen_content": fp.get("hydrogen_content"),
+                "h_c_ratio": fp.get("hydrogen_per_carbon_ratio"),
+                "aromatic_content": fp.get("aromatic_content"),
+                "q_fuel": fp.get("calorific_value"),
+                "sulphur_content": fp.get("sulphur"),
+                "naphthalene": fp.get("naphthalene"),
+            }.items()
+            if v is not None and k in allowed_attrs
+        }
         df.attrs = attrs
 
         result.append(df)
@@ -266,13 +269,17 @@ def split_df_into_flights(
             "aircraft_mass",
             "true_airspeed",
         }
-        attr_columns = [c for c in df.columns if c not in trajectory_cols and c != "flight_key"]
+        attr_columns = [
+            c for c in df.columns if c not in trajectory_cols and c != "flight_key"
+        ]
 
     # --- Split by flight_key ---
     for _, grp in df.groupby("flight_key", sort=False):
         # Extract attrs from the *first row* of the group
         first_row = grp.iloc[0]
-        attrs = {col: first_row[col] for col in attr_columns if pd.notna(first_row[col])}
+        attrs = {
+            col: first_row[col] for col in attr_columns if pd.notna(first_row[col])
+        }
 
         # Drop attribute columns from the actual trajectory dataframe
         traj_df = grp.drop(columns=attr_columns + ["flight_key"]).reset_index(drop=True)

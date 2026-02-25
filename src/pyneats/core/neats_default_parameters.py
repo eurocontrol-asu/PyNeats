@@ -72,12 +72,12 @@ OPEN_AIRCLIM_COMPUTATION_HORIZON : int
 """
 
 from collections.abc import Mapping
-from typing import Any, Final, Literal
+from typing import Any
+from typing import Final
+from typing import Literal
 
 import numpy as np
-from pycontrails.models.humidity_scaling import (
-    ExponentialBoostHumidityScaling,
-)
+
 
 __all__ = [
     "DEFAULT_INTERPOLATOR",
@@ -109,7 +109,9 @@ DEFAULT_PERFORMANCE: Final[str] = "bada"
 DEFAULT_EMISSIONS: Final[str] = "pycontrails"
 DEFAULT_CONTRAILS_MODEL: Final[str] = "cocip"
 DEFAULT_NON_CO2_MODEL: Final[str] = "local_accf"  # For large emitters
-DEFAULT_NON_CO2_MODEL_SMALL_EMITTERS: Final[str] = "open_airclim"  # For small emitters (e.g., regional aviation)
+DEFAULT_NON_CO2_MODEL_SMALL_EMITTERS: Final[str] = (
+    "open_airclim"  # For small emitters (e.g., regional aviation)
+)
 DEFAULT_CLIMATE_IMPACT: Final[str] = "gwp"  # Global Warming Potential
 
 
@@ -123,25 +125,48 @@ DEFAULT_INTERPOLATION_TIME: Final[str] = "1min"
 DEFAULT_BADA4_VERSION: str = "4.2.1"
 DEFAULT_BADA3_VERSION: str = "3.16"
 
+# Max consecutive segments of a flight that fall out of the envelope allowed by the BADA model
+DEFAULT_BADA_MAX_CONSECUTIVE_FAILURES = 4
+
+# Very conservative threshold on the fuel flow. An error in BADA will be thown if higher
+# Further studies need to be performed to better handle out of envelop data points
+DEFAULT_FF_OUTLIER_THRESHOLD = 1000
+
 # Mass estimation parameters
 # Used in iterative aircraft mass computation from fuel consumption
-DEFAULT_PAYLOAD_FACTOR: Final[float] = 1.0  # Multiplier for expected payload (1.0 = full capacity)
-DEFAULT_FUEL_RESERVE_FRACTION: Final[float] = 0.15  # Following Teoh et al. (2024): 15% reserve fuel requirement
-DEFAULT_MAX_MASS_ESTIMATION_ITER: Final[int] = 4  # Maximum iterations for mass convergence
-DEFAULT_MAX_REL_MASS_DIFF: Final[float] = 0.01  # 1% relative mass difference convergence threshold
+DEFAULT_PAYLOAD_FACTOR: Final[float] = (
+    1.0  # Multiplier for expected payload (1.0 = full capacity)
+)
+DEFAULT_FUEL_RESERVE_FRACTION: Final[float] = (
+    0.15  # Following Teoh et al. (2024): 15% reserve fuel requirement
+)
+DEFAULT_MAX_MASS_ESTIMATION_ITER: Final[int] = (
+    4  # Maximum iterations for mass convergence
+)
+DEFAULT_MAX_REL_MASS_DIFF: Final[float] = (
+    0.01  # 1% relative mass difference convergence threshold
+)
 
 # Trajectory smoothing parameters
 # Applied to true air speed time series to reduce noise from FDIR data
-DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW: Final[int] = 7  # 7-point rolling window for smoothing
+DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW: Final[int] = (
+    7  # 7-point rolling window for smoothing
+)
 
 # Delta tau computation parameters
 # Used in climb/descent rate estimation and phase detection
-DEFAULT_DELTA_TAU_COMPUTE_METHOD: Final[Literal["point", "zero"]] = "point"  # Point-based delta tau calculation
-DEFAULT_DELTA_TAU_FILL_METHOD: Final[Literal["bffill", "none", "zero"]] = "bffill"  # Backward fill missing values
+DEFAULT_DELTA_TAU_COMPUTE_METHOD: Final[Literal["point", "zero"]] = (
+    "point"  # Point-based delta tau calculation
+)
+DEFAULT_DELTA_TAU_FILL_METHOD: Final[Literal["bffill", "none", "zero"]] = (
+    "bffill"  # Backward fill missing values
+)
 
 # Rate of climb/descent parameters
 # Used to distinguish between climb, cruise, and descent flight phases
-DEFAULT_ROCD_PHASE_THRESHOLD: Final[float] = 250  # feet per minute threshold for phase detection
+DEFAULT_ROCD_PHASE_THRESHOLD: Final[float] = (
+    250  # feet per minute threshold for phase detection
+)
 
 # Emissions model parameters
 # Configuration options passed to PyContrails emissions calculation engine
@@ -168,20 +193,28 @@ DEFAULT_HUMIDITY_SCALING = None
 if DEFAULT_HUMIDITY_SCALING is not None:
     DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
         "contrail_contrail_overlapping": False,  # Disable overlapping contrails calculation (performance)
-        "dt_integration": np.timedelta64(1, "m"),  # 1-minute integration time step for contrail evolution
-        "max_age": np.timedelta64(12, "h"),  # Maximum contrail age before complete dissipation
+        "dt_integration": np.timedelta64(
+            1, "m"
+        ),  # 1-minute integration time step for contrail evolution
+        "max_age": np.timedelta64(
+            12, "h"
+        ),  # Maximum contrail age before complete dissipation
         "humidity_scaling": DEFAULT_HUMIDITY_SCALING,  # Apply humidity adjustment from above
         "interpolation_use_indices": False,  # Use direct spatial interpolation (not index-based)
-        "vpm_activation": False,  # Disable volumetric potential maximum activation
+        "vpm_activation": False,  # Disable vpm activation method
     }
 else:
     # Fallback configuration without humidity scaling
     DEFAULT_COCIP_KWARGS: Final[Mapping[str, Any]] = {
         "contrail_contrail_overlapping": False,  # Disable overlapping contrails calculation (performance)
-        "dt_integration": np.timedelta64(1, "m"),  # 1-minute integration time step for contrail evolution
-        "max_age": np.timedelta64(12, "h"),  # Maximum contrail age before complete dissipation
+        "dt_integration": np.timedelta64(
+            1, "m"
+        ),  # 1-minute integration time step for contrail evolution
+        "max_age": np.timedelta64(
+            12, "h"
+        ),  # Maximum contrail age before complete dissipation
         "interpolation_use_indices": False,  # Use direct spatial interpolation (not index-based)
-        "vpm_activation": False,  # Disable volumetric potential maximum activation
+        "vpm_activation": False,  # Disable vpm activation
     }
 
 # Aviation Radiative Forcing Index (RFI) and Climate Impact parameters
@@ -212,40 +245,76 @@ InterpolationMethod = Literal["linear", "nearest"]
 
 # Interpolation buffer definitions
 # Buffers extend the domain boundaries to prevent edge extrapolation artifacts
-DEFAULT_LAT_BUF: Final[tuple[float, float]] = (0.0, 0.0)  # (south, north) buffer in degrees
-DEFAULT_LON_BUF: Final[tuple[float, float]] = (0.0, 0.0)  # (west, east) buffer in degrees
+DEFAULT_LAT_BUF: Final[tuple[float, float]] = (
+    0.0,
+    0.0,
+)  # (south, north) buffer in degrees
+DEFAULT_LON_BUF: Final[tuple[float, float]] = (
+    0.0,
+    0.0,
+)  # (west, east) buffer in degrees
 DEFAULT_TIME_BUF: Final[tuple[np.timedelta64, np.timedelta64]] = (
     np.timedelta64(0, "h"),  # Before time step
     np.timedelta64(0, "h"),  # After time step
 )
-DEFAULT_LEVEL_BUF: tuple[float, float] = (0.0, 40.0)  # (lower, upper) pressure buffer in hPa
+DEFAULT_LEVEL_BUF: tuple[float, float] = (
+    0.0,
+    40.0,
+)  # (lower, upper) pressure buffer in hPa
 
 # Interpolation method selection
-DEFAULT_WEATHER_INTEPOLATION_METHOD: Final[InterpolationMethod] = "linear"  # Linear interpolation for smooth fields
+DEFAULT_WEATHER_INTEPOLATION_METHOD: Final[InterpolationMethod] = (
+    "linear"  # Linear interpolation for smooth fields
+)
 # CRITICAL: If True, delta_tau (contrail formation parameter) is incorrectly extrapolated below altitude limits
 DEFAULT_WEATHER_USE_INDICES: Final[bool] = False
 
 
 # Jet fuel composition and thermodynamic properties
 # Used in emissions and energy calculations. Default values from consortium (DLR/TO70)
-DEFAULT_AROMATICS_CONTENT: Final[float] = 0.25  # 25% - Default value (not used in current calculations)
-DEFAULT_SULPHUR_CONTENT: Final[float] = 0.003  # 0.3% - Default value (not used in current calculations)
-DEFAULT_NAPHTHALEN_CONTENT: Final[float] = 0.03  # 3% - Default value (not used in current calculations)
+DEFAULT_AROMATICS_CONTENT: Final[float] = (
+    0.25  # 25% - Default value (not used in current calculations)
+)
+DEFAULT_SULPHUR_CONTENT: Final[float] = (
+    0.003  # 0.3% - Default value (not used in current calculations)
+)
+DEFAULT_NAPHTHALEN_CONTENT: Final[float] = (
+    0.03  # 3% - Default value (not used in current calculations)
+)
 DEFAULT_HYDROGEN_CONTENT: Final[float] = (
     13.79  # 13.79% - Default value provided by consortium (DLR/TO70) for fuel composition
 )
 
 # Fuel energy content (specific energy)
 # Critical for converting fuel consumption to energy and emissions estimates
-REFERENCE_Q_FUEL: Final[float] = 43_130_000.0  # J/kg - Baseline value from PyContrails/BADA
-DEFAULT_Q_FUEL: Final[float] = 42_800_000.0  # J/kg - Default value provided by consortium (DLR/TO70)
+REFERENCE_Q_FUEL: Final[float] = (
+    43_130_000.0  # J/kg - Baseline value from PyContrails/BADA
+)
+DEFAULT_Q_FUEL: Final[float] = (
+    42_800_000.0  # J/kg - Default value provided by consortium (DLR/TO70)
+)
 
 
 # OpenAirClim Parameters
 # Configuration for Method D climate impact computation for small emitters and regional aviation
 # OpenAirClim computes non-CO2 impacts (O3, CH4, H2O, contrail cirrus) via grid-based inventory approach
 OPEN_AIRCLIM_LEVELS: Final[tuple[int, ...]] = (
-    1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100
+    1000,
+    925,
+    850,
+    700,
+    600,
+    500,
+    400,
+    300,
+    250,
+    200,
+    150,
+    100,
 )  # Pressure levels (hPa) for vertical binning of emissions inventory
-OPEN_AIRCLIM_GRID_RES: Final[float] = 1.0  # Spatial grid resolution (degrees lat/lon) for emissions aggregation
-OPEN_AIRCLIM_COMPUTATION_HORIZON: Final[int] = 100  # Time horizon (years) for AGWP computation
+OPEN_AIRCLIM_GRID_RES: Final[float] = (
+    1.0  # Spatial grid resolution (degrees lat/lon) for emissions aggregation
+)
+OPEN_AIRCLIM_COMPUTATION_HORIZON: Final[int] = (
+    100  # Time horizon (years) for AGWP computation
+)

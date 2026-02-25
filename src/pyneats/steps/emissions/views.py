@@ -3,11 +3,14 @@ Emissions Views Module
 
 Defines zero-copy typed views for emissions-enriched flights.
 """
+
 from __future__ import annotations
 
-from typing import ClassVar, Final
+from typing import ClassVar
+from typing import Final
 
 from pyneats.steps.performance.views import FlightWithPerformance
+
 
 __all__ = [
     "REQUIRED_EMISSION_COLS",
@@ -26,4 +29,5 @@ class FlightWithEmissions(FlightWithPerformance):
     REQUIRED : ClassVar[tuple[str, ...]]
         Required emission columns.
     """
+
     REQUIRED: ClassVar[tuple[str, ...]] = REQUIRED_EMISSION_COLS

@@ -10,20 +10,20 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from pycontrails.core.fuel import Fuel, JetA, SAFBlend
+from pycontrails.core.fuel import Fuel
+from pycontrails.core.fuel import JetA
+from pycontrails.core.fuel import SAFBlend
 
-from pyneats.core.neats_default_parameters import (
-    DEFAULT_AROMATICS_CONTENT,
-    DEFAULT_HYDROGEN_CONTENT,
-    DEFAULT_NAPHTHALEN_CONTENT,
-    DEFAULT_Q_FUEL,
-    DEFAULT_SULPHUR_CONTENT,
-)
+from pyneats.core.neats_default_parameters import DEFAULT_AROMATICS_CONTENT
+from pyneats.core.neats_default_parameters import DEFAULT_HYDROGEN_CONTENT
+from pyneats.core.neats_default_parameters import DEFAULT_NAPHTHALEN_CONTENT
+from pyneats.core.neats_default_parameters import DEFAULT_Q_FUEL
+from pyneats.core.neats_default_parameters import DEFAULT_SULPHUR_CONTENT
+
 
 __all__ = [
     "NEATSFuel",
 ]
-
 
 
 class NEATSFuel(SAFBlend):
@@ -51,9 +51,15 @@ class NEATSFuel(SAFBlend):
         Name of the fuel.
     """
 
-    aromatics_content: float = DEFAULT_AROMATICS_CONTENT  # default value - Not used in calculations
-    sulphur_content: float = DEFAULT_SULPHUR_CONTENT  # default value - Not used in calculations
-    naphthalene: float = DEFAULT_NAPHTHALEN_CONTENT  # default value - Not used in calculations
+    aromatics_content: float = (
+        DEFAULT_AROMATICS_CONTENT  # default value - Not used in calculations
+    )
+    sulphur_content: float = (
+        DEFAULT_SULPHUR_CONTENT  # default value - Not used in calculations
+    )
+    naphthalene: float = (
+        DEFAULT_NAPHTHALEN_CONTENT  # default value - Not used in calculations
+    )
 
     def __init__(
         self,
@@ -117,7 +123,9 @@ class NEATSFuel(SAFBlend):
         )
 
         # set the blend gate so that downstream code treats as SAFBlend
-        object.__setattr__(self, "pct_blend", pct_blend_gate if pct_blend_gate > 0.0 else 1e-12)
+        object.__setattr__(
+            self, "pct_blend", pct_blend_gate if pct_blend_gate > 0.0 else 1e-12
+        )
 
     @staticmethod
     def _to_scalar(val: Any) -> Any:
@@ -143,7 +151,11 @@ class NEATSFuel(SAFBlend):
         if isinstance(val, (list, tuple)) and len(val) > 0:
             return val[0]
         # Handle numpy arrays
-        if hasattr(val, "__len__") and hasattr(val, "__getitem__") and not isinstance(val, str):
+        if (
+            hasattr(val, "__len__")
+            and hasattr(val, "__getitem__")
+            and not isinstance(val, str)
+        ):
             try:
                 if len(val) > 0:
                     return val[0]

@@ -3,6 +3,7 @@ PyContrails Trajectory Interpolation Module
 
 Implements trajectory interpolation using pycontrails' resample_and_fill method.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,11 +15,10 @@ from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.core.views import ValidationError
 from pyneats.steps.interpolation.params import TrajectoryInterpolationParams
-from pyneats.steps.interpolation.protocol import (
-    TrajectoryInterpolationStepError,
-    TrajectoryInterpolator,
-)
+from pyneats.steps.interpolation.protocol import TrajectoryInterpolationStepError
+from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
 from pyneats.steps.parsing.views import Flight4D
+
 
 __all__ = [
     "PyContrailsInterpolationParams",
@@ -92,7 +92,14 @@ class PyContrailsInterpolator(
             original = flight.dataframe
 
             # Perform pycontrails interpolation
-            interpolated_flight: Flight = flight.resample_and_fill(self.params.interpolation_time)
+            interpolated_flight: Flight = flight.resample_and_fill(
+                self.params.interpolation_time
+            )
+
+            if len(interpolated_flight) < 2:
+                raise TrajectoryInterpolationStepError(
+                    "resample_and_fill resulted in a trajectory with less than 2 waypoints"
+                )
 
             # Interpolate optional columns
             t_orig_num = original["time"].values.astype(np.int64)
@@ -105,9 +112,15 @@ class PyContrailsInterpolator(
                     interpolated_flight[col] = interpolated_values
 
         except Exception as e:
-            raise TrajectoryInterpolationStepError(f"resample_and_fill failed: {e}") from e
+            raise TrajectoryInterpolationStepError(
+                f"resample_and_fill failed: {e}"
+            ) from e
 
         try:
-            return Flight4D.from_flight(interpolated_flight)  # schema/type validation (zero-copy)
+            return Flight4D.from_flight(
+                interpolated_flight
+            )  # schema/type validation (zero-copy)
         except ValidationError as ve:
-            raise TrajectoryInterpolationStepError(f"invalid resampled schema: {ve}") from ve
+            raise TrajectoryInterpolationStepError(
+                f"invalid resampled schema: {ve}"
+            ) from ve

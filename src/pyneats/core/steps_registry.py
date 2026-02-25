@@ -25,9 +25,13 @@ known(t)
 from __future__ import annotations
 
 import warnings
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
+from collections.abc import Mapping
 from threading import RLock
-from typing import Any, TypeVar, cast
+from typing import Any
+from typing import TypeVar
+from typing import cast
+
 
 __all__ = [
     # public API
@@ -38,13 +42,13 @@ __all__ = [
 ]
 
 
-
 class RegistryError(ValueError):
     """
     Exception raised for errors in the NEATS registry operations.
 
     Raised when a registry operation fails, such as unknown entry or duplicate registration.
     """
+
     pass
 
 
@@ -54,7 +58,6 @@ Ctor = Callable[..., T]
 
 
 # ---- Single, type-keyed registry --------------------------------------------
-
 
 
 class _BigRegistry:
@@ -104,7 +107,7 @@ class _BigRegistry:
                         stacklevel=2,
                     )
                 # Store as Callable[..., Any] internally
-                bucket[key] = cast(Callable[..., Any], ctor)
+                bucket[key] = cast("Callable[..., Any]", ctor)
             return ctor
 
         return deco
@@ -142,9 +145,11 @@ class _BigRegistry:
                 ctor_any = self._items[t][key]
             except KeyError as e:
                 known = ", ".join(sorted(self._items.get(t, {}))) or "(none)"
-                raise RegistryError(f"Unknown {t.__name__} name='{name}'. Known: {known}") from e
+                raise RegistryError(
+                    f"Unknown {t.__name__} name='{name}'. Known: {known}"
+                ) from e
 
-        ctor = cast(Ctor[T], ctor_any)
+        ctor = cast("Ctor[T]", ctor_any)
         return ctor(**params)
 
     def known(self, t: type[T]) -> Mapping[str, Ctor[T]]:
@@ -163,7 +168,7 @@ class _BigRegistry:
         """
         with self._lock:
             bucket = self._items.get(t, {})
-            return {k: cast(Ctor[T], v) for k, v in bucket.items()}
+            return {k: cast("Ctor[T]", v) for k, v in bucket.items()}
 
 
 # global singleton

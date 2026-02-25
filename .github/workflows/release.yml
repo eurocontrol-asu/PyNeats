@@ -1,46 +1,164 @@
+# Release & Publish to PyPI
+# Triggered by pushing a version tag (v1.0.0, v2.1.3, etc.)
 name: Release
 
 on:
   push:
     tags:
-      - 'v*'
+      - "v[0-9]+.[0-9]+.[0-9]+"      # v1.0.0
+      - "v[0-9]+.[0-9]+.[0-9]+-*"    # v1.0.0-beta.1
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: write      # For creating releases
+  id-token: write      # For trusted publishing to PyPI
+
+env:
+  PYTHON_VERSION: "3.12"
 
 jobs:
-  release:
-    name: Create Release
+  # ============================================
+  # BUILD
+  # ============================================
+  build:
+    name: Build Package
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for changelog
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Build package
+        run: uv build
+
+      - name: Check package
+        run: |
+          uv run --with twine twine check dist/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # ============================================
+  # GENERATE CHANGELOG
+  # ============================================
+  changelog:
+    name: Generate Changelog
+    runs-on: ubuntu-latest
+    outputs:
+      changelog: ${{ steps.set_output.outputs.changelog }}
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install git-cliff
-        uses: taiki-e/install-action@v2
-        with:
-          tool: git-cliff
-
       - name: Generate changelog
+        id: changelog
+        uses: orhun/git-cliff-action@v4
+        continue-on-error: true
+        with:
+          config: pyproject.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set changelog output
+        id: set_output
         run: |
-          git cliff --latest --output CHANGELOG_LATEST.md
-          git cliff --output CHANGELOG.md
+          if [ "${{ steps.changelog.outcome }}" = "success" ] && [ -n "${{ steps.changelog.outputs.changelog }}" ]; then
+            echo "changelog<<EOF" >> $GITHUB_OUTPUT
+            echo "${{ steps.changelog.outputs.changelog }}" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "changelog=Release ${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+  # ============================================
+  # PUBLISH TO TEST PYPI (Pre-releases only)
+  # ============================================
+  publish-test:
+    name: Publish to Test PyPI
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: contains(github.ref, '-')  # Only for pre-releases (v1.0.0-beta.1)
+    environment:
+      name: test-pypi
+      url: https://test.pypi.org/p/pyneats
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to Test PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  # ============================================
+  # PUBLISH TO PYPI (Stable releases only)
+  # ============================================
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [build, changelog]
+    if: "!contains(github.ref, '-')"  # Only for stable releases (v1.0.0)
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pyneats
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Uses trusted publishing - no token needed!
+        # Configure at: https://pypi.org/manage/project/pyneats/settings/publishing/
+
+  # ============================================
+  # CREATE GITHUB RELEASE
+  # ============================================
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build, changelog, publish]
+    if: "!contains(github.ref, '-')"  # Only for stable releases
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          body_path: CHANGELOG_LATEST.md
+          body: ${{ needs.changelog.outputs.changelog }}
+          files: dist/*
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Commit updated CHANGELOG.md
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          git commit -m "docs: update CHANGELOG.md for ${{ github.ref_name }}" || echo "No changes to commit"
-          git push origin HEAD:main || echo "Could not push to main"
+          generate_release_notes: ${{ needs.changelog.outputs.changelog == format('Release {0}', github.ref_name) }}

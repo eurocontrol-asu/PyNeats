@@ -1,4 +1,3 @@
-
 """
 Default computation parameters for NEATS pipeline modules.
 
@@ -30,7 +29,10 @@ DEFAULT_ZARR_CACHING_STRATEGY : Literal
 """
 
 from collections.abc import Mapping
-from typing import Any, Final, Literal
+from typing import Any
+from typing import Final
+from typing import Literal
+
 
 __all__ = ["DEFAULT_NJOBS", "DEFAULT_BATCH_SIZE", "DEFAULT_JOBLIB_PREFERENCE"]
 
@@ -70,4 +72,3 @@ DEFAULT_WIND_CHUNKS: Final[Mapping[str, Any]] = {
 # Zarr Chunking
 ZARR_CACHING_STRATEGY = Literal["all_variables", "by_variable"]
 DEFAULT_ZARR_CACHING_STRATEGY: Final[ZARR_CACHING_STRATEGY] = "all_variables"
-

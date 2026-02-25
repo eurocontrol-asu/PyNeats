@@ -13,7 +13,8 @@ The use of a local implementation allows for a more efficient computation, avoid
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field
 
 import numpy as np
 import pandas as pd
@@ -21,18 +22,19 @@ from numpy.typing import NDArray
 from pycontrails import Flight
 
 from pyneats.core.neats_default_parameters import DEFAULT_ACCF_VALIDITY_PRESSURE
-from pyneats.core.physics import (
-    ACCF_SCALE_03,
-    ACCF_SCALE_CH4,
-    ACCF_SCALE_H2O,
-    SOLAR_CONSTANT,
-)
+from pyneats.core.physics import ACCF_SCALE_03
+from pyneats.core.physics import ACCF_SCALE_CH4
+from pyneats.core.physics import ACCF_SCALE_H2O
+from pyneats.core.physics import SOLAR_CONSTANT
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.climate_functions.climaccf import ACCFParams
-from pyneats.steps.climate_functions.protocol import ACCFStepError, NonCO2Model
-from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact, FlightWithSegmentATR
+from pyneats.steps.climate_functions.protocol import ACCFStepError
+from pyneats.steps.climate_functions.protocol import NonCO2Model
+from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
+from pyneats.steps.climate_functions.views import FlightWithSegmentATR
 from pyneats.steps.emissions.views import FlightWithEmissions
+
 
 __all__ = ["LocalACCFParams", "LocalACCFModel"]
 
@@ -158,7 +160,9 @@ class LocalACCFModel(
         gp = _as_np(flight[self.params.col_geopotential])
 
         accf = self.o3_raw_formula(t, gp)
-        accf = np.where(np.isfinite(accf), np.maximum(accf, 0.0), np.nan)  # clamp negatives to 0
+        accf = np.where(
+            np.isfinite(accf), np.maximum(accf, 0.0), np.nan
+        )  # clamp negatives to 0
         try:
             # Scaling with version-specific factor
             accf /= self.params.scale_o3[self.params.accf_kwargs["accf_v"]]
@@ -197,7 +201,9 @@ class LocalACCFModel(
         )
 
         accf = self.ch4_raw_formula(gp, fin)
-        accf = np.where(np.isfinite(accf), np.minimum(accf, 0.0), np.nan)  # clamp positives to 0
+        accf = np.where(
+            np.isfinite(accf), np.minimum(accf, 0.0), np.nan
+        )  # clamp positives to 0
         try:
             # Scaling with version-specific factor
             accf /= self.params.scale_ch4[self.params.accf_kwargs["accf_v"]]
@@ -282,6 +288,5 @@ class LocalACCFModel(
         except Exception as e:
             self.logger.exception("local ACCF evaluation failed")
             raise ACCFStepError(f"local ACCF evaluation failed: {e}") from e
-
 
         return FlightWithSegmentATR.from_flight(flight)

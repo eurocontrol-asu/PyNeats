@@ -1,4 +1,3 @@
-
 """
 Optimized Fleet Runner Module
 
@@ -19,31 +18,38 @@ import gc
 import json
 import logging
 import time
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from collections.abc import Mapping
+from dataclasses import dataclass
+from dataclasses import field
 from pathlib import Path
-from typing import Any, Generic, Self, TypeVar, cast
+from typing import Any
+from typing import Generic
+from typing import Self
+from typing import TypeVar
+from typing import cast
 
 import pandas as pd
-from joblib import Parallel, delayed
+from joblib import Parallel
+from joblib import delayed
 from joblib.externals.loky import get_reusable_executor
 from pycontrails import Flight
 from pycontrails.core.met import MetDataset
 from pycontrails.models.humidity_scaling import HumidityScaling
 
-from pyneats.core.compute_parameters import (
-    DEFAULT_BATCH_SIZE,
-    DEFAULT_JOBLIB_PREFERENCE,
-    DEFAULT_NJOBS,
-)
-from pyneats.core.neats_default_parameters import (
-    DEFAULT_COCIP_KWARGS,
-    DEFAULT_HUMIDITY_SCALING,
-)
-from pyneats.core.steps import Step, VectorizedStep
+from pyneats.core.compute_parameters import DEFAULT_BATCH_SIZE
+from pyneats.core.compute_parameters import DEFAULT_JOBLIB_PREFERENCE
+from pyneats.core.compute_parameters import DEFAULT_NJOBS
+from pyneats.core.neats_default_parameters import DEFAULT_COCIP_KWARGS
+from pyneats.core.neats_default_parameters import DEFAULT_HUMIDITY_SCALING
+from pyneats.core.steps import Step
+from pyneats.core.steps import VectorizedStep
+from pyneats.core.steps import get_step_critical_columns
 from pyneats.core.steps_registry import build
 from pyneats.runners.flight import RunnerConfig
-from pyneats.steps.climate_functions.cocip import CoCiPModel, ContrailsParams
+from pyneats.runners.runner import Runner
+from pyneats.steps.climate_functions.cocip import CoCiPModel
+from pyneats.steps.climate_functions.cocip import ContrailsParams
 from pyneats.steps.climate_functions.protocol import NonCO2Model
 from pyneats.steps.climate_functions.views import FlightWithNonCO2Impact
 from pyneats.steps.climate_metrics.protocol import ClimateImpactModel
@@ -52,23 +58,20 @@ from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
 from pyneats.steps.emissions.protocol import EmissionModel
 from pyneats.steps.emissions.views import FlightWithEmissions
 from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
-from pyneats.steps.parsing.neats_io import neats_json_to_flights, split_df_into_flights
+from pyneats.steps.parsing.neats_io import neats_json_to_flights
+from pyneats.steps.parsing.neats_io import split_df_into_flights
 from pyneats.steps.parsing.protocol import TrajectoryParser
 from pyneats.steps.parsing.views import Flight4D
 from pyneats.steps.performance import PerformanceModel
 from pyneats.steps.performance.views import FlightWithPerformance
-from pyneats.steps.weather.weather_provider import (
-    FlightWithWeather,
-    PcHumidityScalingAdapter,
-    WeatherProvider,
-    WeatherProviderParams,
-)
-from pyneats.steps.weather.weather_store import (
-    ZarrPaths,
-    clear_dataset_cache,
-    get_weather_from_zarr,
-)
-from pyneats.runners.runner import Runner
+from pyneats.steps.weather.weather_provider import FlightWithWeather
+from pyneats.steps.weather.weather_provider import PcHumidityScalingAdapter
+from pyneats.steps.weather.weather_provider import WeatherProvider
+from pyneats.steps.weather.weather_provider import WeatherProviderParams
+from pyneats.steps.weather.weather_store import ZarrPaths
+from pyneats.steps.weather.weather_store import clear_dataset_cache
+from pyneats.steps.weather.weather_store import get_weather_from_zarr
+
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +86,9 @@ U = TypeVar("U")
 # Type vars for Step interface (InT can be DataFrame|Flight, OutT must be Flight)
 # These are used by _get_step_cached and make_step_func
 InT = TypeVar("InT")  # Invariant, unbounded (parsers take DataFrame)
-OutT = TypeVar("OutT", bound=Flight)  # Invariant, bound to Flight (Step protocol requires this)
+OutT = TypeVar(
+    "OutT", bound=Flight
+)  # Invariant, bound to Flight (Step protocol requires this)
 
 # Flight-bounded type vars for vectorized steps and flight filtering
 InFlightT = TypeVar("InFlightT", bound=Flight)
@@ -154,30 +159,23 @@ class FleetRunnerParams(RunnerConfig):
     gc_collect_between_steps: bool = True
 
     # CoCiP (pycontrails) parameters
-    cocip_kwargs: Mapping[str, Any] = field(default_factory=lambda: DEFAULT_COCIP_KWARGS)
+    cocip_kwargs: Mapping[str, Any] = field(
+        default_factory=lambda: DEFAULT_COCIP_KWARGS
+    )
 
     # Humidity scaling after weather intersection
     humidity_scaling: HumidityScaling | None = field(
         default_factory=lambda: DEFAULT_HUMIDITY_SCALING
     )
 
-    # Critical columns for vectorized-step failure detection
-    weather_critical_columns: tuple[str, ...] = (
-        "air_temperature",
-        "specific_humidity",
-        "geopotential",
-        "potential_vorticity",
-    )
-    humidity_scaling_critical_columns: tuple[str, ...] = ()
-    cocip_critical_columns: tuple[str, ...] = ()
-
     def validate(self) -> None:
-
         if self.zarr_paths is None:
             raise ValueError("FastFleetRunnerConfig.zarr_paths is required")
 
         if self.trajectory_json_filepath is None and self.trajectory_dataframe is None:
-            raise ValueError("Must provide either trajectory_json_filepath or trajectory_dataframe")
+            raise ValueError(
+                "Must provide either trajectory_json_filepath or trajectory_dataframe"
+            )
 
 
 # -----------------------------------------------------------------------------
@@ -221,7 +219,7 @@ def make_step_func(
     def fn(x: InT) -> OutT:
         step = _get_step_cached(interface, name, params)
         if copy_input and hasattr(x, "copy"):
-            x = cast(Any, x).copy(deep=False)
+            x = cast("Any", x).copy(deep=False)
         return step(x)
 
     return fn
@@ -310,7 +308,9 @@ def _process_parallel_results(
             )
 
     if errors:
-        logger.warning("%d/%d flights failed at %s", len(errors), len(original_seq), step_name)
+        logger.warning(
+            "%d/%d flights failed at %s", len(errors), len(original_seq), step_name
+        )
 
     return successful, errors
 
@@ -411,13 +411,14 @@ class FleetRunner(Runner):
 
         # ---- Vectorized step objects (created in _load_weather) --------------
         self.weather_step: WeatherProvider | None = None
-        
 
     # -------------------------------------------------------------------------
     # Param handling (FlightRunner-like)
     # -------------------------------------------------------------------------
 
-    def _params(self, key: str, *, extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    def _params(
+        self, key: str, *, extra: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Return a defensive copy of cfg.params[key] merged with optional extra params."""
         base = dict(self.cfg.params.get(key, {}))
         if extra:
@@ -438,10 +439,9 @@ class FleetRunner(Runner):
 
     def _load_data(self) -> Self:
         return (
-            self._load_trajectories()  # pylint: disable=protected-access
-            ._load_weather()  # pylint: disable=protected-access
+            self._load_trajectories()._load_weather()  # pylint: disable=protected-access  # pylint: disable=protected-access
         )
-     
+
     def _load_trajectories(self) -> Self:
         if self.cfg.trajectory_json_filepath is not None:
             path = Path(self.cfg.trajectory_json_filepath)
@@ -463,7 +463,9 @@ class FleetRunner(Runner):
     def _load_weather(self) -> Self:
         logger.info("Loading weather data from Zarr...")
 
-        weather = get_weather_from_zarr(self.cfg.zarr_paths, chunks=self.cfg.zarr_read_chunks)
+        weather = get_weather_from_zarr(
+            self.cfg.zarr_paths, chunks=self.cfg.zarr_read_chunks
+        )
         self.met, self.rad, self.wind = weather.met(), weather.rad(), weather.wind()
 
         # Create vectorized steps now that weather datasets are available
@@ -493,11 +495,12 @@ class FleetRunner(Runner):
         return self
 
     def _parse_flight(self) -> Self:
-
         if self.source_fleet is None:
             raise RuntimeError("source_flights must be loaded before _parse_flights()")
 
-        self.parsed_fleet, errs = self._run_parallel_step(self.source_fleet, "parsing", self.parser)
+        self.parsed_fleet, errs = self._run_parallel_step(
+            self.source_fleet, "parsing", self.parser
+        )
         self.error_records.extend(errs)
 
         self.source_fleet = None  # free memory (FlightRunner-style)
@@ -505,7 +508,6 @@ class FleetRunner(Runner):
         return self
 
     def _interpolate(self) -> Self:
-
         if self.parsed_fleet is None:
             raise RuntimeError("parsed_flights must be set before _interpolate()")
 
@@ -516,31 +518,24 @@ class FleetRunner(Runner):
 
         self.parsed_fleet = None  # free memory
 
-
         return self
 
     def _intersect_weather(self) -> Self:
-
         if self.interpolated_fleet is None:
-            raise RuntimeError("interpolated_flights must be set before _intersect_weather()")
+            raise RuntimeError(
+                "interpolated_flights must be set before _intersect_weather()"
+            )
         if self.weather_step is None:
-            raise RuntimeError("weather_step must be initialized before _intersect_weather()")
+            raise RuntimeError(
+                "weather_step must be initialized before _intersect_weather()"
+            )
 
         # Run vectorized weather intersection
         flights = self._run_vectorized_step(
             self.interpolated_fleet,
             "weather intersection",
             self.weather_step,
-            self.cfg.weather_critical_columns,
         )
-
-        # Check humidity scaling failures (separate from weather intersection)
-        flights, errs = self._check_and_filter_failed_flights(
-            flights,
-            self.cfg.humidity_scaling_critical_columns,
-            "humidity scaling",
-        )
-        self.error_records.extend(errs)
 
         self.fleet_with_weather = flights
         self.interpolated_fleet = None  # free memory
@@ -548,7 +543,6 @@ class FleetRunner(Runner):
         return self
 
     def _performance(self) -> Self:
-
         if self.fleet_with_weather is None:
             raise RuntimeError("fleet_with_weather must be set before _performance()")
 
@@ -559,11 +553,9 @@ class FleetRunner(Runner):
 
         self.fleet_with_weather = None  # free memory
 
-
         return self
 
     def _emissions(self) -> Self:
-
         if self.fleet_with_performance is None:
             raise RuntimeError("_performance must be set before _emissions()")
 
@@ -574,15 +566,13 @@ class FleetRunner(Runner):
 
         self.fleet_with_performance = None  # free memory
 
-
         return self
-    
+
     def _climate_impact(self) -> Self:
         """Abstract method."""
         raise NotImplementedError
-    
-    def _climate_metrics(self) -> Self:
 
+    def _climate_metrics(self) -> Self:
         if self.fleet_with_nonco2 is None:
             raise RuntimeError("_nonco2 must be set before _climate_metrics()")
 
@@ -592,7 +582,6 @@ class FleetRunner(Runner):
         self.error_records.extend(errs)
 
         self.fleet_with_nonco2 = None  # free memory
-
 
         return self
 
@@ -617,7 +606,9 @@ class FleetRunner(Runner):
             raise RuntimeError("climate_impact must be set before _extract_results()")
 
         # Case 3: Normal case - some or all flights succeeded
-        successful_results = [f.attrs["climate_impact"] for f in self.fleet_with_climate_impact]
+        successful_results = [
+            f.attrs["climate_impact"] for f in self.fleet_with_climate_impact
+        ]
 
         self.results = {
             "fleet_meta_data": FleetReport.collect(),
@@ -627,7 +618,6 @@ class FleetRunner(Runner):
         clear_dataset_cache()
 
         return self
-    
 
     def results_as_dataframe(self) -> pd.DataFrame:
         """
@@ -682,16 +672,18 @@ class FleetRunner(Runner):
         flights: list[InFlightT],
         step_name: str,
         step: VectorizedStep[InFlightT, OutFlightT],
-        critical_columns: tuple[str, ...],
     ) -> list[OutFlightT]:
         """
         Run a vectorized step with error handling.
+
+        Critical columns are derived from the step's ``output_schema.REQUIRED``
+        attribute (the class's own, not inherited), so each step declares what
+        columns must be present and non-NaN in its output.
 
         Args:
             flights: List of input flights (must be Flight subclass)
             step_name: Name of the step (for logging/error messages)
             step: Step instance implementing VectorizedStep protocol
-            critical_columns: Columns to check for failures
 
         Returns:
             List of successful output flights (type-safe, no cast needed)
@@ -706,9 +698,11 @@ class FleetRunner(Runner):
             return []
 
         # Call step's run_fleet() method (typed via VectorizedStep protocol)
-        result_flights = step.run_fleet(flights)
+        result_flights, fleet_errors = step.run_fleet(flights)
+        self.error_records.extend(fleet_errors)
 
         # Check for critical column failures and filter
+        critical_columns = get_step_critical_columns(step)
         successful, errs = self._check_and_filter_failed_flights(
             result_flights,
             critical_columns,
@@ -782,7 +776,6 @@ class FleetRunner(Runner):
         logger.info("%s complete in %.2fs", step_name.capitalize(), time.time() - t0)
         return good_seq, error_records
 
-
     # -------------------------------------------------------------------------
     # Validation / filtering
     # -------------------------------------------------------------------------
@@ -816,16 +809,19 @@ class FleetRunner(Runner):
                 successful.append(flight)
 
         if errors:
-            logger.warning("%d/%d flights failed at %s", len(errors), len(seq), step_name)
+            logger.warning(
+                "%d/%d flights failed at %s", len(errors), len(seq), step_name
+            )
 
         return successful, errors
 
     @staticmethod
-    def _check_critical_columns(df: pd.DataFrame, critical_columns: tuple[str, ...]) -> str | None:
+    def _check_critical_columns(
+        df: pd.DataFrame, critical_columns: tuple[str, ...]
+    ) -> str | None:
         for col in critical_columns:
             if col not in df.columns:
                 return f"{col} (missing)"
             if df[col].isna().all():
                 return f"{col} (all NaN)"
         return None
-
