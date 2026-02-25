@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pyneats.internal/schemas/flight_schema.json",
+  "title": "Flight Information Schema",
+  "description": "Authoritative schema for PyNeats flight data",
+  "type": "object",
+  "required": ["flight_information"],
+  "additionalProperties": false,
+  "properties": {
+    "flight_information": {
+      "$ref": "#/$defs/FlightInformationType"
+    }
+  },
+  "$defs": {
+    "FlightInformationType": {
+      "type": "object",
+      "description": "Top-level flight envelope containing identification, airports, aircraft, fuel, and trajectory.",
+      "required": [
+        "flight_identification",
+        "departure_date_time",
+        "arrival_date_time",
+        "departure_airport",
+        "arrival_airport"
+      ],
+      "properties": {
+        "confidential": {
+          "type": ["string", "null"],
+          "default": "false",
+          "description": "Whether the flight data is confidential ('true' / 'false')."
+        },
+        "flight_identification": {
+          "type": "string",
+          "description": "Flight callsign or designator, e.g. 'KLM33B'."
+        },
+        "departure_date_time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Actual off-block time (AOBT) in ISO-8601 format."
+        },
+        "arrival_date_time": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Actual in-block time (AIBT) in ISO-8601 format."
+        },
+        "departure_airport": {
+          "type": "string",
+          "description": "ICAO code of the departure airport, e.g. 'EHAM'."
+        },
+        "arrival_airport": {
+          "type": "string",
+          "description": "ICAO code of the arrival airport, e.g. 'ENZV'."
+        },
+        "aircraft_properties": {
+          "$ref": "#/$defs/AircraftPropertiesType"
+        },
+        "fuel_properties": {
+          "$ref": "#/$defs/FuelPropertiesType"
+        },
+        "trajectory": {
+          "$ref": "#/$defs/TrajectoryType"
+        }
+      },
+      "additionalProperties": true
+    },
+    "AircraftPropertiesType": {
+      "type": "object",
+      "description": "Aircraft-level properties.",
+      "required": ["aircraft_type"],
+      "properties": {
+        "aircraft_type": {
+          "type": "string",
+          "description": "ICAO aircraft type designator, e.g. 'E190'."
+        },
+        "engine_uid": {
+          "type": ["string", "null"],
+          "description": "Unique engine identifier."
+        },
+        "load_factor": {
+          "type": ["number", "null"],
+          "description": "Payload / max-payload ratio (0–1)."
+        },
+        "takeoff_mass": {
+          "type": ["number", "null"],
+          "description": "Takeoff mass in kg."
+        }
+      },
+      "additionalProperties": true
+    },
+    "FuelPropertiesType": {
+      "type": "object",
+      "description": "Fuel composition properties. All fields are optional and nullable.",
+      "required": [],
+      "properties": {
+        "hydrogen_content": {
+          "type": ["number", "null"],
+          "description": "Mass fraction of hydrogen in the fuel."
+        },
+        "hydrogen_per_carbon_ratio": {
+          "type": ["number", "null"],
+          "description": "Hydrogen-to-carbon molar ratio."
+        },
+        "aromatic_content": {
+          "type": ["number", "null"],
+          "description": "Mass fraction of aromatics in the fuel."
+        },
+        "calorific_value": {
+          "type": ["number", "null"],
+          "description": "Lower heating value in MJ/kg."
+        },
+        "naphthalene": {
+          "type": ["number", "null"],
+          "description": "Mass fraction of naphthalene in the fuel."
+        },
+        "sulphur": {
+          "type": ["number", "null"],
+          "description": "Mass fraction of sulphur in the fuel."
+        }
+      },
+      "additionalProperties": true
+    },
+    "TrajectoryType": {
+      "type": "object",
+      "description": "Trajectory envelope containing data source and waypoint array.",
+      "required": [],
+      "properties": {
+        "trj_data_source": {
+          "type": "string",
+          "default": "Actual",
+          "description": "Source of trajectory data, e.g. 'Actual'."
+        },
+        "trajectory_data": {
+          "type": "array",
+          "description": "Ordered list of trajectory waypoints.",
+          "items": {
+            "$ref": "#/$defs/WaypointType"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "WaypointType": {
+      "type": "object",
+      "description": "A single trajectory waypoint.",
+      "required": ["ts", "lat", "lon", "fl"],
+      "properties": {
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp in ISO-8601 format."
+        },
+        "lat": {
+          "type": "number",
+          "description": "Latitude in decimal degrees."
+        },
+        "lon": {
+          "type": "number",
+          "description": "Longitude in decimal degrees."
+        },
+        "fl": {
+          "type": "number",
+          "description": "Flight level (hundreds of feet) or altitude."
+        },
+        "ff": {
+          "type": ["number", "null"],
+          "description": "Fuel flow in kg/s."
+        },
+        "ee": {
+          "type": ["number", "null"],
+          "description": "Overall engine efficiency."
+        },
+        "am": {
+          "type": ["number", "null"],
+          "description": "Aircraft mass in kg."
+        },
+        "tas": {
+          "type": ["number", "null"],
+          "description": "True airspeed in m/s."
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -24,7 +24,7 @@ from tests.conftest import assert_climate_payload_equal
 
 
 # Test cases that require FleetRunner (heterogeneous column/attr handling)
-FLEET_RUNNER_ONLY_CASES = frozenset({"mixed_columns", "mixed_attrs"})
+FLEET_RUNNER_ONLY_CASES = frozenset({"mixed_columns", "mixed_attrs", "aggregated"})
 
 
 @pytest.mark.integration
