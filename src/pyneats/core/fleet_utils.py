@@ -73,9 +73,12 @@ def flights_to_fleet(flights: list[Flight]) -> Fleet:
     flight_key_attrs = ["flight_id", "arrival_airport", "departure_airport", "aobt"]
     for flight in flights:
         flight.attrs["_original_flight_id"] = flight.attrs["flight_id"]
-        flight.attrs["flight_id"] = "_".join(
-            str(flight.attrs[k]) for k in flight_key_attrs
-        )
+        composite_id = "_".join(str(flight.attrs[k]) for k in flight_key_attrs)
+        flight.attrs["flight_id"] = composite_id
+        # Keep data column in sync with attrs so Fleet.from_seq() doesn't see a mismatch.
+        # Use direct dict assignment to avoid pycontrails "Overwriting" warnings.
+        if "flight_id" in flight.data:
+            flight.data["flight_id"] = np.full(len(flight), composite_id)
 
     # 3b. Build manifest keyed by composite flight_id for dropped-flight detection
     manifest: dict[str, dict[str, Any]] = {}
@@ -125,8 +128,14 @@ def fleet_to_flights(
     for flight in flights:
         surviving_ids.add(flight.attrs["flight_id"])
 
-        # Restore original flight_id
-        flight.attrs["flight_id"] = flight.attrs.pop("_original_flight_id")
+        # Restore original flight_id in attrs AND data column.
+        # The Fleet stores flight_id as a data column with the composite ID;
+        # we must overwrite both here so that to_dict() serialises the original ID.
+        # Use direct dict assignment to avoid pycontrails "Overwriting" warnings.
+        original_id = flight.attrs.pop("_original_flight_id")
+        flight.attrs["flight_id"] = original_id
+        if "flight_id" in flight.data:
+            flight.data["flight_id"] = np.full(len(flight), original_id)
 
         # Restore original columns by removing padded ones
         original_columns = flight.attrs.pop("_original_columns", set())
