@@ -6,6 +6,7 @@ Implements the OpenAirClim pipeline for small emitters, handling non-weather-bas
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from dataclasses import dataclass
 from typing import Self
@@ -143,12 +144,14 @@ class FleetRunnerSmallEmitter(FleetRunner):
         # super().__init__(), because the base class builds the model
         # immediately upon initialization.
 
-        # Ensure the parameter dictionary for non_co2_model exists
-        if "non_co2_model" not in cfg.params:
-            cfg.params["non_co2_model"] = {}
-
-        # Inject the path (matches logic from FlightRunnerSmallEmitter)
-        cfg.params["non_co2_model"]["tmp_base_dir_path"] = cfg.tmp_base_dir_path
+        # Build modified params without mutating the caller's cfg object
+        _non_co2_params = {
+            **cfg.params.get("non_co2_model", {}),
+            "tmp_base_dir_path": cfg.tmp_base_dir_path,
+        }
+        cfg = dataclasses.replace(
+            cfg, params={**cfg.params, "non_co2_model": _non_co2_params}
+        )
 
         # ---------------------------------------------------------------
         # Shared Initialization

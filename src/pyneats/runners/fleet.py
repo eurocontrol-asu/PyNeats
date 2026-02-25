@@ -17,6 +17,7 @@ from __future__ import annotations
 import gc
 import json
 import logging
+import threading
 import time
 from collections.abc import Callable
 from collections.abc import Mapping
@@ -193,17 +194,20 @@ class FleetRunnerParams(RunnerConfig):
 # step type, consider including a params hash in the key.
 
 _STEP_CACHE: dict[tuple[type[Any], str], Any] = {}
+_STEP_CACHE_LOCK = threading.Lock()
 
 
 def _get_step_cached(
     interface: type[Step[InT, OutT]], name: str, params: Mapping[str, Any]
 ) -> Step[InT, OutT]:
     key = (interface, name.lower().strip())
-    step = _STEP_CACHE.get(key)
+    step = _STEP_CACHE.get(key)  # fast path — no lock needed for a read in CPython
     if step is None:
-        step = build(interface, name, **dict(params))
-        _STEP_CACHE[key] = step
-    # Return the cached/built step
+        with _STEP_CACHE_LOCK:
+            step = _STEP_CACHE.get(key)  # re-check under lock (double-checked locking)
+            if step is None:
+                step = build(interface, name, **dict(params))
+                _STEP_CACHE[key] = step
     return step
 
 
