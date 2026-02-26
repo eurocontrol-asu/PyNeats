@@ -31,6 +31,36 @@ __all__ = [
 ]
 
 
+def _load_airport_q_fuel(path: str | None) -> dict[str, float]:
+    """Load airport→q_fuel mapping; returns {} on missing/invalid file (with warning)."""
+    if path is None:
+        return {}
+    import csv
+    import json
+    import logging
+    from pathlib import Path as _Path
+
+    p = _Path(path)
+    try:
+        if p.suffix.lower() == ".json":
+            with p.open("r", encoding="utf-8") as f:
+                raw = json.load(f)
+            return {str(k).upper(): float(v) for k, v in raw.items()}
+        # Default: CSV with columns "airport" and "q_fuel"
+        result: dict[str, float] = {}
+        with p.open("r", encoding="utf-8", newline="") as f:
+            for row in csv.DictReader(f):
+                result[row["airport"].strip().upper()] = float(row["q_fuel"])
+        return result
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "Failed to load airport q_fuel mapping from %s: %s — using default q_fuel",
+            path,
+            exc,
+        )
+        return {}
+
+
 @dataclass(frozen=True)
 class NeatsTrajectoryParserParams(TrajectoryParserParams):
     """
@@ -42,10 +72,13 @@ class NeatsTrajectoryParserParams(TrajectoryParserParams):
         Format string for parsing dates.
     timezone : str
         Output timezone; parsing is done as UTC then converted.
+    airport_qfuel_path : str | None
+        Optional path to a CSV or JSON file mapping airport codes to q_fuel values.
     """
 
     date_format: str = "%Y-%m-%d %H:%M:%S"
     timezone: str = "UTC"  # output tz; parsing is done as UTC then converted
+    airport_qfuel_path: str | None = None
 
 
 @register(TrajectoryParser, "neats")  # type: ignore[type-abstract]
@@ -75,6 +108,11 @@ class NeatsTrajectoryParser(
     # ...existing code...
 
     default_params = NeatsTrajectoryParserParams
+
+    def _post_init(self) -> None:
+        self._airport_q_fuel: dict[str, float] = _load_airport_q_fuel(
+            self.params.airport_qfuel_path
+        )
 
     def run(self, flight: pd.DataFrame) -> Flight4D:
         try:
@@ -142,16 +180,32 @@ class NeatsTrajectoryParser(
                 if k in attrs_input and attrs_input[k] is not None:
                     attrs[k] = attrs_input[k]
 
-            # 6) Construct Custom Fuel Object based on available attributes
+            # 5.5) Airport-based q_fuel fallback (operator value takes precedence)
+            if attrs.get("q_fuel") is None and self._airport_q_fuel:
+                airport = str(attrs.get("departure_airport", "")).upper()
+                if airport in self._airport_q_fuel:
+                    attrs["q_fuel"] = self._airport_q_fuel[airport]
+                    self.logger.debug(
+                        "Airport q_fuel for %s: %s J/kg", airport, attrs["q_fuel"]
+                    )
+
+            # 6) Guard: list engine_uid is only supported by FleetRunner
+            if isinstance(attrs.get("engine_uid"), list):
+                raise TrajectoryParserStepError(
+                    "engine_uid is a list of engine types; multi-engine flights must be "
+                    "processed with FleetRunner, not FlightRunner."
+                )
+
+            # 7) Construct Custom Fuel Object based on available attributes
             fuel_obj: NEATSFuel = NEATSFuel.from_attrs(attrs)
 
-            # 7) Construct base Flight with required + optional columns only
+            # 8) Construct base Flight with required + optional columns only
             optional_columns = [c for c in df.columns if c in Flight4D.OPTIONAL]
             data_req = df[list(Flight4D.REQUIRED) + list(optional_columns)]
 
             base = Flight(data=data_req, attrs=attrs, fuel=fuel_obj)
 
-            # 8) Validate & return typed zero-copy view
+            # 9) Validate & return typed zero-copy view
             return Flight4D.from_flight(base)
 
         except ValidationError as e:
