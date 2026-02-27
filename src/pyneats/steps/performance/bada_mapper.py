@@ -19,12 +19,18 @@ BadaMapper
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from functools import cached_property
 from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
+
+
+def _norm_series(s: str) -> str:
+    """Remove all non-alphanumeric characters and upper-case — e.g. 'A321-213' → 'A321213'."""
+    return re.sub(r"[^A-Z0-9]", "", s.upper())
 
 
 @dataclass(frozen=True)
@@ -68,6 +74,9 @@ def _read_csv_cached(
     for c in (col_icao, col_series, col_engine):
         if c in df.columns:
             df[c] = df[c].astype(str).str.strip().str.upper()
+
+    if col_series in df.columns:
+        df[col_series] = df[col_series].str.replace(r"[^A-Z0-9]", "", regex=True)
 
     return df
 
@@ -207,7 +216,7 @@ class BadaMapper:
             raise KeyError("ICAO is required")
 
         icao_n = icao.strip().upper()
-        series_n = series.strip().upper() if series else None
+        series_n = _norm_series(series) if series else None
         engine_n = engine_id.strip().upper() if engine_id else None
 
         engine_conservative = self._default_engine_for_icao(icao_n)
@@ -250,20 +259,12 @@ class BadaMapper:
             if row is not None:
                 return self._coerce_return(row, engine_id_override=engine_n)
 
-        # 4) default engine id by ICAO, then step (3)
-
-        if engine_conservative:
-            row = self._find_one(
-                self._df_icao_engine,
-                **{self.COL_ICAO: icao_n, self.COL_ENGINE_ID: engine_conservative},
-            )
-            if row is not None:
-                return self._coerce_return(row, engine_id_override=engine_conservative)
-
-        # 5) ICAO only
+        # 4) ICAO only
         row = self._find_one(self._df_icao_only, **{self.COL_ICAO: icao_n})
         if row is not None:
-            if engine_conservative:
+            if engine_n:
+                return self._coerce_return(row, engine_id_override=engine_n)
+            elif engine_conservative:
                 return self._coerce_return(row, engine_id_override=engine_conservative)
             else:
                 return self._coerce_return(row, engine_id_override=None)
