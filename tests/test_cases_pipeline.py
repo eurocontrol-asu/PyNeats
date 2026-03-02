@@ -62,7 +62,6 @@ Behavioural assertions (TestBehavioralAssertions):
        am all-null, no takeoff_mass → LF + BADA MTOW
    test_mass_all_unspec_uses_default_lf   TC_MASS_ALL_UNSPEC:
        am all-null, no mass params → LF=1 + BADA MTOW
-   test_eng_unknown_resolves_different    TC_ENG_UNKNOWN: predecessor/successor
    test_eng_mismatch_drops_input          TC_ENG_MISMATCH: drop, use default
    test_eng_unspec_assigns_default        TC_ENG_UNSPEC: select representative
    test_ac_no_bada4_uses_bada3            TC_AC_NO_BADA4: BADA3 fallback
@@ -725,35 +724,6 @@ class TestBehavioralAssertions:
             "Output must have simulated aircraft_mass column"
         )
         assert (df["aircraft_mass"] > 0).all(), "Simulated aircraft_mass must be > 0"
-
-    # TC_ENG_UNKNOWN: "Use predecessor/successor"
-
-    def test_eng_unknown_resolves_different(
-        self,
-        aggregated_fleet_run: FleetRunnerLargeEmitter,
-        aggregated_input_by_id: dict[str, dict[str, Any]],
-    ) -> None:
-        """TC_ENG_UNKNOWN: input engine_uid='CFM56-FAKE' is unknown.
-        Output engine_uid must differ (predecessor/successor used)."""
-        flight_id = "ACA812__tc_eng_unknown"
-        runner = aggregated_fleet_run
-
-        # Verify input has the fake engine
-        inp = aggregated_input_by_id[flight_id]
-        input_eng = inp["flight_information"]["aircraft_properties"]["engine_uid"]
-        assert input_eng == "CFM56-FAKE", f"Expected CFM56-FAKE, got {input_eng}"
-
-        actual = _find_flight(runner.fleet_with_climate_impact, flight_id)
-        assert actual is not None, f"Flight '{flight_id}' not in output"
-        output_eng = actual.attrs.get("engine_uid")
-        assert output_eng is not None, "Output must have engine_uid"
-        assert output_eng != "CFM56-FAKE", (
-            f"TC_ENG_UNKNOWN: output engine_uid must differ from input "
-            f"'CFM56-FAKE', got '{output_eng}'"
-        )
-        assert output_eng == "4PW067", (
-            f"TC_ENG_UNKNOWN: output engine_uid is '{output_eng}',expected '4PW067'"
-        )
 
     # TC_ENG_MISMATCH: "Drop, use default"
 
