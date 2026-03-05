@@ -93,7 +93,7 @@ class FlightRunner(Runner, ABC):
         source: pd.DataFrame | None = None,
         cfg: RunnerConfig | None = None,
         bada_path: str | None = None,
-        airport_qfuel_path: str | None = None,
+        airport_fuel_path: str | None = None,
     ) -> None:
         self.cfg = cfg or RunnerConfig()
 
@@ -101,11 +101,11 @@ class FlightRunner(Runner, ABC):
         self.source = source  # use the property setter for validation
         self.weather = weather
         self.bada_path = bada_path
-        self.airport_qfuel_path = airport_qfuel_path
+        self.airport_fuel_path = airport_fuel_path
 
         parser_params = dict(self.cfg.params.get("trajectory_parser", {}))
-        if self.airport_qfuel_path is not None:
-            parser_params["airport_qfuel_path"] = self.airport_qfuel_path
+        if self.airport_fuel_path is not None:
+            parser_params["airport_fuel_path"] = self.airport_fuel_path
 
         self.parser: TrajectoryParser = build(
             TrajectoryParser,

@@ -154,8 +154,8 @@ class FleetRunnerParams(RunnerConfig):
     # Optional BADA coefficients path
     bada_path: str | None = None
 
-    # Optional airport→q_fuel mapping file (CSV or JSON)
-    airport_qfuel_path: str | None = None
+    # Optional airport→fuel properties mapping file (CSV or JSON)
+    airport_fuel_path: str | None = None
 
     # Zarr read configuration
     zarr_read_chunks: Mapping[str, int] | None = None
@@ -496,9 +496,9 @@ class FleetRunner(Runner):
         }
 
     def _parser_params(self) -> dict[str, Any]:
-        if self.cfg.airport_qfuel_path is None:
+        if self.cfg.airport_fuel_path is None:
             return {}
-        return {"airport_qfuel_path": self.cfg.airport_qfuel_path}
+        return {"airport_fuel_path": self.cfg.airport_fuel_path}
 
     # -------------------------------------------------------------------------
     # FleetRunner stages (FlightRunner-like step decomposition)
