@@ -9,6 +9,7 @@ from pyneats.runners.fleet import FleetRunnerParams
 from pyneats.runners.flight import FlightRunner
 from pyneats.runners.large_emitter import FleetRunnerLargeEmitter
 from pyneats.runners.large_emitter import FlightRunnerLargeEmitter
+from pyneats.runners.performance_runner import FleetRunnerPerformanceOnly
 from pyneats.runners.runner import Runner
 from pyneats.runners.small_emitter import FleetRunnerSmallEmitter
 from pyneats.runners.small_emitter import FlightRunnerSmallEmitter
@@ -21,6 +22,7 @@ __all__ = [
     "FlightRunner",
     "FlightRunnerLargeEmitter",
     "FlightRunnerSmallEmitter",
+    "FleetRunnerPerformanceOnly",
     "Runner",
     "FleetRunnerLargeEmitter",
     "SmallFleetRunnerParams",

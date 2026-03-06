@@ -77,6 +77,15 @@ from pyneats.steps.weather.weather_store import get_weather_from_zarr
 logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
+# Multi-engine support constants
+# -----------------------------------------------------------------------------
+
+_MULTI_ENGINE_PARENT_KEY = "_multi_engine_parent_id"
+_MULTI_ENGINE_ORIG_FID_KEY = "_multi_engine_original_fid"
+# Same key order used by fleet_utils.py and split_df_into_flights()
+_FLIGHT_KEY_ATTRS = ("flight_id", "arrival_airport", "departure_airport", "aobt")
+
+# -----------------------------------------------------------------------------
 # Types
 # -----------------------------------------------------------------------------
 
@@ -144,6 +153,9 @@ class FleetRunnerParams(RunnerConfig):
 
     # Optional BADA coefficients path
     bada_path: str | None = None
+
+    # Optional airport→fuel properties mapping file (CSV or JSON)
+    airport_fuel_path: str | None = None
 
     # Zarr read configuration
     zarr_read_chunks: Mapping[str, int] | None = None
@@ -320,6 +332,52 @@ def _process_parallel_results(
 
 
 # -----------------------------------------------------------------------------
+# Multi-engine aggregation helper
+# -----------------------------------------------------------------------------
+
+
+def _merge_engine_group(
+    group: list[FlightWithEmissions], parent_key: str
+) -> FlightWithEmissions:
+    """Average numeric DataFrame columns across engine copies; restore original flight identity."""
+    import numpy as np
+
+    # Use first flight as the structural template
+    base = group[0]
+
+    # Average all numeric DataFrame columns element-wise
+    avg_data = base.dataframe.copy()
+    for col in avg_data.columns:
+        if pd.api.types.is_numeric_dtype(avg_data[col]):
+            arrays = [f.dataframe[col].to_numpy(dtype=float) for f in group]
+            avg_data[col] = np.nanmean(arrays, axis=0)
+
+    # Build merged attrs: start from base, then handle engine-specific fields
+    merged_attrs = dict(base.attrs)
+    # Average all numeric scalar attrs (total_co2, fuel_burn, n_engine, etc.)
+    for key, val in base.attrs.items():
+        if isinstance(val, (int, float)) and not key.startswith("_"):
+            values = [f.attrs[key] for f in group if key in f.attrs]
+            if values:
+                merged_attrs[key] = float(np.mean(values))
+    # engine_uid: record all engines used as a list
+    merged_attrs["engine_uid"] = [f.attrs.get("engine_uid") for f in group]
+    # Restore original flight_id exactly — no string parsing needed
+    original_fid = merged_attrs.pop(_MULTI_ENGINE_ORIG_FID_KEY)
+    merged_attrs["flight_id"] = original_fid
+    merged_attrs.pop(_MULTI_ENGINE_PARENT_KEY, None)
+    if "flight_id" in avg_data.columns:
+        avg_data["flight_id"] = original_fid
+
+    # Clear DataFrame-level attrs so pycontrails does not re-introduce the
+    # multi-engine tracking keys (Flight constructor merges data.attrs + attrs).
+    avg_data.attrs = {}
+
+    merged_flight = Flight(data=avg_data, attrs=merged_attrs, fuel=base.fuel)
+    return FlightWithEmissions.from_flight(merged_flight)
+
+
+# -----------------------------------------------------------------------------
 # FastFleetRunner (FlightRunner-like shape)
 # -----------------------------------------------------------------------------
 
@@ -379,7 +437,7 @@ class FleetRunner(Runner):
         self.parser = make_step_func(
             TrajectoryParser,  # type: ignore[type-abstract]
             self.cfg.trajectory_parser,
-            self._params("trajectory_parser"),
+            self._params("trajectory_parser", extra=self._parser_params()),
             copy_input=True,  # DataFrame safety
         )
 
@@ -436,6 +494,11 @@ class FleetRunner(Runner):
             "bada4_root_path": self.cfg.bada_path,
             "bada3_root_path": self.cfg.bada_path,
         }
+
+    def _parser_params(self) -> dict[str, Any]:
+        if self.cfg.airport_fuel_path is None:
+            return {}
+        return {"airport_fuel_path": self.cfg.airport_fuel_path}
 
     # -------------------------------------------------------------------------
     # FleetRunner stages (FlightRunner-like step decomposition)
@@ -498,9 +561,40 @@ class FleetRunner(Runner):
 
         return self
 
+    def _expand_multi_engine_sources(self) -> None:
+        """Expand source DataFrames with list engine_uid into N copies with scalar engine_uid."""
+        if self.source_fleet is None:
+            return
+        expanded: list[pd.DataFrame] = []
+        for df in self.source_fleet:
+            engine_uid = df.attrs.get("engine_uid")
+            if isinstance(engine_uid, list):
+                # Composite parent key — same construction as fleet_utils.py and
+                # split_df_into_flights(), so grouping is robust even when raw
+                # flight_id alone is not unique.
+                parent_key = "_".join(
+                    str(df.attrs.get(k, "")) for k in _FLIGHT_KEY_ATTRS
+                )
+                original_fid = df.attrs["flight_id"]
+                for i, eng in enumerate(engine_uid):
+                    copy_df = df.copy()
+                    copy_df.attrs = {
+                        **df.attrs,
+                        "engine_uid": eng,
+                        "flight_id": f"{original_fid}__eng{i}",
+                        _MULTI_ENGINE_PARENT_KEY: parent_key,
+                        _MULTI_ENGINE_ORIG_FID_KEY: original_fid,
+                    }
+                    expanded.append(copy_df)
+            else:
+                expanded.append(df)
+        self.source_fleet = expanded
+
     def _parse_flight(self) -> Self:
         if self.source_fleet is None:
             raise RuntimeError("source_flights must be loaded before _parse_flights()")
+
+        self._expand_multi_engine_sources()
 
         self.parsed_fleet, errs = self._run_parallel_step(
             self.source_fleet, "parsing", self.parser
@@ -559,6 +653,23 @@ class FleetRunner(Runner):
 
         return self
 
+    def _aggregate_multi_engine_flights(self) -> None:
+        """Average performance+emission columns for flights sharing the same parent flight."""
+        if self.fleet_with_emissions is None:
+            return
+        regular: list[FlightWithEmissions] = []
+        groups: dict[str, list[FlightWithEmissions]] = {}
+
+        for flight in self.fleet_with_emissions:
+            parent_key = flight.attrs.get(_MULTI_ENGINE_PARENT_KEY)
+            if parent_key is None:
+                regular.append(flight)
+            else:
+                groups.setdefault(parent_key, []).append(flight)
+
+        merged = [_merge_engine_group(grp, pk) for pk, grp in groups.items()]
+        self.fleet_with_emissions = regular + merged
+
     def _emissions(self) -> Self:
         if self.fleet_with_performance is None:
             raise RuntimeError("_performance must be set before _emissions()")
@@ -569,6 +680,8 @@ class FleetRunner(Runner):
         self.error_records.extend(errs)
 
         self.fleet_with_performance = None  # free memory
+
+        self._aggregate_multi_engine_flights()
 
         return self
 

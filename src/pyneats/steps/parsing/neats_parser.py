@@ -30,6 +30,95 @@ __all__ = [
     "NeatsTrajectoryParser",
 ]
 
+# Maps CSV column names → Flight4D attr names.
+# "naphtalene" matches the existing (typo'd) key in ATTRS_OPTIONAL.
+_FUEL_COL_MAP: dict[str, str] = {
+    "aromatics_content": "aromatic_content",
+    "h_c_ratio": "h_c_ratio",
+    "naphthalene": "naphtalene",
+    "sulphur_content": "sulphur_content",
+    "q_fuel": "q_fuel",
+}
+
+
+def _load_airport_fuel_props(
+    path: str | None,
+) -> dict[str, dict[str, float]]:
+    """Load airport → {attr_name: value} mapping from a CSV or JSON file.
+
+    Supports:
+    - Semicolon-delimited CSV with European decimal commas (Aviation_Fuel_Reports format)
+    - Comma-delimited CSV with columns ``Airport`` (or ``airport``) and any subset of
+      the keys in ``_FUEL_COL_MAP`` (legacy q_fuel-only CSV also accepted)
+    - JSON: ``{airport: float}`` (treated as q_fuel-only) or
+      ``{airport: {attr: value, ...}}`` (multi-property)
+
+    Returns ``{}`` on missing/invalid file (with a warning logged).
+    """
+    if path is None:
+        return {}
+
+    import json
+    import logging
+    from pathlib import Path as _Path
+
+    import numpy as np
+
+    log = logging.getLogger(__name__)
+    p = _Path(path)
+    try:
+        if p.suffix.lower() == ".json":
+            with p.open("r", encoding="utf-8") as f:
+                raw = json.load(f)
+            result: dict[str, dict[str, float]] = {}
+            for airport, val in raw.items():
+                key = str(airport).strip().upper()
+                if isinstance(val, dict):
+                    result[key] = {
+                        attr: float(v)
+                        for k, v in val.items()
+                        if (attr := _FUEL_COL_MAP.get(k)) is not None and v is not None
+                    }
+                else:
+                    result[key] = {"q_fuel": float(val)}
+            return result
+
+        # CSV — auto-detect delimiter; utf-8-sig strips BOM; decimal=',' handles European numbers
+        df = pd.read_csv(
+            p,
+            sep=None,
+            engine="python",
+            encoding="utf-8-sig",
+            decimal=",",
+        )
+        # Normalise column names: strip whitespace, lowercase
+        df.columns = df.columns.str.strip().str.lower()
+
+        # Airport column may be named "airport" or "Airport" (already lowercased)
+        if "airport" not in df.columns:
+            raise KeyError("CSV has no 'airport' column")
+
+        result = {}
+        for _, row in df.iterrows():
+            airport_code = str(row["airport"]).strip().upper()
+            props: dict[str, float] = {}
+            for csv_col, attr_name in _FUEL_COL_MAP.items():
+                if csv_col in row.index:
+                    v = row[csv_col]
+                    if v is not None and not (isinstance(v, float) and np.isnan(v)):
+                        props[attr_name] = float(v)
+            if props:
+                result[airport_code] = props
+        return result
+
+    except Exception as exc:
+        log.warning(
+            "Failed to load airport fuel properties from %s: %s — using defaults",
+            path,
+            exc,
+        )
+        return {}
+
 
 @dataclass(frozen=True)
 class NeatsTrajectoryParserParams(TrajectoryParserParams):
@@ -42,10 +131,16 @@ class NeatsTrajectoryParserParams(TrajectoryParserParams):
         Format string for parsing dates.
     timezone : str
         Output timezone; parsing is done as UTC then converted.
+    airport_fuel_path : str | None
+        Optional path to a CSV or JSON file mapping airport codes to fuel properties
+        (q_fuel, h_c_ratio, aromatic_content, sulphur_content, naphtalene).
+        Operator-provided values always take precedence; airport values fill only the
+        gaps not supplied by the operator.
     """
 
     date_format: str = "%Y-%m-%d %H:%M:%S"
     timezone: str = "UTC"  # output tz; parsing is done as UTC then converted
+    airport_fuel_path: str | None = None
 
 
 @register(TrajectoryParser, "neats")  # type: ignore[type-abstract]
@@ -75,6 +170,11 @@ class NeatsTrajectoryParser(
     # ...existing code...
 
     default_params = NeatsTrajectoryParserParams
+
+    def _post_init(self) -> None:
+        self._airport_fuel_props: dict[str, dict[str, float]] = (
+            _load_airport_fuel_props(self.params.airport_fuel_path)
+        )
 
     def run(self, flight: pd.DataFrame) -> Flight4D:
         try:
@@ -142,16 +242,37 @@ class NeatsTrajectoryParser(
                 if k in attrs_input and attrs_input[k] is not None:
                     attrs[k] = attrs_input[k]
 
-            # 6) Construct Custom Fuel Object based on available attributes
+            # 5.5) Airport-based fuel-property fallback (operator values always win)
+            if self._airport_fuel_props:
+                airport = str(attrs.get("departure_airport", "")).upper()
+                if airport in self._airport_fuel_props:
+                    for attr_key, val in self._airport_fuel_props[airport].items():
+                        if attrs.get(attr_key) is None:
+                            attrs[attr_key] = val
+                            self.logger.debug(
+                                "Airport fuel prop %s for %s: %s",
+                                attr_key,
+                                airport,
+                                val,
+                            )
+
+            # 6) Guard: list engine_uid is only supported by FleetRunner
+            if isinstance(attrs.get("engine_uid"), list):
+                raise TrajectoryParserStepError(
+                    "engine_uid is a list of engine types; multi-engine flights must be "
+                    "processed with FleetRunner, not FlightRunner."
+                )
+
+            # 7) Construct Custom Fuel Object based on available attributes
             fuel_obj: NEATSFuel = NEATSFuel.from_attrs(attrs)
 
-            # 7) Construct base Flight with required + optional columns only
+            # 8) Construct base Flight with required + optional columns only
             optional_columns = [c for c in df.columns if c in Flight4D.OPTIONAL]
             data_req = df[list(Flight4D.REQUIRED) + list(optional_columns)]
 
             base = Flight(data=data_req, attrs=attrs, fuel=fuel_obj)
 
-            # 8) Validate & return typed zero-copy view
+            # 9) Validate & return typed zero-copy view
             return Flight4D.from_flight(base)
 
         except ValidationError as e:
