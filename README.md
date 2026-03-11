@@ -70,6 +70,9 @@ uv run pip install pybada --no-deps --ignore-requires-python
 
 # Install open-airclim
 uv run pip install git+https://github.com/dlr-pa/oac.git
+
+# Install PyNeats
+uv pip install -e .   # triggers hatch-vcs, generates src/pyneats/_version.py
 ```
 
 ### Verify Installation

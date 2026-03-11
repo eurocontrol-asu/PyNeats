@@ -116,7 +116,7 @@ DEFAULT_CLIMATE_IMPACT: Final[str] = "gwp"  # Global Warming Potential
 
 
 # Interpolation defaults
-# Specifies the temporal resolution for weather/flight parameter interpolation
+# Specifies the temporal resolution for trajectory
 DEFAULT_INTERPOLATION_TIME: Final[str] = "1min"
 
 # Performance model defaults
@@ -130,7 +130,7 @@ DEFAULT_BADA_MAX_CONSECUTIVE_FAILURES = 4
 
 # Very conservative threshold on the fuel flow. An error in BADA will be thown if higher
 # Further studies need to be performed to better handle out of envelop data points
-DEFAULT_FF_OUTLIER_THRESHOLD = 1000
+DEFAULT_FF_OUTLIER_THRESHOLD = 100
 
 # Mass estimation parameters
 # Used in iterative aircraft mass computation from fuel consumption
