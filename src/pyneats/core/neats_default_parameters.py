@@ -98,6 +98,7 @@ __all__ = [
     "DEFAULT_COCIP_KWARGS",
     "DEFAULT_CLIMACCF_KWARGS",
     "DEFAULT_ROCD_PHASE_THRESHOLD",
+    "DEFAULT_MIN_ALTITUDE_FL",
 ]  # Public API: All default configuration parameters exported for external use
 
 # Model Selection Defaults
@@ -167,6 +168,11 @@ DEFAULT_DELTA_TAU_FILL_METHOD: Final[Literal["bffill", "none", "zero"]] = (
 DEFAULT_ROCD_PHASE_THRESHOLD: Final[float] = (
     250  # feet per minute threshold for phase detection
 )
+
+# Altitude filter for trajectory parsing
+# Minimum Flight Level (FL) threshold: points below this FL are discarded before processing.
+# FL15 = 1500 ft ≈ 457 m — filters out ground-level / taxi data.
+DEFAULT_MIN_ALTITUDE_FL: Final[float] = 15
 
 # Emissions model parameters
 # Configuration options passed to PyContrails emissions calculation engine

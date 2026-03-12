@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pyneats.core.neats_default_parameters import DEFAULT_MIN_ALTITUDE_FL
 from pyneats.core.steps import BaseParams
 
 
@@ -19,7 +20,11 @@ class TrajectoryParserParams(BaseParams):
     """
     Base parameters for trajectory parser steps.
 
-    Extend this class to define specific parameters for trajectory parsers.
+    Attributes
+    ----------
+    min_altitude_fl : float | None
+        Minimum Flight Level (inclusive). Trajectory points below this FL
+        are discarded before conversion to metres. ``None`` disables the filter.
     """
 
-    pass
+    min_altitude_fl: float | None = DEFAULT_MIN_ALTITUDE_FL
