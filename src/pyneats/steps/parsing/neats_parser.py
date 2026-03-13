@@ -185,17 +185,6 @@ class NeatsTrajectoryParser(
             if missing:
                 raise TrajectoryParserStepError(f"missing required columns: {missing}")
 
-            # 1.5) Filter altitude range (in FL, before conversion)
-            if self.params.min_altitude_fl is not None:
-                alt_num = pd.to_numeric(flight["altitude"], errors="coerce")
-                flight = flight.loc[
-                    alt_num >= self.params.min_altitude_fl
-                ].reset_index(drop=True)
-                if flight.empty:
-                    raise TrajectoryParserStepError(
-                        "no valid trajectory points after altitude filter"
-                    )
-
             # 2) FL → meters
             try:
                 alt_ft = (

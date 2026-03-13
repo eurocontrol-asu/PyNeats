@@ -99,6 +99,7 @@ __all__ = [
     "DEFAULT_CLIMACCF_KWARGS",
     "DEFAULT_ROCD_PHASE_THRESHOLD",
     "DEFAULT_MIN_ALTITUDE_FL",
+    "DEFAULT_MAX_ALTITUDE_FILTER_RATIO",
 ]  # Public API: All default configuration parameters exported for external use
 
 # Model Selection Defaults
@@ -169,10 +170,16 @@ DEFAULT_ROCD_PHASE_THRESHOLD: Final[float] = (
     250  # feet per minute threshold for phase detection
 )
 
-# Altitude filter for trajectory parsing
-# Minimum Flight Level (FL) threshold: points below this FL are discarded before processing.
+# Altitude filter for performance fallback
+# Minimum Flight Level (FL) threshold: points below this FL are filtered
+# when retrying after a performance step failure.
 # FL15 = 1500 ft ≈ 457 m — filters out ground-level / taxi data.
 DEFAULT_MIN_ALTITUDE_FL: Final[float] = 15
+
+# Maximum ratio of filtered points before giving up on altitude fallback.
+# If more than 80% of trajectory points are below min FL, the flight is
+# likely a low-altitude operation — retrying is unlikely to help.
+DEFAULT_MAX_ALTITUDE_FILTER_RATIO: Final[float] = 0.8
 
 # Emissions model parameters
 # Configuration options passed to PyContrails emissions calculation engine
