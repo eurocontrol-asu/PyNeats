@@ -381,7 +381,11 @@ class BADAPerformanceModel(
         q_fuel_attr: float | None,
         original_exc: PerformanceStepError,
     ) -> FlightWithPerformance:
-        """Filter low-altitude points and retry performance evaluation."""
+        """Filter low-altitude points and retry performance evaluation.
+
+        Mirrors the BADA4 → BADA3 chain on the filtered data, since the
+        pre-filter parser allowed both versions to run on clean data.
+        """
         self.logger.info(
             "Attempting altitude fallback: filtering points below FL%s",
             DEFAULT_MIN_ALTITUDE_FL,
@@ -396,14 +400,29 @@ class BADAPerformanceModel(
 
         try:
             df_filtered = self._preprocess(filtered_flight)
-            return self.run_by_bada_version(
-                filtered_flight,
-                df_filtered,
-                icao,
-                series,
-                engine_id_attr,
-                q_fuel_attr,
-            )
+
+            # Try default BADA version on filtered data
+            try:
+                return self.run_by_bada_version(
+                    filtered_flight,
+                    df_filtered,
+                    icao,
+                    series,
+                    engine_id_attr,
+                    q_fuel_attr,
+                )
+            except PerformanceStepError:
+                # Try BADA3 on filtered data
+                return self.run_by_bada_version(
+                    filtered_flight,
+                    df_filtered,
+                    icao,
+                    series,
+                    engine_id_attr,
+                    q_fuel_attr,
+                    force_bada3=True,
+                )
+
         except PerformanceStepError as exc3:
             self.logger.info(
                 "Altitude fallback also failed",
