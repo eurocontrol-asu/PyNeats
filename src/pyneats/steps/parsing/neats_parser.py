@@ -234,7 +234,7 @@ class NeatsTrajectoryParser(
                 max_duration = pd.Timedelta(hours=24)
                 if duration > max_duration:
                     raise TrajectoryParserStepError(
-                        f"Trajectory spans {duration} (>{max_duration}), "
+                        f"Trajectory spans {duration} (>24 hours), "
                         f"likely a data error (concatenated flights or timezone bug)"
                     )
 

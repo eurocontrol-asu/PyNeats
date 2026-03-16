@@ -50,10 +50,11 @@ def _make_parser_df(
     n_points : int
         Number of trajectory points.
     """
+    freq = pd.Timedelta(hours=hours / max(n_points - 1, 1)) if hours > 0 else pd.Timedelta(seconds=1)
     times = pd.date_range(
         "2023-06-15 10:00:00",
         periods=n_points,
-        freq=pd.Timedelta(hours=hours / max(n_points - 1, 1)),
+        freq=freq,
         tz="UTC",
     )
     df = pd.DataFrame(
@@ -69,6 +70,8 @@ def _make_parser_df(
         "aircraft_type": "A320",
         "departure_airport": "LFPG",
         "arrival_airport": "EGLL",
+        "model_type": "BADA4",
+        "aobt": "2023-06-15 10:00:00",
     }
     return df
 
@@ -149,7 +152,12 @@ class TestPerformanceGuardrailFuelBurn:
     def _make_flight_df(self, total_fuel: float, n_points: int = 5) -> pd.DataFrame:
         """Build a DataFrame with fuel_burn column summing to total_fuel."""
         per_point = total_fuel / n_points
+        times = pd.date_range("2023-01-01 10:00", periods=n_points, freq="1min", tz="UTC")
         return pd.DataFrame({
+            "latitude": [51.5 + i * 0.1 for i in range(n_points)],
+            "longitude": [-0.1 + i * 0.1 for i in range(n_points)],
+            "time": times,
+            "altitude": [10000.0] * n_points,
             "fuel_burn": [per_point] * n_points,
             "fuel_flow": [per_point / 60] * n_points,
             "segment_duration": [60.0] * n_points,
@@ -231,12 +239,6 @@ class TestPerformanceGuardrailFuelBurn:
 
         def finalize(d, p):
             d["fuel_burn"] = [10_000 / 5] * 5
-            d["fuel_flow"] = p["fuel_flow"]
-            d["aircraft_mass"] = p["mass"]
-            d["phase"] = p["phase"]
-            d["thrust"] = p["thrust"]
-            d["thrust_segment"] = p["segment"]
-            d["fuel"] = d["fuel_burn"]
 
         model._finalize_columns = MagicMock(side_effect=finalize)
         model._compute_engine_efficiency_if_missing = MagicMock()
@@ -248,11 +250,18 @@ class TestPerformanceGuardrailFuelBurn:
         flight.attrs = {"aircraft_type": "A320"}
         flight.fuel = MagicMock()
 
-        # Should not raise
-        result = model.run_by_bada_version(
-            flight, df, "A320", None, None, None
-        )
-        assert result is not None
+        # Patch Flight and FlightWithPerformance to skip downstream validation
+        with patch(
+            "pyneats.steps.performance.bada_model.Flight",
+            return_value=MagicMock(),
+        ), patch(
+            "pyneats.steps.performance.bada_model.FlightWithPerformance.from_flight",
+            return_value=MagicMock(),
+        ):
+            result = model.run_by_bada_version(
+                flight, df, "A320", None, None, None
+            )
+            assert result is not None
 
     def test_bada_skips_guardrail_when_mtow_none(self) -> None:
         """MTOW=None → skip guardrail, log warning, don't crash."""
@@ -280,12 +289,6 @@ class TestPerformanceGuardrailFuelBurn:
 
         def finalize(d, p):
             d["fuel_burn"] = [99_999 / 5] * 5
-            d["fuel_flow"] = p["fuel_flow"]
-            d["aircraft_mass"] = p["mass"]
-            d["phase"] = p["phase"]
-            d["thrust"] = p["thrust"]
-            d["thrust_segment"] = p["segment"]
-            d["fuel"] = d["fuel_burn"]
 
         model._finalize_columns = MagicMock(side_effect=finalize)
         model._compute_engine_efficiency_if_missing = MagicMock()
@@ -297,12 +300,19 @@ class TestPerformanceGuardrailFuelBurn:
         flight.attrs = {"aircraft_type": "A320"}
         flight.fuel = MagicMock()
 
-        # Should not raise even with absurd fuel
-        result = model.run_by_bada_version(
-            flight, df, "A320", None, None, None
-        )
-        assert result is not None
-        model.logger.warning.assert_called_once()
+        # Patch Flight and FlightWithPerformance to skip downstream validation
+        with patch(
+            "pyneats.steps.performance.bada_model.Flight",
+            return_value=MagicMock(),
+        ), patch(
+            "pyneats.steps.performance.bada_model.FlightWithPerformance.from_flight",
+            return_value=MagicMock(),
+        ):
+            result = model.run_by_bada_version(
+                flight, df, "A320", None, None, None
+            )
+            assert result is not None
+            model.logger.warning.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
