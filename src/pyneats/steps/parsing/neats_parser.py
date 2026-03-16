@@ -228,6 +228,16 @@ class NeatsTrajectoryParser(
                     "no valid trajectory points after cleaning"
                 )
 
+            # 4.5) Reject trajectories spanning > 24 hours
+            if len(df) > 1:
+                duration = df["time"].iloc[-1] - df["time"].iloc[0]
+                max_duration = pd.Timedelta(hours=24)
+                if duration > max_duration:
+                    raise TrajectoryParserStepError(
+                        f"Trajectory spans {duration} (>{max_duration}), "
+                        f"likely a data error (concatenated flights or timezone bug)"
+                    )
+
             # 5) Build flight attributes from df.attrs (canonical keys)
             attrs_input: Mapping[str, Any] = getattr(df, "attrs", {}) or {}
             attrs: dict[str, Any] = {}
