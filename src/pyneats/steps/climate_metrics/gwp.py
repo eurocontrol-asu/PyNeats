@@ -57,6 +57,9 @@ SPECIES: Final[tuple[str, ...]] = ("CH4", "O3", "H2O")
 # Column name pattern expected for ATR at H0 = 20 years
 ATR_COL_TEMPLATE: Final[str] = "ATR_20_{spec}"
 
+# Guardrail: reject non-CO2 species producing > MAX_NONCO2_CO2_RATIO × CO2 baseline
+MAX_NONCO2_CO2_RATIO: Final[float] = 100.0
+
 
 # ---------------------------
 # Parameters (Unchanged)
@@ -402,6 +405,19 @@ class GWPMetrics(
             "fuel_burn_kg": total_fuel_burn,
             "contrails_ef_J": total_ef_J,
         }
+
+        # 2.5) Guardrail: reject implausible non-CO2 impact
+        if total_co2_kg > 0.0:
+            for entry in other_results:
+                species = entry["species"]
+                for val in entry["value"]:
+                    co2eq = abs(val["CO2eq_kg"])
+                    if co2eq > MAX_NONCO2_CO2_RATIO * total_co2_kg:
+                        raise ClimateImpactStepError(
+                            f"Non-CO2 species '{species}' at H={val['horizon']}yr has "
+                            f"CO2eq={co2eq:.1f} kg, exceeding {MAX_NONCO2_CO2_RATIO}× "
+                            f"CO2 baseline ({total_co2_kg:.1f} kg)"
+                        )
 
         # 3. Assemble and Return
         climate_impact = {
