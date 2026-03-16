@@ -740,7 +740,7 @@ class FleetRunner(Runner):
         """
         Flatten self.results into one row per flight.
         Climate metrics are expanded into wide columns:
-            <species>_<horizon>_AGWP_J_per_m2
+            <species>_<horizon>_EAGWP_Wm2yr
             <species>_<horizon>_CO2eq_kg
         """
         rows: list[dict[str, Any]] = []
@@ -769,11 +769,11 @@ class FleetRunner(Runner):
                 for item in block.get("value") or []:
                     horizon = item.get("horizon")
 
-                    # Column names such as CO2_20_AGWP_J_per_m2
-                    key_agwp = f"{species}_{horizon}_EAGWP_J_per_m2"
+                    # Column names such as CO2_20_EAGWP_Wm2yr
+                    key_agwp = f"{species}_{horizon}_EAGWP_Wm2yr"
                     key_co2eq = f"{species}_{horizon}_CO2eq_kg"
 
-                    row[key_agwp] = item.get("EAGWP_J_per_m2")
+                    row[key_agwp] = item.get("EAGWP_Wm2yr")
                     row[key_co2eq] = item.get("CO2eq_kg")
 
             rows.append(row)
