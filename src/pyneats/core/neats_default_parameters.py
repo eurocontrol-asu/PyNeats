@@ -100,6 +100,7 @@ __all__ = [
     "DEFAULT_ROCD_PHASE_THRESHOLD",
     "DEFAULT_MIN_ALTITUDE_FL",
     "DEFAULT_MAX_ALTITUDE_FILTER_RATIO",
+    "DEFAULT_FUEL_BURN_THRESHOLD",
 ]  # Public API: All default configuration parameters exported for external use
 
 # Model Selection Defaults
@@ -169,6 +170,10 @@ DEFAULT_DELTA_TAU_FILL_METHOD: Final[Literal["bffill", "none", "zero"]] = (
 DEFAULT_ROCD_PHASE_THRESHOLD: Final[float] = (
     250  # feet per minute threshold for phase detection
 )
+
+# Fuel burn guardrail: reject if total fuel > (MTOW - OEW) * threshold
+# A ratio of 1.1 allows 10% margin above the useful payload capacity
+DEFAULT_FUEL_BURN_THRESHOLD: Final[float] = 1.1
 
 # Altitude filter for performance fallback
 # Minimum Flight Level (FL) threshold: points below this FL are filtered

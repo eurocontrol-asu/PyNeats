@@ -49,6 +49,7 @@ from pyneats.core.neats_default_parameters import DEFAULT_BADA_MAX_CONSECUTIVE_F
 from pyneats.core.neats_default_parameters import DEFAULT_DELTA_TAU_COMPUTE_METHOD
 from pyneats.core.neats_default_parameters import DEFAULT_DELTA_TAU_FILL_METHOD
 from pyneats.core.neats_default_parameters import DEFAULT_FF_OUTLIER_THRESHOLD
+from pyneats.core.neats_default_parameters import DEFAULT_FUEL_BURN_THRESHOLD
 from pyneats.core.neats_default_parameters import DEFAULT_FUEL_RESERVE_FRACTION
 from pyneats.core.neats_default_parameters import DEFAULT_MAX_ALTITUDE_FILTER_RATIO
 from pyneats.core.neats_default_parameters import DEFAULT_MAX_MASS_ESTIMATION_ITER
@@ -236,6 +237,7 @@ class BADAPerformanceModelParams(PerformanceModelParams):
     max_rel_mass_diff: float = DEFAULT_MAX_REL_MASS_DIFF
     max_mass_estimation_iter: int = DEFAULT_MAX_MASS_ESTIMATION_ITER
     rocd_phase_threshold: float = DEFAULT_ROCD_PHASE_THRESHOLD
+    fuel_burn_threshold: float = DEFAULT_FUEL_BURN_THRESHOLD
 
     def bada_type(
         self,
@@ -468,6 +470,24 @@ class BADAPerformanceModel(
 
             # 4) finalize df columns, compute efficiency if needed (using q_fuel_used)
             self._finalize_columns(df, perf)
+
+            # 4.5) Fuel burn guardrail: reject if total fuel > (MTOW - OEW) * threshold
+            if adapter.MTOW is not None and adapter.OEW is not None:
+                useful_payload = adapter.MTOW - adapter.OEW
+                total_fuel = float(df["fuel_burn"].sum())
+                limit = useful_payload * self.params.fuel_burn_threshold
+                if total_fuel > limit:
+                    raise PerformanceStepError(
+                        f"Total fuel burn {total_fuel:.0f} kg exceeds "
+                        f"useful payload capacity {useful_payload:.0f} kg × "
+                        f"{self.params.fuel_burn_threshold} = {limit:.0f} kg",
+                        retryable=False,
+                    )
+            else:
+                self.logger.warning(
+                    "MTOW or OEW unavailable — skipping fuel burn guardrail"
+                )
+
             self._compute_engine_efficiency_if_missing(df, perf, q_fuel_used)
 
             # 5) build Flight output
