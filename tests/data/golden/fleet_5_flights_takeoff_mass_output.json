@@ -214,15 +214,15 @@
     "total_nvpm_number": 1.0595689799114092e+18,
     "climate_impact": {
       "flight_information": {
+        "aircraft_type": "A320",
+        "engine_uid": "1IA001",
+        "model_type": "NM",
+        "aobt": "2025-07-09T18:07:00+0000",
+        "bada_code": "A320-214",
         "flight_id": "EAF2143",
         "bada_version": "BADA4",
-        "arrival_airport": "LBBG",
-        "bada_code": "A320-214",
-        "aircraft_type": "A320",
         "departure_airport": "LZIB",
-        "engine_uid": "1IA001",
-        "aobt": "2025-07-09T18:07:00+0000",
-        "model_type": "NM",
+        "arrival_airport": "LBBG",
         "co2_baseline_kg": 12039.081988707674,
         "fuel_burn_kg": 3811.0420983563395,
         "contrails_ef_J": 305423261846.7782
@@ -233,17 +233,17 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.009178788255791779,
+              "EAGWP_Wm2yr": 2.9086422084717744e-10,
               "CO2eq_kg": 12039.081988707674
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.018072638962252266,
+              "EAGWP_Wm2yr": 5.72699130202824e-10,
               "CO2eq_kg": 12039.081988707674
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.028250608224365748,
+              "EAGWP_Wm2yr": 8.952261366803026e-10,
               "CO2eq_kg": 12039.081988707674
             }
           ]
@@ -253,18 +253,18 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.00022153814327251114,
+              "EAGWP_Wm2yr": 7.020264291447132e-12,
               "CO2eq_kg": 290.5738531228117
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.00022153814327251114,
-              "CO2eq_kg": 147.57755500204186
+              "EAGWP_Wm2yr": 7.020264291447132e-12,
+              "CO2eq_kg": 147.5775550020419
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.00022153814327251114,
-              "CO2eq_kg": 94.40914862085975
+              "EAGWP_Wm2yr": 7.020264291447132e-12,
+              "CO2eq_kg": 94.40914862085977
             }
           ]
         },
@@ -273,17 +273,17 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": -0.0032183121565504333,
+              "EAGWP_Wm2yr": -1.0198425236221906e-10,
               "CO2eq_kg": -4221.202498436219
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": -0.003964483027512718,
+              "EAGWP_Wm2yr": -1.2562946597354263e-10,
               "CO2eq_kg": -2640.938952565538
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": -0.004043035295672845,
+              "EAGWP_Wm2yr": -1.2811868825838582e-10,
               "CO2eq_kg": -1722.9516979341827
             }
           ]
@@ -293,18 +293,18 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.02023124178078933,
+              "EAGWP_Wm2yr": 6.411025304595111e-10,
               "CO2eq_kg": 26535.70076405261
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.02023124178078933,
-              "CO2eq_kg": 13477.034485169457
+              "EAGWP_Wm2yr": 6.411025304595111e-10,
+              "CO2eq_kg": 13477.034485169459
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.02023124178078933,
-              "CO2eq_kg": 8621.604766803537
+              "EAGWP_Wm2yr": 6.411025304595111e-10,
+              "CO2eq_kg": 8621.604766803539
             }
           ]
         },
@@ -313,18 +313,18 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.0017643958281548296,
+              "EAGWP_Wm2yr": 5.5911478020907395e-11,
               "CO2eq_kg": 2314.216805501134
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.0017643958281548296,
+              "EAGWP_Wm2yr": 5.5911478020907395e-11,
               "CO2eq_kg": 1175.3516506392136
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.0017643958281548296,
-              "CO2eq_kg": 751.9026092106965
+              "EAGWP_Wm2yr": 5.5911478020907395e-11,
+              "CO2eq_kg": 751.9026092106966
             }
           ]
         }
@@ -8623,15 +8623,15 @@
     "total_nvpm_number": 1.5669563576128786e+19,
     "climate_impact": {
       "flight_information": {
+        "flight_id": "FDX5067",
         "departure_airport": "KMEM",
         "arrival_airport": "EBLG",
+        "aobt": "2025-07-09T20:47:00+0000",
+        "engine_uid": "01P21GE217",
+        "aircraft_type": "B77L",
+        "bada_version": "BADA4",
         "model_type": "NM",
         "bada_code": "B772LR",
-        "bada_version": "BADA4",
-        "aircraft_type": "B77L",
-        "engine_uid": "01P21GE217",
-        "aobt": "2025-07-09T20:47:00+0000",
-        "flight_id": "FDX5067",
         "co2_baseline_kg": 181478.61175425147,
         "fuel_burn_kg": 57448.12021343828,
         "contrails_ef_J": -270300170890163.03
@@ -8642,17 +8642,17 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.13836219005815806,
+              "EAGWP_Wm2yr": 4.384523259982715e-09,
               "CO2eq_kg": 181478.61175425147
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.2724291962361995,
+              "EAGWP_Wm2yr": 8.632937561149742e-09,
               "CO2eq_kg": 181478.61175425147
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.42585316443396665,
+              "EAGWP_Wm2yr": 1.349474957004614e-08,
               "CO2eq_kg": 181478.61175425147
             }
           ]
@@ -8662,18 +8662,18 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": -0.19606168051237077,
-              "CO2eq_kg": -257158.4157683164
+              "EAGWP_Wm2yr": -6.212947324962524e-09,
+              "CO2eq_kg": -257158.41576831636
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": -0.19606168051237077,
+              "EAGWP_Wm2yr": -6.212947324962524e-09,
               "CO2eq_kg": -130606.41843520127
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": -0.19606168051237077,
-              "CO2eq_kg": -83552.27709739811
+              "EAGWP_Wm2yr": -6.212947324962524e-09,
+              "CO2eq_kg": -83552.27709739812
             }
           ]
         },
@@ -8682,17 +8682,17 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": -0.06657483174227789,
-              "CO2eq_kg": -87320.87889966942
+              "EAGWP_Wm2yr": -2.1096724342160135e-09,
+              "CO2eq_kg": -87320.87889966943
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": -0.0820103139978428,
-              "CO2eq_kg": -54631.14137353663
+              "EAGWP_Wm2yr": -2.5988033951391377e-09,
+              "CO2eq_kg": -54631.14137353664
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": -0.08363526638945298,
+              "EAGWP_Wm2yr": -2.6502960865628904e-09,
               "CO2eq_kg": -35641.42128244877
             }
           ]
@@ -8702,18 +8702,18 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.5133642321508202,
-              "CO2eq_kg": 673338.7794444278
+              "EAGWP_Wm2yr": 1.626786491137738e-08,
+              "CO2eq_kg": 673338.7794444279
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.5133642321508202,
+              "EAGWP_Wm2yr": 1.626786491137738e-08,
               "CO2eq_kg": 341977.39986078156
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.5133642321508202,
-              "CO2eq_kg": 218771.7174741444
+              "EAGWP_Wm2yr": 1.626786491137738e-08,
+              "CO2eq_kg": 218771.71747414442
             }
           ]
         },
@@ -8722,17 +8722,17 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.041666653313789624,
+              "EAGWP_Wm2yr": 1.3203636813146473e-09,
               "CO2eq_kg": 54650.81462395063
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.041666653313789624,
-              "CO2eq_kg": 27756.22622061483
+              "EAGWP_Wm2yr": 1.3203636813146473e-09,
+              "CO2eq_kg": 27756.226220614826
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.041666653313789624,
+              "EAGWP_Wm2yr": 1.3203636813146473e-09,
               "CO2eq_kg": 17756.37010912651
             }
           ]
@@ -45701,15 +45701,15 @@
     "total_nvpm_number": 2.136619283170711e+18,
     "climate_impact": {
       "flight_information": {
-        "engine_uid": "2CM015",
-        "bada_code": "B738W26",
-        "aobt": "2025-07-09T03:44:00+0000",
         "departure_airport": "LIRF",
-        "arrival_airport": "LEZL",
         "aircraft_type": "B738",
-        "bada_version": "BADA4",
-        "model_type": "NM",
+        "engine_uid": "2CM015",
         "flight_id": "RYR46YN",
+        "bada_code": "B738W26",
+        "model_type": "NM",
+        "aobt": "2025-07-09T03:44:00+0000",
+        "bada_version": "BADA4",
+        "arrival_airport": "LEZL",
         "co2_baseline_kg": 19458.634921662982,
         "fuel_burn_kg": 6159.745147724909,
         "contrails_ef_J": -9295194574.828953
@@ -45720,17 +45720,17 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.014835573830315973,
+              "EAGWP_Wm2yr": 4.701206197073777e-10,
               "CO2eq_kg": 19458.634921662982
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.02921060625447561,
+              "EAGWP_Wm2yr": 9.256472632235081e-10,
               "CO2eq_kg": 19458.634921662982
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.04566114528237978,
+              "EAGWP_Wm2yr": 1.4469440927748592e-09,
               "CO2eq_kg": 19458.634921662982
             }
           ]
@@ -45740,18 +45740,18 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": -6.742250524773009e-06,
-              "CO2eq_kg": -8.843270439856955
+              "EAGWP_Wm2yr": -2.1365341382694407e-13,
+              "CO2eq_kg": -8.843270439856957
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": -6.742250524773009e-06,
-              "CO2eq_kg": -4.49134777857776
+              "EAGWP_Wm2yr": -2.1365341382694407e-13,
+              "CO2eq_kg": -4.491347778577761
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": -6.742250524773009e-06,
-              "CO2eq_kg": -2.873230417253147
+              "EAGWP_Wm2yr": -2.1365341382694407e-13,
+              "CO2eq_kg": -2.873230417253148
             }
           ]
         },
@@ -45760,18 +45760,18 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": -0.0043475105572010715,
+              "EAGWP_Wm2yr": -1.3776712520274682e-10,
               "CO2eq_kg": -5702.281672299123
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": -0.005355487900971707,
+              "EAGWP_Wm2yr": -1.6970865567028485e-10,
               "CO2eq_kg": -3567.556352118664
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": -0.005461601540204356,
-              "CO2eq_kg": -2327.4779859593114
+              "EAGWP_Wm2yr": -1.7307126303593437e-10,
+              "CO2eq_kg": -2327.477985959311
             }
           ]
         },
@@ -45780,17 +45780,17 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.03391599191831306,
-              "CO2eq_kg": 44484.89234679438
+              "EAGWP_Wm2yr": 1.0747549990985522e-09,
+              "CO2eq_kg": 44484.892346794375
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.03391599191831306,
+              "EAGWP_Wm2yr": 1.0747549990985522e-09,
               "CO2eq_kg": 22593.125900747367
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.03391599191831306,
+              "EAGWP_Wm2yr": 1.0747549990985522e-09,
               "CO2eq_kg": 14453.402354741154
             }
           ]
@@ -45800,18 +45800,18 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.0036135187058047645,
+              "EAGWP_Wm2yr": 1.1450784935771885e-10,
               "CO2eq_kg": 4739.563301230085
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.0036135187058047645,
+              "EAGWP_Wm2yr": 1.1450784935771885e-10,
               "CO2eq_kg": 2407.14419503298
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.0036135187058047645,
-              "CO2eq_kg": 1539.9119063706137
+              "EAGWP_Wm2yr": 1.1450784935771885e-10,
+              "CO2eq_kg": 1539.911906370614
             }
           ]
         }
@@ -57507,13 +57507,13 @@
     "total_nvpm_number": 1.957355591947731e+19,
     "climate_impact": {
       "flight_information": {
+        "departure_airport": "CYUL",
         "engine_uid": "4PW067",
         "flight_id": "ACA812",
         "bada_version": "BADA4",
-        "aircraft_type": "A333",
-        "model_type": "NM",
         "bada_code": "A330-341",
-        "departure_airport": "CYUL",
+        "model_type": "NM",
+        "aircraft_type": "A333",
         "arrival_airport": "LPPT",
         "aobt": "2025-07-09T01:40:48+0000",
         "co2_baseline_kg": 110228.43971787108,
@@ -57526,17 +57526,17 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.08403992172207592,
+              "EAGWP_Wm2yr": 2.6631191035837653e-09,
               "CO2eq_kg": 110228.43971787108
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.165470988258243,
+              "EAGWP_Wm2yr": 5.243566877379127e-09,
               "CO2eq_kg": 110228.43971787108
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.2586592954989058,
+              "EAGWP_Wm2yr": 8.196586777420894e-09,
               "CO2eq_kg": 110228.43971787108
             }
           ]
@@ -57546,18 +57546,18 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 1.692351795428915,
+              "EAGWP_Wm2yr": 5.362849350687972e-08,
               "CO2eq_kg": 2219722.4133642265
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 1.692351795428915,
+              "EAGWP_Wm2yr": 5.362849350687972e-08,
               "CO2eq_kg": 1127359.5439747681
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 1.692351795428915,
-              "CO2eq_kg": 721200.8271500769
+              "EAGWP_Wm2yr": 5.362849350687972e-08,
+              "CO2eq_kg": 721200.827150077
             }
           ]
         },
@@ -57566,17 +57566,17 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": -0.03546753313591852,
+              "EAGWP_Wm2yr": -1.1239213830257917e-09,
               "CO2eq_kg": -46519.92479411389
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": -0.0436907379723563,
-              "CO2eq_kg": -29104.569492865576
+              "EAGWP_Wm2yr": -1.3845043707756156e-09,
+              "CO2eq_kg": -29104.56949286558
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": -0.044556426270553305,
+              "EAGWP_Wm2yr": -1.4119369408855868e-09,
               "CO2eq_kg": -18987.855579418865
             }
           ]
@@ -57586,18 +57586,18 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.33370372673434634,
+              "EAGWP_Wm2yr": 1.057465013523316e-08,
               "CO2eq_kg": 437692.4724848162
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.33370372673434634,
-              "CO2eq_kg": 222296.61835680387
+              "EAGWP_Wm2yr": 1.057465013523316e-08,
+              "CO2eq_kg": 222296.6183568039
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.33370372673434634,
-              "CO2eq_kg": 142208.85066209198
+              "EAGWP_Wm2yr": 1.057465013523316e-08,
+              "CO2eq_kg": 142208.850662092
             }
           ]
         },
@@ -57606,17 +57606,17 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.023874810120505505,
-              "CO2eq_kg": 31314.677765251407
+              "EAGWP_Wm2yr": 7.565626148084741e-10,
+              "CO2eq_kg": 31314.67776525141
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.023874810120505505,
+              "EAGWP_Wm2yr": 7.565626148084741e-10,
               "CO2eq_kg": 15904.196233098046
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.023874810120505505,
+              "EAGWP_Wm2yr": 7.565626148084741e-10,
               "CO2eq_kg": 10174.32241539099
             }
           ]
@@ -87318,15 +87318,15 @@
     "total_nvpm_number": 3.202001040117125e+19,
     "climate_impact": {
       "flight_information": {
-        "aircraft_type": "B77W",
-        "arrival_airport": "KBOS",
-        "bada_version": "BADA4",
         "model_type": "NM",
-        "departure_airport": "OMDB",
-        "flight_id": "UAE62Y",
-        "bada_code": "B773ERGE115B",
-        "engine_uid": "01P21GE217",
         "aobt": "2025-07-09T04:35:00+0000",
+        "bada_code": "B773ERGE115B",
+        "bada_version": "BADA4",
+        "engine_uid": "01P21GE217",
+        "aircraft_type": "B77W",
+        "departure_airport": "OMDB",
+        "arrival_airport": "KBOS",
+        "flight_id": "UAE62Y",
         "co2_baseline_kg": 365205.0725964525,
         "fuel_burn_kg": 115607.8102552873,
         "contrails_ef_J": 56543944521787.49
@@ -87337,17 +87337,17 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.27843817613735966,
+              "EAGWP_Wm2yr": 8.823354553930293e-09,
               "CO2eq_kg": 365205.0725964525
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.5482327830651572,
+              "EAGWP_Wm2yr": 1.7372805303413244e-08,
               "CO2eq_kg": 365205.0725964525
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.8569810752307144,
+              "EAGWP_Wm2yr": 2.7156649198272205e-08,
               "CO2eq_kg": 365205.0725964525
             }
           ]
@@ -87357,17 +87357,17 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.04101403543042809,
+              "EAGWP_Wm2yr": 1.299683043863935e-09,
               "CO2eq_kg": 53794.82797450062
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.04101403543042809,
+              "EAGWP_Wm2yr": 1.299683043863935e-09,
               "CO2eq_kg": 27321.485050744905
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.04101403543042809,
+              "EAGWP_Wm2yr": 1.299683043863935e-09,
               "CO2eq_kg": 17478.255027755986
             }
           ]
@@ -87377,17 +87377,17 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": -0.1871233852258534,
-              "CO2eq_kg": -245434.76916106828
+              "EAGWP_Wm2yr": -5.9297040229314094e-09,
+              "CO2eq_kg": -245434.76916106825
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": -0.2305082442884513,
-              "CO2eq_kg": -153552.98458946694
+              "EAGWP_Wm2yr": -7.304515476920943e-09,
+              "CO2eq_kg": -153552.98458946697
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": -0.23507553472526435,
+              "EAGWP_Wm2yr": -7.449247149257772e-09,
               "CO2eq_kg": -100178.14886037886
             }
           ]
@@ -87397,17 +87397,17 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 1.1775540707452976,
+              "EAGWP_Wm2yr": 3.7315203025479064e-08,
               "CO2eq_kg": 1544503.4364850605
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 1.1775540707452976,
+              "EAGWP_Wm2yr": 3.7315203025479064e-08,
               "CO2eq_kg": 784427.2235753429
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 1.1775540707452976,
+              "EAGWP_Wm2yr": 3.7315203025479064e-08,
               "CO2eq_kg": 501818.2225050977
             }
           ]
@@ -87417,18 +87417,18 @@
           "value": [
             {
               "horizon": 20,
-              "EAGWP_J_per_m2": 0.08673910179990318,
+              "EAGWP_Wm2yr": 2.748652715252829e-09,
               "CO2eq_kg": 113768.73821410714
             },
             {
               "horizon": 50,
-              "EAGWP_J_per_m2": 0.08673910179990318,
+              "EAGWP_Wm2yr": 2.748652715252829e-09,
               "CO2eq_kg": 57781.2216786384
             },
             {
               "horizon": 100,
-              "EAGWP_J_per_m2": 0.08673910179990318,
-              "CO2eq_kg": 36964.1301136744
+              "EAGWP_Wm2yr": 2.748652715252829e-09,
+              "CO2eq_kg": 36964.13011367441
             }
           ]
         }

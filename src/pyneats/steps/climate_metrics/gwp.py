@@ -15,6 +15,7 @@ from typing import Final
 import pandas as pd
 
 from pyneats.core.neats_default_parameters import DEFAULT_CLIMACCF_KWARGS
+from pyneats.core.neats_default_parameters import MAX_NONCO2_CO2_RATIO
 from pyneats.core.physics import CO2_AGWP_COEFF_WM2YR_PER_KG
 from pyneats.core.physics import CONVERSION_FACTORS_AGWP_TO_RF
 from pyneats.core.physics import CONVERSION_FACTORS_ATR_TO_RF
@@ -82,7 +83,9 @@ class GWPParams(BaseParams):
         default_factory=lambda: CONVERSION_FACTORS_ATR_TO_RF
     )
     efficacy: Mapping[str, float] = field(default_factory=lambda: EFFICACY)
-    atr_ref_horizon: int = DEFAULT_CLIMACCF_KWARGS.get("time_horizon", 20)
+    atr_ref_horizon: int = field(
+        default_factory=lambda: DEFAULT_CLIMACCF_KWARGS.get("time_horizon", 20)
+    )
     rf_backward_factor: Mapping[str, float] = field(
         default_factory=lambda: RF_BACKWARD_FACTOR
     )
@@ -112,9 +115,9 @@ class GWPMetrics(
 
     # ---------- Helpers (Math) ----------
 
-    def _agwp_co2_J_per_m2(self, m_co2: float) -> dict[int, float]:
+    def _agwp_co2_Wm2yr(self, m_co2: float) -> dict[int, float]:
         """
-        Compute AGWP_CO2(H) = C(H) * m_CO2 * s_yr.
+        Compute AGWP_CO2(H) = C(H) * m_CO2.
 
         Parameters
         ----------
@@ -124,17 +127,16 @@ class GWPMetrics(
         Returns
         -------
         dict[int, float]
-            AGWP for each time horizon.
+            AGWP for each time horizon in W·m⁻²·yr.
         """
-        s_yr = self.params.seconds_per_year
         return {
-            h: self.params.agwp_coeff_wm2yr_per_kg[h] * m_co2 * s_yr
+            h: self.params.agwp_coeff_wm2yr_per_kg[h] * m_co2
             for h in self.params.horizons
         }
 
-    def _eagwp_contrails_J_per_m2(self, total_ef_J: float) -> dict[int, float]:
+    def _eagwp_contrails_Wm2yr(self, total_ef_J: float) -> dict[int, float]:
         """
-        Compute EAGWP_Con(H) = EF * ε_Con / S_Earth.
+        Compute EAGWP_Con(H) = EF * ε_Con / (S_Earth * s_yr).
 
         Parameters
         ----------
@@ -144,27 +146,24 @@ class GWPMetrics(
         Returns
         -------
         dict[int, float]
-            EAGWP for each time horizon.
+            EAGWP for each time horizon in W·m⁻²·yr.
         """
         eps = float(self.params.efficacy.get("Contrails", 1.0))
         s = self.params.surface_earth
-        return dict.fromkeys(self.params.horizons, total_ef_J * eps / s)
-
-    def _co2eq_from_eagwp_J_per_m2(
-        self, agwp_J_per_m2: dict[int, float]
-    ) -> dict[int, float]:
-        """CO2eq(H) = EAGWP(H) / ( C(H) * s_yr )"""
         s_yr = self.params.seconds_per_year
+        return dict.fromkeys(self.params.horizons, total_ef_J * eps / (s * s_yr))
+
+    def _co2eq_from_eagwp_Wm2yr(self, agwp_Wm2yr: dict[int, float]) -> dict[int, float]:
+        """CO2eq(H) = EAGWP(H) / C(H)"""
         return {
-            h: agwp_J_per_m2[h] / (self.params.agwp_coeff_wm2yr_per_kg[h] * s_yr)
+            h: agwp_Wm2yr[h] / self.params.agwp_coeff_wm2yr_per_kg[h]
             for h in self.params.horizons
         }
 
-    def _eagwp_spec_J_per_m2(self, species: str, atr_H0_K: float) -> dict[int, float]:
-        """Legacy Logic: Scales ATR(H0) [K] to AGWP(H) [J/m2]"""
+    def _eagwp_spec_Wm2yr(self, species: str, atr_H0_K: float) -> dict[int, float]:
+        """Legacy Logic: Scales ATR(H0) [K] to AGWP(H) [W·m⁻²·yr]"""
         eps_spec = float(self.params.efficacy.get(species, 1.0))
         h_0 = self.params.atr_ref_horizon
-        s_yr = self.params.seconds_per_year
         rf_backward = float(self.params.rf_backward_factor.get(species, 1.0))
 
         k_atr_h_0 = float(self.params.k_atr_from_rf.get(h_0, {}).get(species, 1.0))
@@ -174,7 +173,7 @@ class GWPMetrics(
         out: dict[int, float] = {}
         for h in self.params.horizons:
             k_agwp = float(self.params.k_agwp_from_rf.get(h, {}).get(species, 1.0))
-            scale = (k_agwp / k_atr_h_0) / rf_backward * eps_spec * s_yr
+            scale = (k_agwp / k_atr_h_0) / rf_backward * eps_spec
             out[h] = scale * atr_H0_K
 
         return out
@@ -198,8 +197,8 @@ class GWPMetrics(
         # We can trust 'ef' exists because FlightWithSegmentATR inherits from FlightWithRFContrailsImpact
         try:
             total_ef_J = float(pd.to_numeric(df["ef"], errors="coerce").sum())
-            eagwp_con = self._eagwp_contrails_J_per_m2(total_ef_J)
-            co2eq_con = self._co2eq_from_eagwp_J_per_m2(eagwp_con)
+            eagwp_con = self._eagwp_contrails_Wm2yr(total_ef_J)
+            co2eq_con = self._co2eq_from_eagwp_Wm2yr(eagwp_con)
 
             results.append(
                 {
@@ -207,7 +206,7 @@ class GWPMetrics(
                     "value": [
                         {
                             "horizon": h,
-                            "EAGWP_J_per_m2": eagwp_con[h],
+                            "EAGWP_Wm2yr": eagwp_con[h],
                             "CO2eq_kg": co2eq_con[h],
                         }
                         for h in horizons
@@ -228,8 +227,8 @@ class GWPMetrics(
                 atr_h0_total_K = float(
                     pd.to_numeric(df[atr_col], errors="coerce").fillna(0.0).sum()
                 )
-                eagwp_spec = self._eagwp_spec_J_per_m2(sp, atr_h0_total_K)
-                co2eq_spec = self._co2eq_from_eagwp_J_per_m2(eagwp_spec)
+                eagwp_spec = self._eagwp_spec_Wm2yr(sp, atr_h0_total_K)
+                co2eq_spec = self._co2eq_from_eagwp_Wm2yr(eagwp_spec)
 
                 results.append(
                     {
@@ -237,7 +236,7 @@ class GWPMetrics(
                         "value": [
                             {
                                 "horizon": h,
-                                "EAGWP_J_per_m2": eagwp_spec[h],
+                                "EAGWP_Wm2yr": eagwp_spec[h],
                                 "CO2eq_kg": co2eq_spec[h],
                             }
                             for h in horizons
@@ -279,9 +278,7 @@ class GWPMetrics(
                 denom = self.params.agwp_coeff_wm2yr_per_kg[h]
                 co2eq = eagwp / denom
 
-                val_list.append(
-                    {"horizon": h, "EAGWP_J_per_m2": eagwp, "CO2eq_kg": co2eq}
-                )
+                val_list.append({"horizon": h, "EAGWP_Wm2yr": eagwp, "CO2eq_kg": co2eq})
             results.append({"species": sp, "value": val_list})
 
         # --- B. Contrails (From Attributes) ---
@@ -303,7 +300,7 @@ class GWPMetrics(
                 co2eq = eagwp / denom
 
                 cont_val_list.append(
-                    {"horizon": h, "EAGWP_J_per_m2": eagwp, "CO2eq_kg": co2eq}
+                    {"horizon": h, "EAGWP_Wm2yr": eagwp, "CO2eq_kg": co2eq}
                 )
 
         if has_contrails:
@@ -348,7 +345,7 @@ class GWPMetrics(
 
         # CO2 Calculations (Common)
         horizons = self.params.horizons
-        agwp_co2 = self._agwp_co2_J_per_m2(total_co2_kg)
+        agwp_co2 = self._agwp_co2_Wm2yr(total_co2_kg)
         co2eq_co2 = dict.fromkeys(horizons, total_co2_kg)
 
         base_results = [
@@ -357,7 +354,7 @@ class GWPMetrics(
                 "value": [
                     {
                         "horizon": h,
-                        "EAGWP_J_per_m2": agwp_co2[h],
+                        "EAGWP_Wm2yr": agwp_co2[h],
                         "CO2eq_kg": co2eq_co2[h],
                     }
                     for h in horizons
@@ -402,6 +399,19 @@ class GWPMetrics(
             "fuel_burn_kg": total_fuel_burn,
             "contrails_ef_J": total_ef_J,
         }
+
+        # 2.5) Guardrail: reject implausible non-CO2 impact
+        if total_co2_kg > 0.0:
+            for entry in other_results:
+                species = entry["species"]
+                for val in entry["value"]:
+                    co2eq = abs(val["CO2eq_kg"])
+                    if co2eq > MAX_NONCO2_CO2_RATIO * total_co2_kg:
+                        raise ClimateImpactStepError(
+                            f"Non-CO2 species '{species}' at H={val['horizon']}yr has "
+                            f"CO2eq={co2eq:.1f} kg, exceeding {MAX_NONCO2_CO2_RATIO}x "
+                            f"CO2 baseline ({total_co2_kg:.1f} kg)"
+                        )
 
         # 3. Assemble and Return
         climate_impact = {

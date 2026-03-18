@@ -28,4 +28,17 @@ class PerformanceModel(Step[FlightWithWeather, FlightWithPerformance], Protocol)
 class PerformanceStepError(StepError):
     """
     Raised when the performance step fails to evaluate or validate outputs.
+
+    Parameters
+    ----------
+    message : str
+        Error description.
+    retryable : bool
+        Whether the error may be resolved by retrying with modified input
+        (e.g. altitude filtering). Structural errors (missing BADA paths,
+        unknown aircraft) should set this to ``False``.
     """
+
+    def __init__(self, message: str, *, retryable: bool = True) -> None:
+        super().__init__(message)
+        self.retryable = retryable

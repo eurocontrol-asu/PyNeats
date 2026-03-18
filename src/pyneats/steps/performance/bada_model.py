@@ -49,9 +49,11 @@ from pyneats.core.neats_default_parameters import DEFAULT_BADA_MAX_CONSECUTIVE_F
 from pyneats.core.neats_default_parameters import DEFAULT_DELTA_TAU_COMPUTE_METHOD
 from pyneats.core.neats_default_parameters import DEFAULT_DELTA_TAU_FILL_METHOD
 from pyneats.core.neats_default_parameters import DEFAULT_FF_OUTLIER_THRESHOLD
+from pyneats.core.neats_default_parameters import DEFAULT_FUEL_BURN_THRESHOLD
 from pyneats.core.neats_default_parameters import DEFAULT_FUEL_RESERVE_FRACTION
 from pyneats.core.neats_default_parameters import DEFAULT_MAX_MASS_ESTIMATION_ITER
 from pyneats.core.neats_default_parameters import DEFAULT_MAX_REL_MASS_DIFF
+from pyneats.core.neats_default_parameters import DEFAULT_MIN_ALTITUDE_FL
 from pyneats.core.neats_default_parameters import DEFAULT_PAYLOAD_FACTOR
 from pyneats.core.neats_default_parameters import DEFAULT_ROCD_PHASE_THRESHOLD
 from pyneats.core.neats_default_parameters import (
@@ -60,6 +62,7 @@ from pyneats.core.neats_default_parameters import (
 from pyneats.core.neats_default_parameters import REFERENCE_Q_FUEL
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
+from pyneats.steps.performance.altitude_filter import filter_low_altitude_points
 from pyneats.steps.performance.bada_adapters import BADA3Adapter
 from pyneats.steps.performance.bada_adapters import BADA4Adapter
 from pyneats.steps.performance.bada_adapters import BaseBADAAdapter
@@ -233,6 +236,7 @@ class BADAPerformanceModelParams(PerformanceModelParams):
     max_rel_mass_diff: float = DEFAULT_MAX_REL_MASS_DIFF
     max_mass_estimation_iter: int = DEFAULT_MAX_MASS_ESTIMATION_ITER
     rocd_phase_threshold: float = DEFAULT_ROCD_PHASE_THRESHOLD
+    fuel_burn_threshold: float = DEFAULT_FUEL_BURN_THRESHOLD
 
     def bada_type(
         self,
@@ -281,17 +285,25 @@ class BADAPerformanceModel(
 
         if not self.bada4_path.exists() or not self.bada4_path.is_dir():
             raise PerformanceStepError(
-                f"BADA4 path '{self.bada4_path}' does not exist or is not a directory"
+                f"BADA4 path '{self.bada4_path}' does not exist or is not a directory",
+                retryable=False,
             )
 
         if not self.bada3_path.exists() or not self.bada3_path.is_dir():
             raise PerformanceStepError(
-                f"BADA3 path '{self.bada3_path}' does not exist or is not a directory"
+                f"BADA3 path '{self.bada3_path}' does not exist or is not a directory",
+                retryable=False,
             )
 
     # ---------- public API ----------
     def run(self, flight: FlightWithWeather) -> FlightWithPerformance:
-        """Run BADA performance model on the given flight data."""
+        """Run BADA performance model on the given flight data.
+
+        Fallback chain:
+            1. Normal BADA (4 or 3) execution
+            2. Retry with BADA3 forced (if first attempt used BADA4)
+            3. Altitude fallback — filter points below FL15, retry
+        """
 
         # --- Preprocessing + aircraft data extraction ---
         try:
@@ -306,7 +318,8 @@ class BADAPerformanceModel(
             )
 
             raise PerformanceStepError(
-                f"Preprocessing and aircraft attribute extraction failed during Performance evaluation: {e}"
+                f"Preprocessing and aircraft attribute extraction failed during Performance evaluation: {e}",
+                retryable=False,
             ) from e
 
         # --- First attempt: normal BADA (3 or 4) execution ---
@@ -321,7 +334,7 @@ class BADAPerformanceModel(
                 extra={"icao": icao, "series": series, "engine_id": engine_id_attr},
             )
 
-            # Try to determine whether BADA4 is missing
+            # --- Second attempt: retry with BADA3 ---
             try:
                 _, _, bada4_code, _ = self.params.bada_type(
                     icao, series=series, engine_id=engine_id_attr
@@ -351,11 +364,75 @@ class BADAPerformanceModel(
                     force_bada3=True,
                 )
 
-            except Exception as exc2:
-                raise PerformanceStepError(
-                    f"BADA performance evaluation failed with both BADA4 and BADA3 "
-                    f"(underlying error: {exc2})"
-                ) from exc2
+            except PerformanceStepError as exc2:
+                # --- Third attempt: altitude fallback ---
+                if not exc2.retryable:
+                    raise
+
+                return self._run_with_altitude_fallback(
+                    flight, icao, series, engine_id_attr, q_fuel_attr, exc2
+                )
+
+    def _run_with_altitude_fallback(
+        self,
+        flight: FlightWithWeather,
+        icao: str,
+        series: str | None,
+        engine_id_attr: str | None,
+        q_fuel_attr: float | None,
+        original_exc: PerformanceStepError,
+    ) -> FlightWithPerformance:
+        """Filter low-altitude points and retry performance evaluation.
+
+        Mirrors the BADA4 → BADA3 chain on the filtered data, since the
+        pre-filter parser allowed both versions to run on clean data.
+        """
+        self.logger.info(
+            "Attempting altitude fallback: filtering points below FL%s",
+            DEFAULT_MIN_ALTITUDE_FL,
+            extra={"icao": icao, "series": series, "engine_id": engine_id_attr},
+        )
+
+        try:
+            filtered_flight = filter_low_altitude_points(flight)
+        except PerformanceStepError:
+            # Cannot filter (no low points, or too many filtered) — propagate original
+            raise original_exc from original_exc.__cause__
+
+        try:
+            df_filtered = self._preprocess(filtered_flight)
+
+            # Try default BADA version on filtered data
+            try:
+                return self.run_by_bada_version(
+                    filtered_flight,
+                    df_filtered,
+                    icao,
+                    series,
+                    engine_id_attr,
+                    q_fuel_attr,
+                )
+            except PerformanceStepError:
+                # Try BADA3 on filtered data
+                return self.run_by_bada_version(
+                    filtered_flight,
+                    df_filtered,
+                    icao,
+                    series,
+                    engine_id_attr,
+                    q_fuel_attr,
+                    force_bada3=True,
+                )
+
+        except PerformanceStepError as exc3:
+            self.logger.info(
+                "Altitude fallback also failed",
+                extra={"icao": icao, "error": str(exc3)},
+            )
+            raise PerformanceStepError(
+                f"Performance evaluation failed after altitude fallback "
+                f"(underlying error: {exc3})"
+            ) from exc3
 
     def run_by_bada_version(
         self,
@@ -382,16 +459,34 @@ class BADAPerformanceModel(
             if early is not None:
                 return early
 
-            # 2b) derive fuel_flow from mass trajectory if needed
+            # 3) derive fuel_flow from mass trajectory if needed
             self._derive_fuel_flow_from_mass_if_needed(df)
 
-            # 3) choose mass strategy + compute perf (now returns q_fuel_used)
+            # 4) choose mass strategy + compute perf (now returns q_fuel_used)
             perf, q_fuel_used = self._choose_mass_strategy(
                 adapter, df, flight, icao, q_fuel_attr, self.params.reference_q_fuel
             )
 
-            # 4) finalize df columns, compute efficiency if needed (using q_fuel_used)
+            # 5) finalize df columns, compute efficiency if needed (using q_fuel_used)
             self._finalize_columns(df, perf)
+
+            # 6) Fuel burn guardrail: reject if total fuel > (MTOW - OEW) * threshold
+            if adapter.MTOW is not None and adapter.OEW is not None:
+                useful_payload = adapter.MTOW - adapter.OEW
+                total_fuel = float(df["fuel_burn"].sum())
+                limit = useful_payload * self.params.fuel_burn_threshold
+                if total_fuel > limit:
+                    raise PerformanceStepError(
+                        f"Total fuel burn {total_fuel:.0f} kg exceeds "
+                        f"useful payload capacity {useful_payload:.0f} kg x "
+                        f"{self.params.fuel_burn_threshold} = {limit:.0f} kg",
+                        retryable=False,
+                    )
+            else:
+                self.logger.warning(
+                    "MTOW or OEW unavailable — skipping fuel burn guardrail"
+                )
+
             self._compute_engine_efficiency_if_missing(df, perf, q_fuel_used)
 
             # 5) build Flight output
@@ -689,7 +784,8 @@ class BADAPerformanceModel(
 
         if initial_mass is None and "aircraft_mass" not in df.columns:
             raise PerformanceStepError(
-                "Initial mass not provided and 'aircraft_mass' column missing"
+                "Initial mass not provided and 'aircraft_mass' column missing",
+                retryable=False,
             )
         if initial_mass is not None and "aircraft_mass" in df.columns:
             self.logger.warning(
@@ -819,7 +915,8 @@ class BADAPerformanceModel(
         maximum_takeoff_weight = adapter.MTOW
         if operating_empty_weight is None or maximum_takeoff_weight is None:
             raise PerformanceStepError(
-                f"BADA adapter for ICAO '{icao}' does not provide OEW or MTOW"
+                f"BADA adapter for ICAO '{icao}' does not provide OEW or MTOW",
+                retryable=False,
             )
 
         if adapter.MPL is None:

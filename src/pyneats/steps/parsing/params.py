@@ -16,10 +16,4 @@ __all__ = ["TrajectoryParserParams"]
 
 @dataclass(frozen=True)
 class TrajectoryParserParams(BaseParams):
-    """
-    Base parameters for trajectory parser steps.
-
-    Extend this class to define specific parameters for trajectory parsers.
-    """
-
-    pass
+    """Base parameters for trajectory parser steps."""
