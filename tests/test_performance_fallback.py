@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+
 # performance/__init__.py eagerly imports bada_adapters which requires pyBADA
 pytest.importorskip("pyBADA", reason="pyBADA required for performance module imports")
 
@@ -18,7 +19,6 @@ import pandas as pd
 from pycontrails import Flight
 from pycontrails.physics.units import ft_to_m
 
-from pyneats.core.neats_default_parameters import DEFAULT_MIN_ALTITUDE_FL
 from pyneats.steps.performance.altitude_filter import filter_low_altitude_points
 from pyneats.steps.performance.bada_model import BADAPerformanceModel
 from pyneats.steps.performance.protocol import PerformanceStepError
@@ -171,7 +171,11 @@ class TestRunWithAltitudeFallback:
 
         flight = _make_flight_with_weather([5, 10, 100, 200, 350])
         result = model._run_with_altitude_fallback(
-            flight, "A320", None, None, None,
+            flight,
+            "A320",
+            None,
+            None,
+            None,
             PerformanceStepError("original"),
         )
 
@@ -191,7 +195,11 @@ class TestRunWithAltitudeFallback:
 
         flight = _make_flight_with_weather([5, 10, 100, 200, 350])
         result = model._run_with_altitude_fallback(
-            flight, "A320", None, None, None,
+            flight,
+            "A320",
+            None,
+            None,
+            None,
             PerformanceStepError("original"),
         )
 
@@ -213,7 +221,11 @@ class TestRunWithAltitudeFallback:
         flight = _make_flight_with_weather([5, 10, 100, 200, 350])
         with pytest.raises(PerformanceStepError, match="altitude fallback"):
             model._run_with_altitude_fallback(
-                flight, "A320", None, None, None,
+                flight,
+                "A320",
+                None,
+                None,
+                None,
                 PerformanceStepError("original"),
             )
 
@@ -227,7 +239,12 @@ class TestRunWithAltitudeFallback:
 
         with pytest.raises(PerformanceStepError, match="the original error"):
             model._run_with_altitude_fallback(
-                flight, "A320", None, None, None, original,
+                flight,
+                "A320",
+                None,
+                None,
+                None,
+                original,
             )
 
         # run_by_bada_version never called — filter itself failed
@@ -243,6 +260,10 @@ class TestRunWithAltitudeFallback:
         flight = _make_flight_with_weather([5, 10, 100, 200, 350])
         with pytest.raises(PerformanceStepError, match="altitude fallback"):
             model._run_with_altitude_fallback(
-                flight, "A320", None, None, None,
+                flight,
+                "A320",
+                None,
+                None,
+                None,
                 PerformanceStepError("original"),
             )
