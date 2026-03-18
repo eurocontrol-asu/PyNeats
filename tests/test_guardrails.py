@@ -2,33 +2,33 @@
 
 Three guardrails:
 1. Parsing: reject trajectories spanning >24 hours
-2. Performance: reject total fuel burn exceeding (MTOW - OEW) × threshold
-3. Climate: reject non-CO2 species with CO2eq > 100× CO2 baseline
+2. Performance: reject total fuel burn exceeding (MTOW - OEW) x threshold
+3. Climate: reject non-CO2 species with CO2eq > 100x CO2 baseline
 """
 
 from __future__ import annotations
 
 import pytest
 
+
 # pyBADA is required for performance module imports
 pytest.importorskip("pyBADA", reason="pyBADA required for performance module imports")
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
-from pycontrails import Flight
 
-from pyneats.steps.parsing.neats_parser import (
-    NeatsTrajectoryParser,
-    NeatsTrajectoryParserParams,
-)
+from pyneats.steps.climate_metrics.gwp import GWPMetrics
+from pyneats.steps.climate_metrics.gwp import GWPParams
+from pyneats.steps.climate_metrics.protocol import ClimateImpactStepError
+from pyneats.steps.parsing.neats_parser import NeatsTrajectoryParser
+from pyneats.steps.parsing.neats_parser import NeatsTrajectoryParserParams
 from pyneats.steps.parsing.protocol import TrajectoryParserStepError
 from pyneats.steps.parsing.views import Flight4D
 from pyneats.steps.performance.bada_model import BADAPerformanceModel
 from pyneats.steps.performance.protocol import PerformanceStepError
-from pyneats.steps.climate_metrics.gwp import GWPMetrics, GWPParams
-from pyneats.steps.climate_metrics.protocol import ClimateImpactStepError
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +50,11 @@ def _make_parser_df(
     n_points : int
         Number of trajectory points.
     """
-    freq = pd.Timedelta(hours=hours / max(n_points - 1, 1)) if hours > 0 else pd.Timedelta(seconds=1)
+    freq = (
+        pd.Timedelta(hours=hours / max(n_points - 1, 1))
+        if hours > 0
+        else pd.Timedelta(seconds=1)
+    )
     times = pd.date_range(
         "2023-06-15 10:00:00",
         periods=n_points,
@@ -130,8 +134,8 @@ class TestPerformanceGuardrailFuelBurn:
         model = MagicMock(spec=BADAPerformanceModel)
         model.logger = MagicMock()
         # Bind the real method
-        model.run_by_bada_version = (
-            BADAPerformanceModel.run_by_bada_version.__get__(model)
+        model.run_by_bada_version = BADAPerformanceModel.run_by_bada_version.__get__(
+            model
         )
         return model
 
@@ -152,21 +156,25 @@ class TestPerformanceGuardrailFuelBurn:
     def _make_flight_df(self, total_fuel: float, n_points: int = 5) -> pd.DataFrame:
         """Build a DataFrame with fuel_burn column summing to total_fuel."""
         per_point = total_fuel / n_points
-        times = pd.date_range("2023-01-01 10:00", periods=n_points, freq="1min", tz="UTC")
-        return pd.DataFrame({
-            "latitude": [51.5 + i * 0.1 for i in range(n_points)],
-            "longitude": [-0.1 + i * 0.1 for i in range(n_points)],
-            "time": times,
-            "altitude": [10000.0] * n_points,
-            "fuel_burn": [per_point] * n_points,
-            "fuel_flow": [per_point / 60] * n_points,
-            "segment_duration": [60.0] * n_points,
-            "thrust": [50000.0] * n_points,
-            "aircraft_mass": [70000.0] * n_points,
-            "phase": ["Cruise"] * n_points,
-            "thrust_segment": ["TOTAL"] * n_points,
-            "true_airspeed": [230.0] * n_points,
-        })
+        times = pd.date_range(
+            "2023-01-01 10:00", periods=n_points, freq="1min", tz="UTC"
+        )
+        return pd.DataFrame(
+            {
+                "latitude": [51.5 + i * 0.1 for i in range(n_points)],
+                "longitude": [-0.1 + i * 0.1 for i in range(n_points)],
+                "time": times,
+                "altitude": [10000.0] * n_points,
+                "fuel_burn": [per_point] * n_points,
+                "fuel_flow": [per_point / 60] * n_points,
+                "segment_duration": [60.0] * n_points,
+                "thrust": [50000.0] * n_points,
+                "aircraft_mass": [70000.0] * n_points,
+                "phase": ["Cruise"] * n_points,
+                "thrust_segment": ["TOTAL"] * n_points,
+                "true_airspeed": [230.0] * n_points,
+            }
+        )
 
     def test_bada_rejects_unrealistic_fuel_burn(self) -> None:
         """fuel_burn=40000 > (80000-45000)*1.1=38500 → raises."""
@@ -192,10 +200,7 @@ class TestPerformanceGuardrailFuelBurn:
             )
         )
         model._finalize_columns = MagicMock(
-            side_effect=lambda d, p: d.update(
-                {"fuel_burn": [40_000 / 5] * 5}
-            )
-            or None
+            side_effect=lambda d, p: d.update({"fuel_burn": [40_000 / 5] * 5}) or None
         )
         model._compute_engine_efficiency_if_missing = MagicMock()
         model._attach_output_attrs = MagicMock()
@@ -209,9 +214,7 @@ class TestPerformanceGuardrailFuelBurn:
         flight.fuel = MagicMock()
 
         with pytest.raises(PerformanceStepError, match="fuel burn"):
-            model.run_by_bada_version(
-                flight, df, "A320", None, None, None
-            )
+            model.run_by_bada_version(flight, df, "A320", None, None, None)
 
     def test_bada_accepts_realistic_fuel_burn(self) -> None:
         """fuel_burn=10000 < (80000-45000)*1.1=38500 → passes."""
@@ -251,16 +254,17 @@ class TestPerformanceGuardrailFuelBurn:
         flight.fuel = MagicMock()
 
         # Patch Flight and FlightWithPerformance to skip downstream validation
-        with patch(
-            "pyneats.steps.performance.bada_model.Flight",
-            return_value=MagicMock(),
-        ), patch(
-            "pyneats.steps.performance.bada_model.FlightWithPerformance.from_flight",
-            return_value=MagicMock(),
+        with (
+            patch(
+                "pyneats.steps.performance.bada_model.Flight",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "pyneats.steps.performance.bada_model.FlightWithPerformance.from_flight",
+                return_value=MagicMock(),
+            ),
         ):
-            result = model.run_by_bada_version(
-                flight, df, "A320", None, None, None
-            )
+            result = model.run_by_bada_version(flight, df, "A320", None, None, None)
             assert result is not None
 
     def test_bada_skips_guardrail_when_mtow_none(self) -> None:
@@ -301,16 +305,17 @@ class TestPerformanceGuardrailFuelBurn:
         flight.fuel = MagicMock()
 
         # Patch Flight and FlightWithPerformance to skip downstream validation
-        with patch(
-            "pyneats.steps.performance.bada_model.Flight",
-            return_value=MagicMock(),
-        ), patch(
-            "pyneats.steps.performance.bada_model.FlightWithPerformance.from_flight",
-            return_value=MagicMock(),
+        with (
+            patch(
+                "pyneats.steps.performance.bada_model.Flight",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "pyneats.steps.performance.bada_model.FlightWithPerformance.from_flight",
+                return_value=MagicMock(),
+            ),
         ):
-            result = model.run_by_bada_version(
-                flight, df, "A320", None, None, None
-            )
+            result = model.run_by_bada_version(flight, df, "A320", None, None, None)
             assert result is not None
             model.logger.warning.assert_called_once()
 
@@ -321,7 +326,7 @@ class TestPerformanceGuardrailFuelBurn:
 
 
 class TestClimateGuardrailNonCO2:
-    """Guardrail: reject non-CO2 species with CO2eq > 100× CO2 baseline."""
+    """Guardrail: reject non-CO2 species with CO2eq > 100x CO2 baseline."""
 
     def _make_gwp(self) -> GWPMetrics:
         return GWPMetrics(params=GWPParams())
@@ -360,10 +365,10 @@ class TestClimateGuardrailNonCO2:
         return flight
 
     def test_gwp_rejects_implausible_nonco2(self) -> None:
-        """CH4 CO2eq=200000 > 100×1000 → raises."""
+        """CH4 CO2eq=200000 > 100x1000 -> raises."""
         gwp = self._make_gwp()
 
-        # We need a very large AGWP to produce CO2eq > 100× CO2
+        # We need a very large AGWP to produce CO2eq > 100x CO2
         # CO2eq = EAGWP / (C(H) * s_yr)
         # So AGWP must be large enough: AGWP * efficacy / (C(H) * s_yr) > 100 * 1000
         # C(20) ~ 2.495e-14, s_yr = 31556926
@@ -379,7 +384,7 @@ class TestClimateGuardrailNonCO2:
             gwp.run(flight)
 
     def test_gwp_accepts_plausible_nonco2(self) -> None:
-        """Tiny CO2eq < 100×1000 → passes."""
+        """Tiny CO2eq < 100x1000 -> passes."""
         gwp = self._make_gwp()
 
         # Very small AGWP → CO2eq will be tiny
@@ -391,12 +396,15 @@ class TestClimateGuardrailNonCO2:
         )
 
         # Mock the FlightReport.extract and FlightWithClimateImpact.from_flight
-        with patch(
-            "pyneats.steps.climate_metrics.gwp.FlightReport.extract",
-            return_value={"flight_id": "TEST001"},
-        ), patch(
-            "pyneats.steps.climate_metrics.gwp.FlightWithClimateImpact.from_flight",
-            return_value=MagicMock(),
+        with (
+            patch(
+                "pyneats.steps.climate_metrics.gwp.FlightReport.extract",
+                return_value={"flight_id": "TEST001"},
+            ),
+            patch(
+                "pyneats.steps.climate_metrics.gwp.FlightWithClimateImpact.from_flight",
+                return_value=MagicMock(),
+            ),
         ):
             result = gwp.run(flight)
             assert result is not None
@@ -410,12 +418,15 @@ class TestClimateGuardrailNonCO2:
             ch4_agwp_20=1e6,  # Would exceed ratio if CO2 > 0
         )
 
-        with patch(
-            "pyneats.steps.climate_metrics.gwp.FlightReport.extract",
-            return_value={"flight_id": "TEST001"},
-        ), patch(
-            "pyneats.steps.climate_metrics.gwp.FlightWithClimateImpact.from_flight",
-            return_value=MagicMock(),
+        with (
+            patch(
+                "pyneats.steps.climate_metrics.gwp.FlightReport.extract",
+                return_value={"flight_id": "TEST001"},
+            ),
+            patch(
+                "pyneats.steps.climate_metrics.gwp.FlightWithClimateImpact.from_flight",
+                return_value=MagicMock(),
+            ),
         ):
             result = gwp.run(flight)
             assert result is not None

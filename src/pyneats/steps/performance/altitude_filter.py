@@ -16,6 +16,7 @@ from pyneats.core.neats_default_parameters import DEFAULT_MIN_ALTITUDE_FL
 from pyneats.steps.performance.protocol import PerformanceStepError
 from pyneats.steps.weather.weather_provider import FlightWithWeather
 
+
 __all__ = ["filter_low_altitude_points"]
 
 
@@ -27,7 +28,7 @@ def filter_low_altitude_points(
     """Filter trajectory points below *min_altitude_fl* and return a new view.
 
     At this pipeline stage altitude is already in **metres**, so the FL
-    threshold is converted: ``FL × 100 × 0.3048``.
+    threshold is converted: ``FL x 100 x 0.3048``.
 
     Parameters
     ----------

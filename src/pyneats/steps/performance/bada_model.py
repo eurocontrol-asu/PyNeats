@@ -52,8 +52,8 @@ from pyneats.core.neats_default_parameters import DEFAULT_FF_OUTLIER_THRESHOLD
 from pyneats.core.neats_default_parameters import DEFAULT_FUEL_BURN_THRESHOLD
 from pyneats.core.neats_default_parameters import DEFAULT_FUEL_RESERVE_FRACTION
 from pyneats.core.neats_default_parameters import DEFAULT_MAX_MASS_ESTIMATION_ITER
-from pyneats.core.neats_default_parameters import DEFAULT_MIN_ALTITUDE_FL
 from pyneats.core.neats_default_parameters import DEFAULT_MAX_REL_MASS_DIFF
+from pyneats.core.neats_default_parameters import DEFAULT_MIN_ALTITUDE_FL
 from pyneats.core.neats_default_parameters import DEFAULT_PAYLOAD_FACTOR
 from pyneats.core.neats_default_parameters import DEFAULT_ROCD_PHASE_THRESHOLD
 from pyneats.core.neats_default_parameters import (
@@ -478,7 +478,7 @@ class BADAPerformanceModel(
                 if total_fuel > limit:
                     raise PerformanceStepError(
                         f"Total fuel burn {total_fuel:.0f} kg exceeds "
-                        f"useful payload capacity {useful_payload:.0f} kg × "
+                        f"useful payload capacity {useful_payload:.0f} kg x "
                         f"{self.params.fuel_burn_threshold} = {limit:.0f} kg",
                         retryable=False,
                     )

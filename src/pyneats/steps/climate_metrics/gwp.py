@@ -14,22 +14,16 @@ from typing import Final
 
 import pandas as pd
 
-from pyneats.core.neats_default_parameters import (
-    DEFAULT_CLIMACCF_KWARGS,
-    MAX_NONCO2_CO2_RATIO
-)
-
-from pyneats.core.physics import (
-    CO2_AGWP_COEFF_WM2YR_PER_KG,
-    CONVERSION_FACTORS_AGWP_TO_RF,
-    CONVERSION_FACTORS_ATR_TO_RF,
-    EFFICACY,
-    METRICS_HORIZONS,
-    RF_BACKWARD_FACTOR,
-    SECONDS_PER_YEAR,
-    SURFACE_EARTH
-)
-
+from pyneats.core.neats_default_parameters import DEFAULT_CLIMACCF_KWARGS
+from pyneats.core.neats_default_parameters import MAX_NONCO2_CO2_RATIO
+from pyneats.core.physics import CO2_AGWP_COEFF_WM2YR_PER_KG
+from pyneats.core.physics import CONVERSION_FACTORS_AGWP_TO_RF
+from pyneats.core.physics import CONVERSION_FACTORS_ATR_TO_RF
+from pyneats.core.physics import EFFICACY
+from pyneats.core.physics import METRICS_HORIZONS
+from pyneats.core.physics import RF_BACKWARD_FACTOR
+from pyneats.core.physics import SECONDS_PER_YEAR
+from pyneats.core.physics import SURFACE_EARTH
 from pyneats.core.steps import BaseParams
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
@@ -65,7 +59,6 @@ SPECIES: Final[tuple[str, ...]] = ("CH4", "O3", "H2O")
 ATR_COL_TEMPLATE: Final[str] = "ATR_20_{spec}"
 
 
-
 # ---------------------------
 # Parameters (Unchanged)
 # ---------------------------
@@ -90,7 +83,9 @@ class GWPParams(BaseParams):
         default_factory=lambda: CONVERSION_FACTORS_ATR_TO_RF
     )
     efficacy: Mapping[str, float] = field(default_factory=lambda: EFFICACY)
-    atr_ref_horizon: int = DEFAULT_CLIMACCF_KWARGS.get("time_horizon", 20)
+    atr_ref_horizon: int = field(
+        default_factory=lambda: DEFAULT_CLIMACCF_KWARGS.get("time_horizon", 20)
+    )
     rf_backward_factor: Mapping[str, float] = field(
         default_factory=lambda: RF_BACKWARD_FACTOR
     )
@@ -158,9 +153,7 @@ class GWPMetrics(
         s_yr = self.params.seconds_per_year
         return dict.fromkeys(self.params.horizons, total_ef_J * eps / (s * s_yr))
 
-    def _co2eq_from_eagwp_Wm2yr(
-        self, agwp_Wm2yr: dict[int, float]
-    ) -> dict[int, float]:
+    def _co2eq_from_eagwp_Wm2yr(self, agwp_Wm2yr: dict[int, float]) -> dict[int, float]:
         """CO2eq(H) = EAGWP(H) / C(H)"""
         return {
             h: agwp_Wm2yr[h] / self.params.agwp_coeff_wm2yr_per_kg[h]
@@ -285,9 +278,7 @@ class GWPMetrics(
                 denom = self.params.agwp_coeff_wm2yr_per_kg[h]
                 co2eq = eagwp / denom
 
-                val_list.append(
-                    {"horizon": h, "EAGWP_Wm2yr": eagwp, "CO2eq_kg": co2eq}
-                )
+                val_list.append({"horizon": h, "EAGWP_Wm2yr": eagwp, "CO2eq_kg": co2eq})
             results.append({"species": sp, "value": val_list})
 
         # --- B. Contrails (From Attributes) ---
@@ -418,7 +409,7 @@ class GWPMetrics(
                     if co2eq > MAX_NONCO2_CO2_RATIO * total_co2_kg:
                         raise ClimateImpactStepError(
                             f"Non-CO2 species '{species}' at H={val['horizon']}yr has "
-                            f"CO2eq={co2eq:.1f} kg, exceeding {MAX_NONCO2_CO2_RATIO}× "
+                            f"CO2eq={co2eq:.1f} kg, exceeding {MAX_NONCO2_CO2_RATIO}x "
                             f"CO2 baseline ({total_co2_kg:.1f} kg)"
                         )
 
