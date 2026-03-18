@@ -179,12 +179,15 @@ DEFAULT_FUEL_BURN_THRESHOLD: Final[float] = 1.1
 # Minimum Flight Level (FL) threshold: points below this FL are filtered
 # when retrying after a performance step failure.
 # FL15 = 1500 ft ≈ 457 m — filters out ground-level / taxi data.
-DEFAULT_MIN_ALTITUDE_FL: Final[float] = 15
+DEFAULT_MIN_ALTITUDE_FL: Final[float] = 20
 
 # Maximum ratio of filtered points before giving up on altitude fallback.
 # If more than 80% of trajectory points are below min FL, the flight is
 # likely a low-altitude operation — retrying is unlikely to help.
 DEFAULT_MAX_ALTITUDE_FILTER_RATIO: Final[float] = 0.8
+
+# Guardrail: reject non-CO2 species producing > MAX_NONCO2_CO2_RATIO × CO2 baseline
+MAX_NONCO2_CO2_RATIO: Final[float] = 100.0
 
 # Emissions model parameters
 # Configuration options passed to PyContrails emissions calculation engine

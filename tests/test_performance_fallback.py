@@ -78,7 +78,7 @@ class TestFilterLowAltitudePoints:
 
     def test_keeps_points_at_threshold(self) -> None:
         """Points exactly at FL15 are kept (inclusive)."""
-        flight = _make_flight_with_weather([5, 15, 100, 350])
+        flight = _make_flight_with_weather([5, 20, 100, 350])
         filtered = filter_low_altitude_points(flight)
         assert len(filtered.dataframe) == 3
 

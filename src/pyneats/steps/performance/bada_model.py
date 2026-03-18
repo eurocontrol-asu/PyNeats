@@ -51,7 +51,6 @@ from pyneats.core.neats_default_parameters import DEFAULT_DELTA_TAU_FILL_METHOD
 from pyneats.core.neats_default_parameters import DEFAULT_FF_OUTLIER_THRESHOLD
 from pyneats.core.neats_default_parameters import DEFAULT_FUEL_BURN_THRESHOLD
 from pyneats.core.neats_default_parameters import DEFAULT_FUEL_RESERVE_FRACTION
-from pyneats.core.neats_default_parameters import DEFAULT_MAX_ALTITUDE_FILTER_RATIO
 from pyneats.core.neats_default_parameters import DEFAULT_MAX_MASS_ESTIMATION_ITER
 from pyneats.core.neats_default_parameters import DEFAULT_MIN_ALTITUDE_FL
 from pyneats.core.neats_default_parameters import DEFAULT_MAX_REL_MASS_DIFF
@@ -460,18 +459,18 @@ class BADAPerformanceModel(
             if early is not None:
                 return early
 
-            # 2b) derive fuel_flow from mass trajectory if needed
+            # 3) derive fuel_flow from mass trajectory if needed
             self._derive_fuel_flow_from_mass_if_needed(df)
 
-            # 3) choose mass strategy + compute perf (now returns q_fuel_used)
+            # 4) choose mass strategy + compute perf (now returns q_fuel_used)
             perf, q_fuel_used = self._choose_mass_strategy(
                 adapter, df, flight, icao, q_fuel_attr, self.params.reference_q_fuel
             )
 
-            # 4) finalize df columns, compute efficiency if needed (using q_fuel_used)
+            # 5) finalize df columns, compute efficiency if needed (using q_fuel_used)
             self._finalize_columns(df, perf)
 
-            # 4.5) Fuel burn guardrail: reject if total fuel > (MTOW - OEW) * threshold
+            # 6) Fuel burn guardrail: reject if total fuel > (MTOW - OEW) * threshold
             if adapter.MTOW is not None and adapter.OEW is not None:
                 useful_payload = adapter.MTOW - adapter.OEW
                 total_fuel = float(df["fuel_burn"].sum())

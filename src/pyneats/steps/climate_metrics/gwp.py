@@ -14,15 +14,22 @@ from typing import Final
 
 import pandas as pd
 
-from pyneats.core.neats_default_parameters import DEFAULT_CLIMACCF_KWARGS
-from pyneats.core.physics import CO2_AGWP_COEFF_WM2YR_PER_KG
-from pyneats.core.physics import CONVERSION_FACTORS_AGWP_TO_RF
-from pyneats.core.physics import CONVERSION_FACTORS_ATR_TO_RF
-from pyneats.core.physics import EFFICACY
-from pyneats.core.physics import METRICS_HORIZONS
-from pyneats.core.physics import RF_BACKWARD_FACTOR
-from pyneats.core.physics import SECONDS_PER_YEAR
-from pyneats.core.physics import SURFACE_EARTH
+from pyneats.core.neats_default_parameters import (
+    DEFAULT_CLIMACCF_KWARGS,
+    MAX_NONCO2_CO2_RATIO
+)
+
+from pyneats.core.physics import (
+    CO2_AGWP_COEFF_WM2YR_PER_KG,
+    CONVERSION_FACTORS_AGWP_TO_RF,
+    CONVERSION_FACTORS_ATR_TO_RF,
+    EFFICACY,
+    METRICS_HORIZONS,
+    RF_BACKWARD_FACTOR,
+    SECONDS_PER_YEAR,
+    SURFACE_EARTH
+)
+
 from pyneats.core.steps import BaseParams
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
@@ -57,8 +64,6 @@ SPECIES: Final[tuple[str, ...]] = ("CH4", "O3", "H2O")
 # Column name pattern expected for ATR at H0 = 20 years
 ATR_COL_TEMPLATE: Final[str] = "ATR_20_{spec}"
 
-# Guardrail: reject non-CO2 species producing > MAX_NONCO2_CO2_RATIO × CO2 baseline
-MAX_NONCO2_CO2_RATIO: Final[float] = 100.0
 
 
 # ---------------------------
