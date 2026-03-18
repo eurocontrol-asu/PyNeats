@@ -5,8 +5,8 @@ import sys
 
 import pandas as pd
 
-from pyneats.runners.large_emitter import FleetRunnerLargeEmitter
 from pyneats.runners.fleet import FleetRunnerParams
+from pyneats.runners.large_emitter import FleetRunnerLargeEmitter
 from pyneats.steps.weather.weather_store import ZarrPaths
 
 
@@ -43,8 +43,8 @@ def json_to_dataframe(json_filepath: str) -> pd.DataFrame:
         model_type = trajectory.get("trj_data_source", "Unknown")
 
         # Convert each trajectory point to a row
-        for point in trajectory_data:
-            rows.append({
+        rows.extend(
+            {
                 "latitude": point.get("lat"),
                 "longitude": point.get("lon"),
                 "time": point.get("ts"),
@@ -55,17 +55,18 @@ def json_to_dataframe(json_filepath: str) -> pd.DataFrame:
                 "aobt": aobt,
                 "aircraft_type": aircraft_type,
                 "model_type": model_type,
-            })
+            }
+            for point in trajectory_data
+        )
 
     df = pd.DataFrame(rows)
-    
+
     # Parse time columns to datetime for the DataFrame
     if not df.empty:
         df["time"] = pd.to_datetime(df["time"], utc=True)
         df["aobt"] = pd.to_datetime(df["aobt"], utc=True)
-    
-    return df
 
+    return df
 
 
 def main():
@@ -75,7 +76,7 @@ def main():
     This example demonstrates how to use the FleetRunnerLargeEmitter to compute
     climate impacts (contrails, non-CO2 effects, and metrics) for a fleet of flights
     loaded from a pandas DataFrame.
-    
+
     To keep this example working, it loads data from the JSON test file and converts
     it to a DataFrame. In your own code, you would load trajectory data from CSV,
     database, or other sources.
@@ -89,7 +90,14 @@ def main():
         help="Path to meteorological data directory (containing icon_met.zarr, icon_rad.zarr, etc.)",
     )
     parser.add_argument(
-        "--bada-path", required=True, help="Path to BADA (Base of Aircraft Data) directory"
+        "--bada-path",
+        required=True,
+        help="Path to BADA (Base of Aircraft Data) directory",
+    )
+    parser.add_argument(
+        "--airport-fuel-path",
+        default=None,
+        help="Optional path to a CSV or JSON file mapping airport codes to fuel properties",
     )
     parser.add_argument(
         "--njobs", type=int, default=2, help="Number of parallel jobs (default: 2)"
@@ -99,10 +107,18 @@ def main():
 
     # Validate paths
     if not os.path.isdir(args.weather_path):
-        print(f"ERROR: Weather path does not exist: {args.weather_path}", file=sys.stderr)
+        print(
+            f"ERROR: Weather path does not exist: {args.weather_path}", file=sys.stderr
+        )
         sys.exit(1)
     if not os.path.isdir(args.bada_path):
         print(f"ERROR: BADA path does not exist: {args.bada_path}", file=sys.stderr)
+        sys.exit(1)
+    if args.airport_fuel_path and not os.path.isfile(args.airport_fuel_path):
+        print(
+            f"ERROR: Airport fuel file does not exist: {args.airport_fuel_path}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     # Set up meteorological data paths
@@ -119,15 +135,20 @@ def main():
 
     # Note: wind_store is optional, but will use it if it exists
     if not os.path.isdir(wind_store):
-        print(f"WARNING: Wind store not found: {wind_store}. Setting to None.", file=sys.stderr)
+        print(
+            f"WARNING: Wind store not found: {wind_store}. Setting to None.",
+            file=sys.stderr,
+        )
         wind_store = None
 
-    zarr_paths = ZarrPaths(met_store=met_store, rad_store=rad_store, wind_store=wind_store)
+    zarr_paths = ZarrPaths(
+        met_store=met_store, rad_store=rad_store, wind_store=wind_store
+    )
 
     # Load trajectory data from JSON test file and convert to DataFrame
     # This ensures the example works end-to-end with complete trajectory data
     test_json_path = "tests/data/golden/fleet_5_flights_input.json"
-    
+
     if not os.path.isfile(test_json_path):
         print(
             f"ERROR: Test data file not found: {test_json_path}\n"
@@ -140,7 +161,6 @@ def main():
     # Convert JSON trajectories to DataFrame
     print(f"Loading trajectory data from: {test_json_path}")
     trajectory_dataframe = json_to_dataframe(test_json_path)
-
 
     # Required DataFrame schema with trajectory waypoints:
     #
@@ -156,8 +176,10 @@ def main():
     #   model_type         str               Source of trajectory data
     #   aobt               datetime64[ns]    Actual off-block time
     #   aircraft_type      str               ICAO aircraft type code
-    
-    print(f"Loaded {len(trajectory_dataframe)} waypoints for {trajectory_dataframe['flight_id'].nunique()} flights")
+
+    print(
+        f"Loaded {len(trajectory_dataframe)} waypoints for {trajectory_dataframe['flight_id'].nunique()} flights"
+    )
     print(f"Columns: {', '.join(trajectory_dataframe.columns.tolist())}")
     print()
 
@@ -167,6 +189,7 @@ def main():
         zarr_paths=zarr_paths,
         njobs=args.njobs,
         bada_path=args.bada_path,
+        airport_fuel_path=args.airport_fuel_path,
     )
 
     print("Starting fleet-level climate impact computation for large emitters...")

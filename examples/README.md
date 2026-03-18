@@ -19,6 +19,7 @@ uv run examples/fleet_computation_from_dataframe.py \
 **Arguments:**
 - `--weather-path` (required): Path to meteorological data directory (should contain `icon_met.zarr`, `icon_rad.zarr`, etc.)
 - `--bada-path` (required): Path to BADA (Base of Aircraft Data) directory
+- `--airport-fuel-path` (optional): Path to a CSV or JSON file mapping airport codes to fuel properties (q_fuel, h_c_ratio, etc.)
 - `--njobs` (optional): Number of parallel jobs (default: 2)
 
 **Example Data - End-to-End Demo:**
@@ -52,6 +53,7 @@ uv run examples/fleet_computation_from_json.py \
 - `--json-file` (required): Path to JSON file containing flight trajectories
 - `--weather-path` (required): Path to meteorological data directory
 - `--bada-path` (required): Path to BADA (Base of Aircraft Data) directory
+- `--airport-fuel-path` (optional): Path to a CSV or JSON file mapping airport codes to fuel properties
 - `--njobs` (optional): Number of parallel jobs (default: 2)
 
 **Example Data - Working End-to-End Demo:**
@@ -85,6 +87,7 @@ uv run examples/fleet_small_emitter.py \
 - `--json-file` (required): Path to JSON file containing flight trajectories
 - `--weather-path` (required): Path to meteorological data directory
 - `--bada-path` (required): Path to BADA (Base of Aircraft Data) directory
+- `--airport-fuel-path` (optional): Path to a CSV or JSON file mapping airport codes to fuel properties
 - `--tmp-dir` (required): Path to a temporary directory for OpenAirClim file I/O
 - `--njobs` (optional): Number of parallel jobs (default: 2)
 
@@ -116,6 +119,7 @@ uv run examples/fleet_performance_only.py \
 - `--json-file` (required): Path to JSON file containing flight trajectories
 - `--weather-path` (required): Path to meteorological data directory
 - `--bada-path` (required): Path to BADA (Base of Aircraft Data) directory
+- `--airport-fuel-path` (optional): Path to a CSV or JSON file mapping airport codes to fuel properties
 - `--njobs` (optional): Number of parallel jobs (default: 2)
 
 **Example with test data:**

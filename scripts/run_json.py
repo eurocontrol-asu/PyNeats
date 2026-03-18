@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -33,6 +34,7 @@ from pyneats.runners.large_emitter import FlightRunnerLargeEmitter
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
 from pyneats.steps.weather.weather_store import ZarrPaths
 from pyneats.steps.weather.weather_store import get_weather_from_zarr
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -104,12 +106,14 @@ def run_fleet(
     input_path: Path,
     zarr_paths: ZarrPaths,
     bada_path: str,
+    airport_fuel_path: str | None = None,
 ) -> None:
     """Run all flights through FleetRunnerLargeEmitter (vectorized batch)."""
     cfg = FleetRunnerParams(
         trajectory_json_filepath=str(input_path),
         zarr_paths=zarr_paths,
         bada_path=bada_path,
+        airport_fuel_path=airport_fuel_path,
         params={},
     )
 
@@ -118,9 +122,7 @@ def run_fleet(
     runner.eval()
 
     succeeded = (
-        len(runner.fleet_with_climate_impact)
-        if runner.fleet_with_climate_impact
-        else 0
+        len(runner.fleet_with_climate_impact) if runner.fleet_with_climate_impact else 0
     )
     errors = list(runner.error_records) if runner.error_records else []
 
@@ -141,6 +143,7 @@ def run_flight_loop(
     input_flights: list[dict[str, Any]],
     zarr_paths: ZarrPaths,
     bada_path: str,
+    airport_fuel_path: str | None = None,
 ) -> None:
     """Run each flight individually through FlightRunnerLargeEmitter."""
     # 1. Load weather once (shared across all flights)
@@ -173,6 +176,7 @@ def run_flight_loop(
                 source=df,
                 cfg=cfg,
                 bada_path=bada_path,
+                airport_fuel_path=airport_fuel_path,
             )
             runner.eval()
             succeeded += 1
@@ -213,6 +217,12 @@ def main() -> None:
         help="Path to BADA data directory.",
     )
     parser.add_argument(
+        "--airport-fuel-path",
+        type=Path,
+        default=None,
+        help="Optional path to a CSV or JSON file mapping airport codes to fuel properties.",
+    )
+    parser.add_argument(
         "--mode",
         choices=["fleet", "flight"],
         default="fleet",
@@ -234,11 +244,15 @@ def main() -> None:
     log.info("Weather path: %s", args.weather_path)
     log.info("BADA path: %s", args.bada_path)
 
+    airport_fuel = str(args.airport_fuel_path) if args.airport_fuel_path else None
+
     # --- Dispatch ---
     if args.mode == "fleet":
-        run_fleet(input_flights, args.input, zarr_paths, str(args.bada_path))
+        run_fleet(
+            input_flights, args.input, zarr_paths, str(args.bada_path), airport_fuel
+        )
     else:
-        run_flight_loop(input_flights, zarr_paths, str(args.bada_path))
+        run_flight_loop(input_flights, zarr_paths, str(args.bada_path), airport_fuel)
 
 
 if __name__ == "__main__":
