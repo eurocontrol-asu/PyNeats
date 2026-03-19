@@ -75,7 +75,7 @@ class FlightRunnerLargeEmitter(FlightRunner):
         airport_fuel_path: str | None = None,
     ) -> None:
         # 1. Run Shared Init
-        super().__init__(weather, source, cfg, bada_path,airport_fuel_path)
+        super().__init__(weather, source, cfg, bada_path, airport_fuel_path)
 
         # Initialize Contrails (CoCiP)
         # Specific to this pipeline
