@@ -252,7 +252,7 @@ class FlightRunner(Runner, ABC):
             raise RuntimeError(f"Weather intersection failed: {e}") from e
 
         self.flight_with_weather = enriched
-        # self.interpolated_flight = None
+        self.interpolated_flight = None
 
         # Cache the downsampled met/rad datasets for later use (e.g accfs)
         self._ds_met = self.weather.ds_met()
@@ -284,7 +284,7 @@ class FlightRunner(Runner, ABC):
             raise RuntimeError(f"Performance evaluation failed: {e}") from e
 
         self.flight_with_performance = enriched
-        # self.flight_with_weather = None
+        self.flight_with_weather = None
         logger.info("Performance step completed successfully")
 
         return self
@@ -307,7 +307,7 @@ class FlightRunner(Runner, ABC):
 
         # Get the typed, zero-copy view
         self.flight_with_emissions = enriched
-        # self.flight_with_performance = None
+        self.flight_with_performance = None
 
         logger.info("Emissions step completed successfully")
         return self
@@ -335,7 +335,7 @@ class FlightRunner(Runner, ABC):
 
         # keep the typed, zero-copy view
         self.flight_with_climate_impact = enriched
-        # self.flight_with_nonco2 = None
+        self.flight_with_nonco2 = None
 
         logger.info("Climate impact (GWP) step completed successfully")
 
