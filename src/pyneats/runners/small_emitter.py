@@ -88,9 +88,10 @@ class FlightRunnerSmallEmitter(FlightRunner):
         source: pd.DataFrame | None = None,
         cfg: SmallEmitterConfig | None = None,
         bada_path: str | None = None,
+        airport_fuel_path: str | None = None,
     ) -> None:
         # Run Shared Init
-        super().__init__(weather, source, cfg, bada_path)
+        super().__init__(weather, source, cfg, bada_path, airport_fuel_path)
 
         self.cfg = cfg or SmallEmitterConfig()
 

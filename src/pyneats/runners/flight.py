@@ -223,7 +223,7 @@ class FlightRunner(Runner, ABC):
             raise RuntimeError(f"Interpolation failed: {e}") from e
 
         self.interpolated_flight = interpolated_flight
-        self.parsed_flight = None
+        #self.parsed_flight = None
 
         logger.info(
             "Interpolation completed successfully with %d points",
