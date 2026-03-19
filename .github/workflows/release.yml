@@ -97,7 +97,8 @@ jobs:
     name: Publish to Test PyPI
     runs-on: ubuntu-latest
     needs: [build]
-    if: contains(github.ref, '-')  # Only for pre-releases (v1.0.0-beta.1)
+    if: false  # TODO: enable when trusted publishing is configured on PyPI
+    # if: contains(github.ref, '-')  # Only for pre-releases (v1.0.0-beta.1)
     environment:
       name: test-pypi
       url: https://test.pypi.org/p/pyneats
@@ -121,7 +122,8 @@ jobs:
     name: Publish to PyPI
     runs-on: ubuntu-latest
     needs: [build, changelog]
-    if: "!contains(github.ref, '-')"  # Only for stable releases (v1.0.0)
+    if: false  # TODO: enable when trusted publishing is configured on PyPI
+    # if: "!contains(github.ref, '-')"  # Only for stable releases (v1.0.0)
     environment:
       name: pypi
       url: https://pypi.org/p/pyneats
@@ -144,7 +146,7 @@ jobs:
   github-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build, changelog, publish]
+    needs: [build, changelog]
     if: "!contains(github.ref, '-')"  # Only for stable releases
 
     steps:
