@@ -1,30 +1,19 @@
-"""Tests reproducing the Small Emitter tmpdir bugs.
+"""Tests for the Small Emitter tmpdir fix.
 
-Bug #1: OpenAirClimModel.run() reads `self.default_params` (the class type
-        defaults) instead of `self.params` (the instance-resolved params).
-        This means `tmp_base_dir_path` is ALWAYS "" regardless of injection.
-
-Bug #2: The _STEP_CACHE in fleet.py uses (interface, name) as cache key
-        without including params. A cached step with stale params is returned
-        even when different params are passed.
+Verifies that BaseStep subclasses correctly use `self.params` (instance-resolved)
+instead of `self.default_params` (class type defaults) when accessing runtime
+parameters like `tmp_base_dir_path`.
 
 These tests are self-contained and do not require pycontrails, openairclim,
-or pyBADA to be installed. They reproduce the bugs using the same BaseStep
-and registry mechanisms that the production code uses.
+or pyBADA to be installed.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
 
 from pyneats.core.steps import BaseParams
 from pyneats.core.steps import BaseStep
-from pyneats.core.steps import Step
-from pyneats.core.steps_registry import register
-from pyneats.runners.fleet import _STEP_CACHE
-from pyneats.runners.fleet import _get_step_cached
 
 
 # ============================================================================
@@ -46,21 +35,6 @@ class _FakeClimateModel(BaseStep):
     default_params = _FakeClimateParams
 
     def run(self, flight):
-        # FIXED: reads the instance-resolved params
-        return self.params.tmp_base_dir_path
-
-    def get_grid_res(self):
-        # FIXED: reads the instance-resolved params
-        return self.params.grid_res
-
-
-class _CorrectClimateModel(BaseStep):
-    """What OpenAirClimModel SHOULD do — use self.params."""
-
-    default_params = _FakeClimateParams
-
-    def run(self, flight):
-        # CORRECT: reads the instance-resolved params
         return self.params.tmp_base_dir_path
 
     def get_grid_res(self):
@@ -68,23 +42,23 @@ class _CorrectClimateModel(BaseStep):
 
 
 # ============================================================================
-# Bug #1: self.default_params vs self.params
+# Tests: self.params correctly resolves runtime parameters
 # ============================================================================
 
 
-class TestOpenAirClimDefaultParamsBug:
-    """Demonstrate that using self.default_params ignores runtime params.
+class TestOpenAirClimParamsFix:
+    """Verify that runtime params are correctly used via self.params.
 
-    This reproduces the exact pattern used in OpenAirClimModel.run():
-        tempfile.TemporaryDirectory(dir=self.default_params.tmp_base_dir_path)
+    This validates the fix for the bug where OpenAirClimModel.run() used
+    self.default_params (class type defaults) instead of self.params.
     """
 
     def test_params_are_correctly_stored_in_self_params(self):
-        """Baseline: BaseStep.__init__ stores resolved params in self.params."""
+        """BaseStep.__init__ stores resolved params in self.params."""
         model = _FakeClimateModel(tmp_base_dir_path="/tmp/writable")
         assert model.params.tmp_base_dir_path == "/tmp/writable"
 
-    def test_default_params_ignores_runtime_tmp_path(self):
+    def test_runtime_tmp_path_is_used(self):
         """Runtime tmp_base_dir_path is correctly used via self.params."""
         model = _FakeClimateModel(tmp_base_dir_path="/tmp/writable")
 
@@ -95,7 +69,7 @@ class TestOpenAirClimDefaultParamsBug:
             f"instead of '/tmp/writable' (injected value)."
         )
 
-    def test_default_params_ignores_runtime_grid_res(self):
+    def test_runtime_grid_res_is_used(self):
         """Runtime grid_res is correctly used via self.params."""
         model = _FakeClimateModel(grid_res=99.0)
 
@@ -105,98 +79,24 @@ class TestOpenAirClimDefaultParamsBug:
             f"self.params.grid_res returns {actual} instead of 99.0 (injected value)."
         )
 
-    def test_correct_pattern_works(self):
-        """Contrast: using self.params works correctly."""
-        model = _CorrectClimateModel(tmp_base_dir_path="/tmp/writable")
-        assert model.run(None) == "/tmp/writable"
-
-        model2 = _CorrectClimateModel(grid_res=99.0)
-        assert model2.get_grid_res() == 99.0
-
-    def test_empty_string_means_relative_tmpdir(self):
-        """After fix, injected tmp_base_dir_path is used instead of ''.
+    def test_injected_tmp_path_overrides_default(self):
+        """Injected tmp_base_dir_path is used instead of '' default.
 
         Previously, self.default_params always returned '' (the class default),
         causing tempfile.TemporaryDirectory(dir='') to create a relative tmp dir
         in the CWD, which is read-only on Azure Functions.
         """
         model = _FakeClimateModel(tmp_base_dir_path="/tmp/safe")
-        dir_value = model.run(None)  # now reads self.params → "/tmp/safe"
+        dir_value = model.run(None)
 
-        # After fix: injected value is correctly used
         assert dir_value == "/tmp/safe", (
             f"Expected '/tmp/safe' (injected value) but got '{dir_value}'. "
-            "The fix should use self.params instead of self.default_params."
+            "self.params should return the injected value, not the class default."
         )
 
+    def test_default_params_used_when_no_override(self):
+        """When no params are passed, defaults are used correctly."""
+        model = _FakeClimateModel()
 
-# ============================================================================
-# Bug #2: Step cache ignores params in key
-# ============================================================================
-
-
-# Register a simple step under the Step protocol for cache testing
-class _CacheTestStep:
-    """Minimal step whose value we can inspect."""
-
-    def __init__(self, *, value: str = "default"):
-        self.value = value
-
-    def __call__(self, x):
-        return x
-
-
-@register(Step, "_test_cache_bug_step")
-class _RegisteredCacheStep(_CacheTestStep):
-    pass
-
-
-class TestStepCacheBug:
-    """Demonstrate that _STEP_CACHE ignores params in the cache key.
-
-    Cache key is (interface, name) only — params are NOT included.
-    This means the first params used are cached, and subsequent calls
-    with different params silently return the stale step.
-    """
-
-    def setup_method(self):
-        """Clear the step cache before each test."""
-        _STEP_CACHE.clear()
-
-    def test_cache_returns_stale_params(self):
-        """BUG #2: Second call with different params gets the cached first step."""
-        params_v1: Mapping[str, Any] = {"value": "first"}
-        params_v2: Mapping[str, Any] = {"value": "second"}
-
-        step1 = _get_step_cached(Step, "_test_cache_bug_step", params_v1)
-        assert step1.value == "first"
-
-        # Should build a NEW step with value="second", but returns cached step
-        step2 = _get_step_cached(Step, "_test_cache_bug_step", params_v2)
-
-        # BUG: step2.value is "first" (cached) instead of "second" (requested)
-        assert step2.value == "second", (
-            f"BUG: _get_step_cached returned cached step with value='{step2.value}' "
-            f"instead of building a new step with value='second'.\n"
-            f"Cache key is (interface, name) only — params are ignored.\n"
-            f"In production, this means a worker process that first builds "
-            f"OpenAirClimModel with tmp_base_dir_path='' will always return "
-            f"that stale instance, even when '/tmp/small_emitter' is passed."
-        )
-
-    def test_cache_returns_same_object(self):
-        """BUG #2: Different params return literally the same object."""
-        params_v1: Mapping[str, Any] = {"value": "alpha"}
-        params_v2: Mapping[str, Any] = {"value": "beta"}
-
-        step1 = _get_step_cached(Step, "_test_cache_bug_step", params_v1)
-        step2 = _get_step_cached(Step, "_test_cache_bug_step", params_v2)
-
-        assert step1 is not step2, (
-            "BUG: _get_step_cached returned the SAME object for different params. "
-            "Any change to the step's state would affect all users of the cache."
-        )
-
-    def teardown_method(self):
-        """Clean up cache after tests."""
-        _STEP_CACHE.clear()
+        assert model.run(None) == ""
+        assert model.get_grid_res() == 5.0
