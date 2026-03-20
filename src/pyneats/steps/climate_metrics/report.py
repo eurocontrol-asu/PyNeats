@@ -188,7 +188,7 @@ class FleetReport:
 
     pyneats_version: str | None = None
     pycontrails_version: str | None = None
-    climaccf_version: str | None = None
+    openairclim_version: str | None = None
     bada4_version: str | None = None
     bada3_version: str | None = None
     pybada_version: str | None = None
@@ -209,9 +209,9 @@ class FleetReport:
                 "pycontrails",
                 module_name="pycontrails",
             ),
-            "climaccf_version": dist_version(
-                "climaccf",
-                module_name="climaccf",
+            "openairclim_version": dist_version(
+                "openairclim",
+                module_name="openairclim",
             ),
             "bada4_version": DEFAULT_BADA4_VERSION,
             "bada3_version": DEFAULT_BADA3_VERSION,
