@@ -125,7 +125,7 @@ class OpenAirClimModel(
     default_params = OpenAirClimParams
 
     def _flight_to_inventory(self, flight: Flight) -> xr.Dataset:
-        grid_res = self.default_params.grid_res
+        grid_res = self.params.grid_res
         df = flight.to_dataframe()
 
         df["nox"] = df["nox"].fillna(0)
@@ -138,7 +138,7 @@ class OpenAirClimModel(
         df["lon_bin"] = np.floor(df["longitude"] / grid_res) * grid_res + (grid_res / 2)
 
         def get_nearest_level(p):
-            levels_arr = np.asarray(self.default_params.oac_levels)
+            levels_arr = np.asarray(self.params.oac_levels)
             diff = np.abs(p.values[:, None] - levels_arr[None, :])
             indices = np.argmin(diff, axis=1)
             return levels_arr[indices]
@@ -186,13 +186,11 @@ class OpenAirClimModel(
         return ds
 
     def run(self, flight: FlightWithEmissions) -> FlightWithGlobalAGWP:
-        with tempfile.TemporaryDirectory(
-            dir=self.default_params.tmp_base_dir_path
-        ) as temp_dir:
+        with tempfile.TemporaryDirectory(dir=self.params.tmp_base_dir_path) as temp_dir:
             # 1. SETUP SYMLINK FOR REPOSITORY (Must be done before chdir if using absolute source paths)
             local_repo_link = os.path.join(temp_dir, "repository")
             if not os.path.exists(local_repo_link):
-                os.symlink(self.default_params.repo_dir_path, local_repo_link)
+                os.symlink(self.params.repo_dir_path, local_repo_link)
 
             # 2. CHANGE CWD TO SANDBOX
             original_cwd = os.getcwd()
@@ -205,14 +203,14 @@ class OpenAirClimModel(
 
                 # 4. Symlink Base Inventory
                 base_inv_filename = None
-                if self.default_params.base_inventory_path and os.path.exists(
-                    self.default_params.base_inventory_path
+                if self.params.base_inventory_path and os.path.exists(
+                    self.params.base_inventory_path
                 ):
                     base_inv_filename = os.path.basename(
-                        self.default_params.base_inventory_path
+                        self.params.base_inventory_path
                     )
                     os.symlink(
-                        self.default_params.base_inventory_path,
+                        self.params.base_inventory_path,
                         os.path.join("inputs", base_inv_filename),
                     )
 
@@ -225,10 +223,10 @@ class OpenAirClimModel(
                 _save_inventory(ds, inv_path)
 
                 # 7. Generate TOML
-                horizon = self.default_params.computation_horizon
+                horizon = self.params.computation_horizon
                 year = ds.attrs["Inventory_Year"]
                 toml_rel_path = _create_worker_toml(
-                    self.default_params.base_toml_path,
+                    self.params.base_toml_path,
                     "inputs",
                     "outputs",
                     "emissions.nc",
@@ -249,7 +247,7 @@ class OpenAirClimModel(
 
                 with xr.load_dataset(result_nc) as metrics_ds:
                     results = {}
-                    for h in self.default_params.horizons:
+                    for h in self.params.horizons:
                         var_name = f"AGWP_{h}_2025"
                         if var_name in metrics_ds:
                             raw_results = metrics_ds[var_name]
