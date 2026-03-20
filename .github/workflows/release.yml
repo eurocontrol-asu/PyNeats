@@ -82,9 +82,9 @@ jobs:
       - name: Set changelog output
         id: set_output
         run: |
-          if [ "${{ steps.changelog.outcome }}" = "success" ] && [ -n "${{ steps.changelog.outputs.changelog }}" ]; then
+          if [ "${{ steps.changelog.outcome }}" = "success" ] && [ -n "${{ steps.changelog.outputs.content }}" ]; then
             echo "changelog<<EOF" >> $GITHUB_OUTPUT
-            echo "${{ steps.changelog.outputs.changelog }}" >> $GITHUB_OUTPUT
+            echo "${{ steps.changelog.outputs.content }}" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           else
             echo "changelog=Release ${{ github.ref_name }}" >> $GITHUB_OUTPUT

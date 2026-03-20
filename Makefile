@@ -25,8 +25,7 @@ endif
 
 install:  ## Install all dependencies
 	uv sync --all-groups
-	uv run pip install pybada --no-deps --ignore-requires-python
-	uv run pip install git+https://github.com/dlr-pa/oac.git
+	uv run pip install pybada==0.1.10 --no-deps --ignore-requires-python
 	uv pip install -e .   # triggers hatch-vcs, generates src/pyneats/_version.py
 
 check: lint audit test  ## Run all checks
