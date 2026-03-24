@@ -461,7 +461,7 @@ class BADAPerformanceModel(
 
             # 1b) speed filter — remove low-TAS points before perf computation
             try:
-                flight = filter_low_speed_points(flight, adapter)
+                df = filter_low_speed_points(df, adapter)
             except Exception:
                 self.logger.warning(
                     "Speed filter failed — proceeding with unfiltered data",

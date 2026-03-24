@@ -1,17 +1,16 @@
 """Speed filter — removes trajectory points below VStall threshold.
 
 Provides a function to filter low-speed trajectory points from a
-:class:`FlightWithWeather` view using the BADA adapter's stall speed.
+preprocessed DataFrame using the BADA adapter's stall speed.
 """
 
 from __future__ import annotations
 
 import logging
 
-from pycontrails import Flight
+import pandas as pd
 
 from pyneats.steps.performance.protocol import PerformanceStepError
-from pyneats.steps.weather.weather_provider import FlightWithWeather
 
 
 logger = logging.getLogger(__name__)
@@ -20,16 +19,16 @@ __all__ = ["filter_low_speed_points"]
 
 
 def filter_low_speed_points(
-    flight: FlightWithWeather,
+    df: pd.DataFrame,
     adapter: object,
     max_filter_ratio: float = 0.8,
-) -> FlightWithWeather:
+) -> pd.DataFrame:
     """Filter trajectory points with TAS below VStall.
 
     Parameters
     ----------
-    flight : FlightWithWeather
-        Flight data with weather columns.
+    df : pd.DataFrame
+        Preprocessed DataFrame with ``true_airspeed`` column (m/s).
     adapter : BaseBADAAdapter
         BADA adapter providing ``v_stall_cas()`` and ``MTOW``.
     max_filter_ratio : float
@@ -37,8 +36,8 @@ def filter_low_speed_points(
 
     Returns
     -------
-    FlightWithWeather
-        Filtered flight, or original if filter is skipped.
+    pd.DataFrame
+        Filtered DataFrame, or original if filter is skipped.
 
     Raises
     ------
@@ -48,13 +47,12 @@ def filter_low_speed_points(
     mtow = getattr(adapter, "MTOW", None)
     if mtow is None:
         logger.warning("Adapter has no MTOW — skipping speed filter")
-        return flight
+        return df
 
     v_stall = adapter.v_stall_cas(mtow, "TO")  # type: ignore[union-attr]
     if v_stall is None:
-        return flight
+        return df
 
-    df = flight.dataframe
     mask = df["true_airspeed"] >= v_stall
     n_filtered = int((~mask).sum())
 
@@ -71,6 +69,4 @@ def filter_low_speed_points(
             retryable=False,
         )
 
-    filtered_df = df.loc[mask].reset_index(drop=True)
-    filtered = Flight(data=filtered_df, attrs={**flight.attrs}, fuel=flight.fuel)
-    return FlightWithWeather.from_flight(filtered)
+    return df.loc[mask].reset_index(drop=True)

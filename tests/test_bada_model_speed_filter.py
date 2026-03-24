@@ -103,9 +103,9 @@ class TestSpeedFilterCalledBeforePerf:
         model._resolve_bada_adapter = MagicMock(
             return_value=(adapter, "BADA4", 2, "engine_1")
         )
-        # filter returns a filtered flight
-        filtered_flight = _make_flight_with_tas([200, 250])
-        mock_filter.return_value = filtered_flight
+        # filter returns a filtered DataFrame
+        filtered_df = pd.DataFrame({"true_airspeed": [200, 250]})
+        mock_filter.return_value = filtered_df
 
         # Stub remaining pipeline methods
         model._early_exit_if_fuel_and_efficiency = MagicMock(return_value=None)
@@ -115,14 +115,14 @@ class TestSpeedFilterCalledBeforePerf:
         model._build_result = MagicMock(return_value=MagicMock(name="result"))
 
         flight = _make_flight_with_tas([5, 10, 200, 250])
-        df = pd.DataFrame()
+        df = pd.DataFrame({"true_airspeed": [5, 10, 200, 250]})
 
         model.run_by_bada_version(flight, df, "A320", None, None, None)
 
-        # filter was called with the flight and the resolved adapter
+        # filter was called with the df and the resolved adapter
         mock_filter.assert_called_once()
         call_args = mock_filter.call_args
-        assert call_args[0][0] is flight  # first positional: flight
+        assert call_args[0][0] is df  # first positional: df
         assert call_args[0][1] is adapter  # second positional: adapter
 
 
@@ -181,8 +181,9 @@ class TestSpeedFilterFunctional:
 
         # Simulate: original has 6 points (2 taxi + 4 cruise), filter returns 4
         original_flight = _make_flight_with_tas([5, 5, 200, 220, 240, 260])
-        filtered_flight = _make_flight_with_tas([200, 220, 240, 260])
-        mock_filter.return_value = filtered_flight
+        original_df = pd.DataFrame({"true_airspeed": [5, 5, 200, 220, 240, 260]})
+        filtered_df = pd.DataFrame({"true_airspeed": [200, 220, 240, 260]})
+        mock_filter.return_value = filtered_df
 
         # Stub remaining pipeline
         model._early_exit_if_fuel_and_efficiency = MagicMock(return_value=None)
@@ -192,17 +193,15 @@ class TestSpeedFilterFunctional:
         expected = MagicMock(name="result")
         model._build_result = MagicMock(return_value=expected)
 
-        df = pd.DataFrame()
         result = model.run_by_bada_version(
-            original_flight, df, "A320", None, None, None
+            original_flight, original_df, "A320", None, None, None
         )
 
         assert result is expected
-        # Verify filter was called and the filtered flight (fewer rows) was used downstream
+        # Verify filter was called and the filtered df (fewer rows) was used downstream
         mock_filter.assert_called_once()
-        # The flight passed to downstream should be the filtered one (4 rows, not 6)
-        assert len(filtered_flight.dataframe) == 4
-        assert len(original_flight.dataframe) == 6
+        assert len(filtered_df) == 4
+        assert len(original_df) == 6
 
 
 # ---------------------------------------------------------------------------
@@ -258,9 +257,10 @@ class TestSpeedFilterEdgeCases:
             return_value=(adapter, "BADA4", 2, "engine_1")
         )
 
-        # filter_low_speed_points returns original flight when MTOW is None (skip)
+        # filter_low_speed_points returns original df when MTOW is None (skip)
         flight = _make_flight_with_tas([5, 10, 200, 250])
-        mock_filter.return_value = flight  # returns unchanged
+        df = pd.DataFrame({"true_airspeed": [5, 10, 200, 250]})
+        mock_filter.return_value = df  # returns unchanged
 
         # Stub remaining pipeline
         model._early_exit_if_fuel_and_efficiency = MagicMock(return_value=None)
@@ -270,7 +270,6 @@ class TestSpeedFilterEdgeCases:
         expected = MagicMock(name="result")
         model._build_result = MagicMock(return_value=expected)
 
-        df = pd.DataFrame()
         result = model.run_by_bada_version(flight, df, "A320", None, None, None)
 
         # Pipeline completed successfully with original data
