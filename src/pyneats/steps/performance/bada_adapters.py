@@ -8,6 +8,7 @@ Features
 --------
 - Unified interface for BADA3 and BADA4 models
 - Thrust and fuel flow calculations
+- Stall speed queries (v_stall_cas)
 - Flight phase detection
 - Configuration management
 - Unit conversions
@@ -144,6 +145,8 @@ class BaseBADAAdapter(AircraftProtocol, Protocol):
         delta_tau: float,
     ) -> tuple[float, float, FlightPhase, str]: ...
 
+    def v_stall_cas(self, mass: float, config: str) -> float | None: ...
+
 
 # -----------------------------------------------------------------------------
 # Internal utilities (shared behavior)
@@ -168,6 +171,13 @@ class _PyBADAAdapterBase(Generic[TObj]):
         if rocd_mps < -self._rocd_phase_threshold_mps:
             return "Descent"
         return "Cruise"
+
+    def v_stall_cas(self, mass: float, config: str) -> float | None:
+        """Return CAS stall speed (m/s) or ``None`` when data is unavailable."""
+        result = self._obj.flightEnvelope.VStall(mass=mass, config=config)
+        if result is None:
+            return None
+        return float(result)
 
     def thrust_fuel_segment(
         self,
