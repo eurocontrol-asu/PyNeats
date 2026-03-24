@@ -133,10 +133,11 @@ class TestPerformanceGuardrailFuelBurn:
         """Create a BADAPerformanceModel with mocked internals."""
         model = MagicMock(spec=BADAPerformanceModel)
         model.logger = MagicMock()
-        # Bind the real method
+        # Bind the real methods
         model.run_by_bada_version = BADAPerformanceModel.run_by_bada_version.__get__(
             model
         )
+        model._build_result = BADAPerformanceModel._build_result.__get__(model)
         return model
 
     def _make_adapter(

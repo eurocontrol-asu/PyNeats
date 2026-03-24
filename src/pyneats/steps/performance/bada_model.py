@@ -72,6 +72,7 @@ from pyneats.steps.performance.bada_mapper import BadaMappingPaths
 from pyneats.steps.performance.params import PerformanceModelParams
 from pyneats.steps.performance.protocol import PerformanceModel
 from pyneats.steps.performance.protocol import PerformanceStepError
+from pyneats.steps.performance.speed_filter import filter_low_speed_points
 from pyneats.steps.performance.views import FlightWithPerformance
 from pyneats.steps.weather.weather_provider import FlightWithWeather
 
@@ -300,7 +301,7 @@ class BADAPerformanceModel(
         """Run BADA performance model on the given flight data.
 
         Fallback chain:
-            1. Normal BADA (4 or 3) execution
+            1. Normal BADA (4 or 3) execution (with speed filter applied)
             2. Retry with BADA3 forced (if first attempt used BADA4)
             3. Altitude fallback — filter points below FL15, retry
         """
@@ -444,13 +445,28 @@ class BADAPerformanceModel(
         q_fuel_attr: float | None,
         force_bada3: bool = False,
     ) -> FlightWithPerformance:
-        """Run BADA performance model on the given flight data, with optional BADA3 enforcement."""
+        """Run BADA performance model on the given flight data, with optional BADA3 enforcement.
+
+        After resolving the BADA adapter, a speed filter removes trajectory
+        points with TAS below VStall.  If the filter fails for any reason
+        (no slow points, too many filtered, missing MTOW), the pipeline
+        degrades gracefully and proceeds with the original unfiltered data.
+        """
 
         try:
             # 1) resolve adapter + core attrs
             adapter, bada_version, nb_eng, engine_id = self._resolve_bada_adapter(
                 icao, series, engine_id_attr, force_bada3
             )
+
+            # 1b) speed filter — remove low-TAS points before perf computation
+            try:
+                flight = filter_low_speed_points(flight, adapter)
+            except Exception:
+                self.logger.warning(
+                    "Speed filter failed — proceeding with unfiltered data",
+                    extra={"icao": icao},
+                )
 
             # 2) early exit if AO provided fuel_flow & engine_efficiency
             early = self._early_exit_if_fuel_and_efficiency(
@@ -470,42 +486,67 @@ class BADAPerformanceModel(
             # 5) finalize df columns, compute efficiency if needed (using q_fuel_used)
             self._finalize_columns(df, perf)
 
-            # 6) Fuel burn guardrail: reject if total fuel > (MTOW - OEW) * threshold
-            if adapter.MTOW is not None and adapter.OEW is not None:
-                useful_payload = adapter.MTOW - adapter.OEW
-                total_fuel = float(df["fuel_burn"].sum())
-                limit = useful_payload * self.params.fuel_burn_threshold
-                if total_fuel > limit:
-                    raise PerformanceStepError(
-                        f"Total fuel burn {total_fuel:.0f} kg exceeds "
-                        f"useful payload capacity {useful_payload:.0f} kg x "
-                        f"{self.params.fuel_burn_threshold} = {limit:.0f} kg",
-                        retryable=False,
-                    )
-            else:
-                self.logger.warning(
-                    "MTOW or OEW unavailable — skipping fuel burn guardrail"
-                )
-
-            self._compute_engine_efficiency_if_missing(df, perf, q_fuel_used)
-
-            # 5) build Flight output
-            out = Flight(data=df, attrs={**flight.attrs}, fuel=flight.fuel)
-            self._attach_output_attrs(out, adapter, bada_version, nb_eng, engine_id)
-
-            out_view = FlightWithPerformance.from_flight(out)
-
-            self.logger.info(
-                "Performance step completed",
-                extra={"rows": len(df), "icao": icao, "bada": bada_version},
+            # 6) build result (guardrail, efficiency, output)
+            return self._build_result(
+                df,
+                flight,
+                adapter,
+                bada_version,
+                nb_eng,
+                engine_id,
+                icao,
+                perf,
+                q_fuel_used,
             )
-            return out_view
 
         except PerformanceStepError:
             raise
         except Exception as e:  # pylint: disable=broad-except
             self.logger.exception("Performance evaluation failed")
             raise PerformanceStepError(f"Performance evaluation failed: {e}") from e
+
+    def _build_result(
+        self,
+        df: pd.DataFrame,
+        flight: FlightWithWeather,
+        adapter: BaseBADAAdapter,
+        bada_version: str,
+        nb_eng: int,
+        engine_id: str | None,
+        icao: str,
+        perf: object,
+        q_fuel_used: float,
+    ) -> FlightWithPerformance:
+        """Apply guardrails, compute efficiency, and build the output flight."""
+        # Fuel burn guardrail: reject if total fuel > (MTOW - OEW) * threshold
+        if adapter.MTOW is not None and adapter.OEW is not None:
+            useful_payload = adapter.MTOW - adapter.OEW
+            total_fuel = float(df["fuel_burn"].sum())
+            limit = useful_payload * self.params.fuel_burn_threshold
+            if total_fuel > limit:
+                raise PerformanceStepError(
+                    f"Total fuel burn {total_fuel:.0f} kg exceeds "
+                    f"useful payload capacity {useful_payload:.0f} kg x "
+                    f"{self.params.fuel_burn_threshold} = {limit:.0f} kg",
+                    retryable=False,
+                )
+        else:
+            self.logger.warning(
+                "MTOW or OEW unavailable — skipping fuel burn guardrail"
+            )
+
+        self._compute_engine_efficiency_if_missing(df, perf, q_fuel_used)
+
+        out = Flight(data=df, attrs={**flight.attrs}, fuel=flight.fuel)
+        self._attach_output_attrs(out, adapter, bada_version, nb_eng, engine_id)
+
+        out_view = FlightWithPerformance.from_flight(out)
+
+        self.logger.info(
+            "Performance step completed",
+            extra={"rows": len(df), "icao": icao, "bada": bada_version},
+        )
+        return out_view
 
     # ---------- adapter & attrs ----------
     def _extract_aircraft_attrs(
