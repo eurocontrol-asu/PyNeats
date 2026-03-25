@@ -101,7 +101,7 @@ __all__ = [
     "DEFAULT_MIN_ALTITUDE_FL",
     "DEFAULT_MAX_ALTITUDE_FILTER_RATIO",
     "DEFAULT_FUEL_BURN_THRESHOLD",
-    "DEFAULT_MAX_PRESSURE_LEVEL"
+    "DEFAULT_MAX_PRESSURE_LEVEL",
 ]  # Public API: All default configuration parameters exported for external use
 
 # Model Selection Defaults
@@ -158,7 +158,7 @@ DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW: Final[int] = (
 )
 
 # Max pressure level to filter out flights that don't reach the limit altitude to compute climate impact
-DEFAULT_MAX_PRESSURE_LEVEL: Final[float] = 550 #hPa
+DEFAULT_MAX_PRESSURE_LEVEL: Final[float] = 550  # hPa
 
 # Delta tau computation parameters
 # Used in climb/descent rate estimation and phase detection
