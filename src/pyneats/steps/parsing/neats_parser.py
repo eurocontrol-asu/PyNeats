@@ -290,8 +290,9 @@ class NeatsTrajectoryParser(
                         f"Flight never reaches pressure level "
                         f"≤ {self.params.max_pressure_level} hPa "
                         f"(minimum level = {min_level:.1f} hPa). "
-                        f"Likely a low-altitude flight not suitable "
-                        f"for contrail analysis."
+                        f"low-altitude flights are not taken into account"
+                        f"as they do not cross ISSR regions and altitudes"
+                        f"where climate impact of other species is well measured"
                     )
 
             # 9) Validate & return typed zero-copy view

@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pyneats.core.steps import BaseParams
-
+from pyneats.core.neats_default_parameters import DEFAULT_MAX_PRESSURE_LEVEL
 
 __all__ = ["TrajectoryParserParams"]
 
@@ -27,4 +27,4 @@ class TrajectoryParserParams(BaseParams):
         Set to ``None`` to disable the filter.
     """
 
-    max_pressure_level: float | None = 500.0
+    max_pressure_level: float | None = DEFAULT_MAX_PRESSURE_LEVEL
