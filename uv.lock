@@ -2565,6 +2565,23 @@ wheels = [
 ]
 
 [[package]]
+name = "pybada"
+version = "0.1.11"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "scipy" },
+    { name = "simplekml" },
+    { name = "xarray" },
+    { name = "xlsxwriter" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/64/8a/2d540a81708f51ec49a8a408a00339f8f3a6350e31315638f4a75f38a6dd/pybada-0.1.11.tar.gz", hash = "sha256:51ae17b2c27df3d82d46d58be0a5aae3165ca5d91617b7b4e79530dc65e62fef", size = 7325886, upload-time = "2026-03-22T19:01:57.328Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fb/93/ebecfdad2401d5f464ee9130ccd6914f93bda449392dc96db995ebf19b0f/pybada-0.1.11-py3-none-any.whl", hash = "sha256:5d4e566c59e46d2247196203f65a4f53ea57d8c66d8396258a18a9a13d0eb1fb", size = 833248, upload-time = "2026-03-22T19:01:55.815Z" },
+]
+
+[[package]]
 name = "pycontrails"
 version = "0.60.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2660,6 +2677,7 @@ dependencies = [
     { name = "dacite" },
     { name = "joblib" },
     { name = "openairclim" },
+    { name = "pybada" },
     { name = "pycontrails", extra = ["ecmwf", "gcp", "gfs", "jupyter", "pyproj"] },
     { name = "scipy" },
     { name = "xarray" },
@@ -2733,6 +2751,7 @@ requires-dist = [
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7.0" },
     { name = "pre-commit", marker = "extra == 'all'", specifier = ">=3.0.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0.0" },
+    { name = "pybada", specifier = ">=0.1.11" },
     { name = "pycontrails", extras = ["ecmwf", "gcp", "gfs", "jupyter", "pyproj"], specifier = "==0.60.1" },
     { name = "pytest", marker = "extra == 'all'", specifier = ">=8.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
@@ -3251,6 +3270,12 @@ wheels = [
 ]
 
 [[package]]
+name = "simplekml"
+version = "1.3.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/e4/c333a93b7e3346437ad1ff42b8e362b853eb405ad6243ab6163f9af2a460/simplekml-1.3.6.tar.gz", hash = "sha256:cda687be2754395fcab664e908ebf589facd41e8436d233d2be37a69efb1c536", size = 52999, upload-time = "2021-09-16T17:08:27.038Z" }
+
+[[package]]
 name = "six"
 version = "1.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3620,6 +3645,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b7/f2/a3e3ec1ffd29b0b5be800d2606c229f04f303ee9e61a1377dc5c1996cf8a/xarray-2024.10.0.tar.gz", hash = "sha256:e369e2bac430e418c2448e5b96f07da4635f98c1319aa23cfeb3fbcb9a01d2e0", size = 3788358, upload-time = "2024-10-24T21:45:48.532Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a9/b7/9830def68e5575a24ca6d6f46b285d35ed27860beaa4f72848cd82870253/xarray-2024.10.0-py3-none-any.whl", hash = "sha256:ae1d38cb44a0324dfb61e492394158ae22389bf7de9f3c174309c17376df63a0", size = 1212984, upload-time = "2024-10-24T21:45:46.566Z" },
+]
+
+[[package]]
+name = "xlsxwriter"
+version = "3.2.9"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/46/2c/c06ef49dc36e7954e55b802a8b231770d286a9758b3d936bd1e04ce5ba88/xlsxwriter-3.2.9.tar.gz", hash = "sha256:254b1c37a368c444eac6e2f867405cc9e461b0ed97a3233b2ac1e574efb4140c", size = 215940, upload-time = "2025-09-16T00:16:21.63Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3a/0c/3662f4a66880196a590b202f0db82d919dd2f89e99a27fadef91c4a33d41/xlsxwriter-3.2.9-py3-none-any.whl", hash = "sha256:9a5db42bc5dff014806c58a20b9eae7322a134abb6fce3c92c181bfb275ec5b3", size = 175315, upload-time = "2025-09-16T00:16:20.108Z" },
 ]
 
 [[package]]
