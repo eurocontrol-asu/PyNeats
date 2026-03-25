@@ -784,7 +784,6 @@ class TestBehavioralAssertions:
             f"TC_ENG_UNSPEC: output engine uid is {output_eng} ,expected 01P21GE217."
         )
 
-  
     # TC_AC_OVERSPEC: "Remap to BADA naming"
 
     @pytest.mark.xfail(

@@ -7,7 +7,7 @@ name = "pyneats"
 dynamic = ["version"]
 description = "NEATS: aviation non-CO2 climate metrics pipeline (PyNeats)."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = { file = "LICENSE.md" }
 requires-python = ">=3.11.5,<3.14"
 authors = [
     { name = "Philippe VERY", email = "philippe.very@eurocontrol.int" },

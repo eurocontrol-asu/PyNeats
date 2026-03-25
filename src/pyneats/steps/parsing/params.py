@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyneats.core.steps import BaseParams
 from pyneats.core.neats_default_parameters import DEFAULT_MAX_PRESSURE_LEVEL
+from pyneats.core.steps import BaseParams
+
 
 __all__ = ["TrajectoryParserParams"]
 
