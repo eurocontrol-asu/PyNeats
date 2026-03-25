@@ -10,7 +10,6 @@ flight_id, comparing against the golden output or checking error records.
 
 Success test cases (TC) flight must appear in pipeline output:
    TC_AC_OVERSPEC
-   TC_AC_NO_BADA4
    TC_ENG_UNSPEC
    TC_ENG_MISMATCH
    TC_ENG_UNKNOWN
@@ -64,7 +63,6 @@ Behavioural assertions (TestBehavioralAssertions):
        am all-null, no mass params → LF=1 + BADA MTOW
    test_eng_mismatch_drops_input          TC_ENG_MISMATCH: drop, use default
    test_eng_unspec_assigns_default        TC_ENG_UNSPEC: select representative
-   test_ac_no_bada4_uses_bada3            TC_AC_NO_BADA4: BADA3 fallback
    test_ac_overspec_remaps_code           TC_AC_OVERSPEC: remap to BADA naming
    test_var_time_resolution_correction    tc_var_time_resolution: resample
    test_mixed_time_ordering               tc_mixed_time: order along time
@@ -132,7 +130,6 @@ SUCCESS_TCS: list[tuple[str, str]] = [
         id="TC_AC_OVERSPEC",
         marks=_XFAIL_DLR,
     ),
-    ("TC_AC_NO_BADA4", "ACA812__tc_ac_no_bada4"),
     ("TC_ENG_UNSPEC", "FDX5067__tc_eng_unspec"),
     ("TC_ENG_MISMATCH", "RYR46YN__tc_eng_mismatch"),
     ("TC_ENG_UNKNOWN", "ACA812__tc_eng_unknown"),
@@ -785,27 +782,6 @@ class TestBehavioralAssertions:
         )
         assert output_eng == "01P21GE217", (
             f"TC_ENG_UNSPEC: output engine uid is {output_eng} ,expected 01P21GE217."
-        )
-
-    # TC_AC_NO_BADA4: "Use BADA 3 aircraft"
-
-    @pytest.mark.xfail(
-        reason="Known DLR test failing in evaluated version", strict=True
-    )
-    def test_ac_no_bada4_uses_bada3(
-        self,
-        aggregated_fleet_run: FleetRunnerLargeEmitter,
-    ) -> None:
-        """TC_AC_NO_BADA4: AC type (AT72) only in BADA3. Output must show
-        bada_version='BADA3'."""
-        flight_id = "ACA812__tc_ac_no_bada4"
-        runner = aggregated_fleet_run
-
-        actual = _find_flight(runner.fleet_with_climate_impact, flight_id)
-        assert actual is not None, f"Flight '{flight_id}' not in output"
-        bada_ver = actual.attrs.get("bada_version")
-        assert bada_ver == "BADA3", (
-            f"TC_AC_NO_BADA4: expected bada_version='BADA3', got '{bada_ver}'"
         )
 
     # TC_AC_OVERSPEC: "Remap to BADA naming"

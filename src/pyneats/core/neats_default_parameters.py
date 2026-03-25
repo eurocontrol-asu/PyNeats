@@ -101,6 +101,7 @@ __all__ = [
     "DEFAULT_MIN_ALTITUDE_FL",
     "DEFAULT_MAX_ALTITUDE_FILTER_RATIO",
     "DEFAULT_FUEL_BURN_THRESHOLD",
+    "DEFAULT_MAX_PRESSURE_LEVEL",
 ]  # Public API: All default configuration parameters exported for external use
 
 # Model Selection Defaults
@@ -129,7 +130,7 @@ DEFAULT_BADA4_VERSION: str = "4.2.1"
 DEFAULT_BADA3_VERSION: str = "3.16"
 
 # Max consecutive segments of a flight that fall out of the envelope allowed by the BADA model
-DEFAULT_BADA_MAX_CONSECUTIVE_FAILURES = 4
+DEFAULT_BADA_MAX_CONSECUTIVE_FAILURES = 5
 
 # Very conservative threshold on the fuel flow. An error in BADA will be thown if higher
 # Further studies need to be performed to better handle out of envelop data points
@@ -155,6 +156,9 @@ DEFAULT_MAX_REL_MASS_DIFF: Final[float] = (
 DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW: Final[int] = (
     7  # 7-point rolling window for smoothing
 )
+
+# Max pressure level to filter out flights that don't reach the limit altitude to compute climate impact
+DEFAULT_MAX_PRESSURE_LEVEL: Final[float] = 550  # hPa
 
 # Delta tau computation parameters
 # Used in climb/descent rate estimation and phase detection

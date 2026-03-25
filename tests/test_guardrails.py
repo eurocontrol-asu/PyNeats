@@ -122,6 +122,53 @@ class TestParsingGuardrail24h:
 
 
 # ---------------------------------------------------------------------------
+# Task 1b — Parsing guardrail: pressure level filter
+# ---------------------------------------------------------------------------
+
+
+class TestParsingGuardrailPressureLevel:
+    """Guardrail: reject flights whose min pressure level > max_pressure_level."""
+
+    def test_parser_rejects_low_altitude_flight(self) -> None:
+        """FL50-FL60 → min_level ≈ 850 hPa > 500 → raises."""
+        df = _make_parser_df(hours=2.0, n_points=5)
+        df["altitude"] = np.linspace(50, 60, 5)  # FL050-FL060
+        parser = NeatsTrajectoryParser(params=NeatsTrajectoryParserParams())
+
+        with pytest.raises(TrajectoryParserStepError, match="pressure level"):
+            parser.run(df)
+
+    def test_parser_accepts_high_altitude_flight(self) -> None:
+        """FL350-FL380 → min_level ≈ 238 hPa < 500 → passes."""
+        df = _make_parser_df(hours=2.0, n_points=5)
+        # Default altitude is already FL350-FL380
+        parser = NeatsTrajectoryParser(params=NeatsTrajectoryParserParams())
+
+        result = parser.run(df)
+        assert isinstance(result, Flight4D)
+
+    def test_parser_accepts_mixed_altitude_if_reaches_high(self) -> None:
+        """FL100→FL350 → min_level ≈ 238 hPa < 500 → passes."""
+        df = _make_parser_df(hours=2.0, n_points=5)
+        df["altitude"] = np.linspace(100, 350, 5)  # FL100→FL350
+        parser = NeatsTrajectoryParser(params=NeatsTrajectoryParserParams())
+
+        result = parser.run(df)
+        assert isinstance(result, Flight4D)
+
+    def test_parser_skips_level_filter_when_disabled(self) -> None:
+        """FL050 + max_pressure_level=None → filter disabled, passes."""
+        df = _make_parser_df(hours=2.0, n_points=5)
+        df["altitude"] = np.linspace(50, 60, 5)  # Low altitude
+        parser = NeatsTrajectoryParser(
+            params=NeatsTrajectoryParserParams(max_pressure_level=None),
+        )
+
+        result = parser.run(df)
+        assert isinstance(result, Flight4D)
+
+
+# ---------------------------------------------------------------------------
 # Task 2 — Performance guardrail: fuel burn vs payload capacity
 # ---------------------------------------------------------------------------
 
@@ -133,10 +180,11 @@ class TestPerformanceGuardrailFuelBurn:
         """Create a BADAPerformanceModel with mocked internals."""
         model = MagicMock(spec=BADAPerformanceModel)
         model.logger = MagicMock()
-        # Bind the real method
+        # Bind the real methods
         model.run_by_bada_version = BADAPerformanceModel.run_by_bada_version.__get__(
             model
         )
+        model._build_result = BADAPerformanceModel._build_result.__get__(model)
         return model
 
     def _make_adapter(

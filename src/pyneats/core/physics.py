@@ -58,12 +58,12 @@ SURFACE_EARTH: Final[float] = 5.101e14  # m²
 SECONDS_PER_YEAR: Final[int] = 31_556_952  # s
 SOLAR_CONSTANT: Final[float] = 1360.0  # [W m^-2]
 
-# CO2 GWP coefficients built with AirClim, alternatives to Joos (2013)
-# C(H) in W·m⁻²·yr·kg⁻¹
+# CO2 GWP coefficients from AirClim (Dahlmann et al., 2025)
+# C(H) in W·m⁻²·yr·kg⁻¹ (per kgCO2)
 CO2_AGWP_COEFF_WM2YR_PER_KG: Mapping[int, float] = {
-    20: 24.16e-15,
-    50: 47.57e-15,
-    100: 74.36e-15,
+    20: 24.12e-15,
+    50: 47.50e-15,
+    100: 74.24e-15,
 }
 
 # New generic conversion factors to convert RF to AGWP or ATR

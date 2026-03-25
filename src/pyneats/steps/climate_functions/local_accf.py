@@ -276,9 +276,9 @@ class LocalACCFModel(
             # Condition: Pressure is too high (Altitude too low)
             mask = flight[self.params.col_air_pressure] > DEFAULT_ACCF_VALIDITY_PRESSURE
 
-            o3[mask] = 0.0
-            ch4[mask] = 0.0
-            h2o[mask] = 0.0
+            o3[mask] = np.nan
+            ch4[mask] = np.nan
+            h2o[mask] = np.nan
 
             # Write directly on the flight
             flight["ATR_20_O3"] = o3
