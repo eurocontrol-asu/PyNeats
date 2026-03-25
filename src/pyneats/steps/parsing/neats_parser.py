@@ -282,6 +282,18 @@ class NeatsTrajectoryParser(
 
             base = Flight(data=data_req, attrs=attrs, fuel=fuel_obj)
 
+            # 8.5) Reject flights that never reach high enough altitude
+            if self.params.max_pressure_level is not None:
+                min_level = float(base.level.min())
+                if min_level > self.params.max_pressure_level:
+                    raise TrajectoryParserStepError(
+                        f"Flight never reaches pressure level "
+                        f"≤ {self.params.max_pressure_level} hPa "
+                        f"(minimum level = {min_level:.1f} hPa). "
+                        f"Likely a low-altitude flight not suitable "
+                        f"for contrail analysis."
+                    )
+
             # 9) Validate & return typed zero-copy view
             return Flight4D.from_flight(base)
 

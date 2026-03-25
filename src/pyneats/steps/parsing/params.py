@@ -16,4 +16,15 @@ __all__ = ["TrajectoryParserParams"]
 
 @dataclass(frozen=True)
 class TrajectoryParserParams(BaseParams):
-    """Base parameters for trajectory parser steps."""
+    """Base parameters for trajectory parser steps.
+
+    Attributes
+    ----------
+    max_pressure_level : float | None
+        Maximum pressure level (hPa) allowed for the flight's highest point.
+        Flights whose *minimum* pressure level exceeds this threshold (i.e. never
+        reach high enough altitude) are rejected.  ``500 hPa`` ≈ FL180.
+        Set to ``None`` to disable the filter.
+    """
+
+    max_pressure_level: float | None = 500.0
