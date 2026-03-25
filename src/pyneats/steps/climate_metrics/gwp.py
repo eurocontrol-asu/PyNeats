@@ -173,7 +173,10 @@ class GWPMetrics(
         out: dict[int, float] = {}
         for h in self.params.horizons:
             k_agwp = float(self.params.k_agwp_from_rf.get(h, {}).get(species, 1.0))
-            scale = (k_agwp / k_atr_h_0) / rf_backward * eps_spec
+            # the conversion factors do include efficacy for ATR calculation
+            # therefore need to multiply the ATR values from the aCCFs with the efficacy to be consistent with the conversion factors. 
+            # this translates with the efficacy being square in the formula:
+            scale = (k_agwp / k_atr_h_0) / rf_backward * eps_spec**2
             out[h] = scale * atr_H0_K
 
         return out
