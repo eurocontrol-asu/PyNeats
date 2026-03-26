@@ -43,10 +43,10 @@ dependencies = [
     "pycontrails[ecmwf,gcp,gfs,jupyter,pyproj]==0.60.1",
     "dacite>=1.9.2",
     "zarr>=2.18.3,<3",
-    "scipy>=1.11.0,<1.17.0",
+    "scipy>=1.11.0",
     "joblib>=1.3.0",
     "openairclim==0.13.0",
-    "pybada>=0.1.11",
+    "pybada @ git+https://github.com/eurocontrol-bada/pybada.git",
 ]
 
 [project.urls]
@@ -107,6 +107,9 @@ docs = [
 # ============================================
 # HATCH - Build & Versioning
 # ============================================
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.version]
 source = "vcs"
 
