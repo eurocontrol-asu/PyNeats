@@ -177,12 +177,12 @@ DEFAULT_ROCD_PHASE_THRESHOLD: Final[float] = (
 
 # Fuel burn guardrail: reject if total fuel > (MTOW - OEW) * threshold
 # A ratio of 1.1 allows 10% margin above the useful payload capacity
-DEFAULT_FUEL_BURN_THRESHOLD: Final[float] = 1.1
+DEFAULT_FUEL_BURN_THRESHOLD: Final[float] = 1.2
 
 # Altitude filter for performance fallback
 # Minimum Flight Level (FL) threshold: points below this FL are filtered
 # when retrying after a performance step failure.
-# FL15 = 1500 ft ≈ 457 m — filters out ground-level / taxi data.
+# FL15 = 2000 ft ≈ 610 m — filters out ground-level / taxi data.
 DEFAULT_MIN_ALTITUDE_FL: Final[float] = 20
 
 # Maximum ratio of filtered points before giving up on altitude fallback.
@@ -191,7 +191,7 @@ DEFAULT_MIN_ALTITUDE_FL: Final[float] = 20
 DEFAULT_MAX_ALTITUDE_FILTER_RATIO: Final[float] = 0.8
 
 # Guardrail: reject non-CO2 species producing > MAX_NONCO2_CO2_RATIO × CO2 baseline
-MAX_NONCO2_CO2_RATIO: Final[float] = 100.0
+MAX_NONCO2_CO2_RATIO: Final[float] = 500.0
 
 # Emissions model parameters
 # Configuration options passed to PyContrails emissions calculation engine

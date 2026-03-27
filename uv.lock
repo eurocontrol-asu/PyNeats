@@ -2567,7 +2567,7 @@ wheels = [
 [[package]]
 name = "pybada"
 version = "0.1.12"
-source = { git = "https://github.com/eurocontrol-bada/pybada.git#9e67e127a85baa5405fa5855e1038b0653bb4031" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
@@ -2576,10 +2576,14 @@ dependencies = [
     { name = "xarray" },
     { name = "xlsxwriter" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/a2/de/7ebdec179d8280620df130b46a0dec48d251d090de0dc8057a7866bb027c/pybada-0.1.12.tar.gz", hash = "sha256:d5322c8bf62a0504c9e81884cffb8764c75d912b2488c6354f3c0a36cb4f83bf", size = 7325700, upload-time = "2026-03-25T21:04:29.415Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/b3/80042f376069cce4c06d9b291f8f9e50a76333bffe04e8141a1650c22825/pybada-0.1.12-py3-none-any.whl", hash = "sha256:d1ebd2beb4a2bfaabd057143e91881d743755658bf9e5bc8555e59e7f2a0f69c", size = 833098, upload-time = "2026-03-25T21:04:28.19Z" },
+]
 
 [[package]]
 name = "pycontrails"
-version = "0.60.1"
+version = "0.60.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dask" },
@@ -2589,20 +2593,20 @@ dependencies = [
     { name = "typing-extensions", marker = "python_full_version < '3.12'" },
     { name = "xarray" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e9/b3/5ead85223571f9f031a0106b81b6639c59c6419d0a2c1d84e8470b2f581a/pycontrails-0.60.1.tar.gz", hash = "sha256:2ae16776496d18bf19daeda39e1bb35c495c68a70ffd659b975f984c74003593", size = 51557646, upload-time = "2025-12-15T20:57:05.852Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ce/ad/15612fa9236b864fa7013e2362e6bce4690d45c7f48349423d4ee28cd0ea/pycontrails-0.60.2.tar.gz", hash = "sha256:295e83a1601ccb920cc83f3866da7c3f3a20b8f01efa9e35a465dec4df63bd27", size = 51558161, upload-time = "2026-01-15T18:22:31.37Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/67/04/0443d33785e3e748210434549f7635f12fd2149b2229ef1982aa2f910b8c/pycontrails-0.60.1-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:746cd9900bdc3c76a8ddbb24172a6955347f88f2042a66b575551c4d1fc7f1b8", size = 967081, upload-time = "2025-12-15T20:56:39.333Z" },
-    { url = "https://files.pythonhosted.org/packages/e8/f7/9fb0907afe03f1a5d6a6efad8532c41770c792e6d7b2a6c36650556dbe6e/pycontrails-0.60.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:f87e729bb92714194d26d7ac10b360f1890fb3d8ac76d1302b69523fb235fa59", size = 964895, upload-time = "2025-12-15T20:56:41.72Z" },
-    { url = "https://files.pythonhosted.org/packages/1c/45/30e4361d043ff697df5473cf7e48b5e15bdc1736517348cd3c597db01e4f/pycontrails-0.60.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ea939f8e003b6ff62bc8f46025b086db71ec1e3a75cf62a3c7f4a72e8cf8888a", size = 1510244, upload-time = "2025-12-15T20:56:43.344Z" },
-    { url = "https://files.pythonhosted.org/packages/d9/92/1a6701495b8493cd008d23e4cd606bcddf21fa3264e5eed446de18171343/pycontrails-0.60.1-cp311-cp311-win_amd64.whl", hash = "sha256:49ac6336ad1db52190a025533055a163627961c477ac7293dc6d41767b1a0a6c", size = 950935, upload-time = "2025-12-15T20:56:44.961Z" },
-    { url = "https://files.pythonhosted.org/packages/c1/b1/7f59f4f50a3c5bfd58e35600cfe83a2532489a8c2b5e160b9a73213e4647/pycontrails-0.60.1-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:a3bc35b68fd05876a4bc89472fd743945657b031377bfc82236b10bdc5942f0c", size = 967970, upload-time = "2025-12-15T20:56:46.6Z" },
-    { url = "https://files.pythonhosted.org/packages/98/61/deb30b68a2056e643716ae5787fa02a657453d8923c00a9ff31e02cd900e/pycontrails-0.60.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:a14ed4f2b00f067cdd1f1cd4ed387d8efc8ea1aa51b71985544f1fbdb1d997de", size = 965063, upload-time = "2025-12-15T20:56:48.057Z" },
-    { url = "https://files.pythonhosted.org/packages/b0/c1/e29dd956cc25ae6b4f2f0c9ddc4305fc03db16352fb433973066f5a549c5/pycontrails-0.60.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:55bd39e6d2894b70ac4715e27fe0bf02db8ee7e376ef7dbcdc8e8fea72d67146", size = 1514915, upload-time = "2025-12-15T20:56:49.426Z" },
-    { url = "https://files.pythonhosted.org/packages/e9/df/7ac025546497bc0865f28bd60dc7a5ecb0efa48625c9ee8d8dd6902dc937/pycontrails-0.60.1-cp312-cp312-win_amd64.whl", hash = "sha256:d56488d8f862063e9eca2aa552067a17a7a4318ad500a90c78f3566759570b03", size = 951836, upload-time = "2025-12-15T20:56:51.102Z" },
-    { url = "https://files.pythonhosted.org/packages/1e/23/8c4d5a9088e8f9ce2df371568f2244ad671b6d3ed4c32d4b709eb31db100/pycontrails-0.60.1-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:ae1f50a36acf27a8009c4d8bf9c681e25420bb70b67a164664f2e59a9bab7d9d", size = 967342, upload-time = "2025-12-15T20:56:52.721Z" },
-    { url = "https://files.pythonhosted.org/packages/f4/ef/90b39f47f6beef81f6c6be447b02c772ca98fab762e5bc3ef4568f786a48/pycontrails-0.60.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:6c792efacb73906ec412c3136bde95a22b42503dc668b3f9d93f5d6d9ce6db92", size = 964576, upload-time = "2025-12-15T20:56:54.422Z" },
-    { url = "https://files.pythonhosted.org/packages/33/b9/ff98e69b360342fb80e99d76d79004c9a859e8fba66dcd2a80c010da4df5/pycontrails-0.60.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:d52e84e494783a288d537df74ac61c873626b7f79f7eb844a92170129d1c57fe", size = 1507768, upload-time = "2025-12-15T20:56:56.078Z" },
-    { url = "https://files.pythonhosted.org/packages/e6/7a/230d764f225a1734a3058477418ff29193d451dee952ae3a54c1d63e8435/pycontrails-0.60.1-cp313-cp313-win_amd64.whl", hash = "sha256:366795cbfc2dee2bf9d6d279966bf98bd7e9dc7642d32ccf0d43aa466dfa8677", size = 951648, upload-time = "2025-12-15T20:56:57.391Z" },
+    { url = "https://files.pythonhosted.org/packages/07/96/e712ec000e2a991c55cc82c6af136d96d5a50a6a32848142f83204240a17/pycontrails-0.60.2-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:3e435f6a9f8b21258f2c3623820110b061b56c5ed90d1fa65bb8bbbd01bf1ac6", size = 969006, upload-time = "2026-01-15T18:22:05.892Z" },
+    { url = "https://files.pythonhosted.org/packages/50/c2/f15c5c2826b207188a82f342e03268aaf2521ccbcf739942dcd126268819/pycontrails-0.60.2-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:28a49d4ebb9d48d0ac4cad51e1b207c66dee9bc4cc8317ed1ec44c10ad01ee6a", size = 966688, upload-time = "2026-01-15T18:22:07.646Z" },
+    { url = "https://files.pythonhosted.org/packages/da/bd/92031bd25fc8984ab04cca01dbe6a4a0c74572d996dc40c12d5f50dd388e/pycontrails-0.60.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:718187d0eee8b7479a0fc8d34ac03cfac582b8807daf2806be628670954f36ad", size = 1515714, upload-time = "2026-01-15T18:22:09.284Z" },
+    { url = "https://files.pythonhosted.org/packages/07/57/6506098e24408cc88e2b81ea6db32c6b399bc83491284214fb7bf33d273b/pycontrails-0.60.2-cp311-cp311-win_amd64.whl", hash = "sha256:d74c606f4a4535155114fbd63909f102c01016d2e1ae91c0fe92c531638eb33f", size = 952856, upload-time = "2026-01-15T18:22:11.32Z" },
+    { url = "https://files.pythonhosted.org/packages/07/e4/f98b988edfa97b9f2ed6e46ffb46e1408547ebc65ca93ac66136da8038cc/pycontrails-0.60.2-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:bfe9328105c97246f74bf086f7273647c514abbd761a0eb918be6bfc07cfa32d", size = 969840, upload-time = "2026-01-15T18:22:12.56Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/e6/e8396f73431e9db44b139664bb768a34ac41152faa0cd8e2635f602395e3/pycontrails-0.60.2-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:4fd535745e16998ab3c5b22c55f57a68fb52337bf81e1ab7d16df59ebcc203df", size = 967037, upload-time = "2026-01-15T18:22:14.316Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/cf/3236f195cfb37c8920bc1216fd80db1d7ddd8e5b3d0619eb0d969d6dab64/pycontrails-0.60.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:3d6792d4e5bbec87ab5ce2ebd6ee25467a310759538fc7f551be85ffb1c162ea", size = 1516587, upload-time = "2026-01-15T18:22:16.085Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/db/e2e7d1b7e0df40712a803d680d042dfce4f2f832cfa6d1d4ef7ca1f7096f/pycontrails-0.60.2-cp312-cp312-win_amd64.whl", hash = "sha256:1cb35746bb5de4a966236245f1a6dfdbc3d4cea7141c01a97d4f53b3aebc0668", size = 953781, upload-time = "2026-01-15T18:22:17.565Z" },
+    { url = "https://files.pythonhosted.org/packages/97/67/76c605357c08ff85133f5d3af1c775e233705f3c9486765060944e899eb4/pycontrails-0.60.2-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:afb8ba1f723d3af7a7fb22b48607f17c543ca0e86fb169c24b676a279b8489a9", size = 969251, upload-time = "2026-01-15T18:22:18.887Z" },
+    { url = "https://files.pythonhosted.org/packages/6f/c4/f5b535d185f56fd67c035bfbf609bd32cce1acdcb54207afab5ef1e7ad38/pycontrails-0.60.2-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:8ae5af968311468b2d7d4791ea62f4de63db50d32b277914846c15059d1e3c51", size = 966504, upload-time = "2026-01-15T18:22:20.496Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/c9/869d6df2d304f31c6cb194b41c92b0796c7b8ae67179f0e056585d750a57/pycontrails-0.60.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a7e169dded58ac0ee333ee8ac7dea86cf4585b84b0afb34568a7ba7ccb049f30", size = 1509353, upload-time = "2026-01-15T18:22:22.083Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/f0/c7a85ad38e41ad4536fb3a3c7100d0a1e6547b3f221e36a9f9270a3a9089/pycontrails-0.60.2-cp313-cp313-win_amd64.whl", hash = "sha256:c1b2d68f9acdf653f672005cd28cb032ac3e827021b02e161d6a15b65217f8fc", size = 953508, upload-time = "2026-01-15T18:22:23.527Z" },
 ]
 
 [package.optional-dependencies]
@@ -2747,8 +2751,8 @@ requires-dist = [
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7.0" },
     { name = "pre-commit", marker = "extra == 'all'", specifier = ">=3.0.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0.0" },
-    { name = "pybada", git = "https://github.com/eurocontrol-bada/pybada.git" },
-    { name = "pycontrails", extras = ["ecmwf", "gcp", "gfs", "jupyter", "pyproj"], specifier = "==0.60.1" },
+    { name = "pybada", specifier = "==0.1.12" },
+    { name = "pycontrails", extras = ["ecmwf", "gcp", "gfs", "jupyter", "pyproj"], specifier = "==0.60.2" },
     { name = "pytest", marker = "extra == 'all'", specifier = ">=8.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0.0" },

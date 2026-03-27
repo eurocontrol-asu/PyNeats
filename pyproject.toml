@@ -40,13 +40,13 @@ classifiers = [
 ]
 dependencies = [
     "xarray==2024.10.0",
-    "pycontrails[ecmwf,gcp,gfs,jupyter,pyproj]==0.60.1",
+    "pycontrails[ecmwf,gcp,gfs,jupyter,pyproj]==0.60.2",
     "dacite>=1.9.2",
     "zarr>=2.18.3,<3",
     "scipy>=1.11.0",
     "joblib>=1.3.0",
     "openairclim==0.13.0",
-    "pybada @ git+https://github.com/eurocontrol-bada/pybada.git",
+    "pybada==0.1.12",
 ]
 
 [project.urls]
