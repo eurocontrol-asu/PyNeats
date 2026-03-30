@@ -372,9 +372,7 @@ class GWPMetrics(
                 ) from e
 
             other_results = self._compute_from_segment_atr(flight)
-            self.logger.info(
-                "Computed metrics using Segment-Level ATR summation"
-            )
+            self.logger.info("Computed metrics using Segment-Level ATR summation")
 
         elif isinstance(flight, FlightWithGlobalAGWP):
             other_results = self._compute_from_global_agwp(flight)
