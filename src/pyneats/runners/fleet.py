@@ -43,6 +43,7 @@ from pyneats.core.compute_parameters import DEFAULT_JOBLIB_PREFERENCE
 from pyneats.core.compute_parameters import DEFAULT_NJOBS
 from pyneats.core.neats_default_parameters import DEFAULT_COCIP_KWARGS
 from pyneats.core.neats_default_parameters import DEFAULT_HUMIDITY_SCALING
+from pyneats.core.physics import METRICS_HORIZONS
 from pyneats.core.steps import Step
 from pyneats.core.steps import VectorizedStep
 from pyneats.core.steps import get_step_critical_columns
@@ -289,6 +290,33 @@ def _create_error_record(
         },
         "error": f"Failed at {step_name}: {error_msg}",
     }
+
+
+_LOW_ALTITUDE_ERROR_MARKER: str = "low-altitude"
+
+_ZERO_SPECIES: tuple[str, ...] = ("CO2", "CH4", "O3", "H2O", "Contrails")
+
+
+def _build_zero_climate_result(error_record: dict[str, Any]) -> dict[str, Any]:
+    """Build a climate result with all-zero metrics for a low-altitude flight."""
+    fi = dict(error_record.get("flight_information", {}))
+    fi["low_altitude_flight"] = True
+    fi["co2_baseline_kg"] = float("nan")
+    fi["fuel_burn_kg"] = float("nan")
+    fi["contrails_ef_J"] = 0.0
+
+    climate_metrics = [
+        {
+            "species": sp,
+            "value": [
+                {"horizon": h, "EAGWP_Wm2yr": 0.0, "CO2eq_kg": 0.0}
+                for h in METRICS_HORIZONS
+            ],
+        }
+        for sp in _ZERO_SPECIES
+    ]
+
+    return {"flight_information": fi, "climate_metrics": climate_metrics}
 
 
 def _process_parallel_results(
@@ -702,7 +730,25 @@ class FleetRunner(Runner):
 
         return self
 
+    @staticmethod
+    def _separate_low_altitude_errors(
+        error_records: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Split error records into low-altitude zero-results and other errors."""
+        low_altitude: list[dict[str, Any]] = []
+        other: list[dict[str, Any]] = []
+        for rec in error_records:
+            if _LOW_ALTITUDE_ERROR_MARKER in rec.get("error", ""):
+                low_altitude.append(_build_zero_climate_result(rec))
+            else:
+                other.append(rec)
+        return low_altitude, other
+
     def _extract_results(self) -> Self:
+        low_altitude_results, other_errors = self._separate_low_altitude_errors(
+            self.error_records,
+        )
+
         # Case 1: Pipeline aborted (all flights failed at some step)
         # Return only errors in standard format - this is expected behavior
         if self._pipeline_aborted:
@@ -712,7 +758,7 @@ class FleetRunner(Runner):
             )
             self.results = {
                 "fleet_meta_data": FleetReport.collect(),
-                "flight_results": self.error_records,
+                "flight_results": low_altitude_results + other_errors,
             }
             clear_dataset_cache()
             return self
@@ -729,7 +775,7 @@ class FleetRunner(Runner):
 
         self.results = {
             "fleet_meta_data": FleetReport.collect(),
-            "flight_results": successful_results + self.error_records,
+            "flight_results": successful_results + low_altitude_results + other_errors,
         }
 
         clear_dataset_cache()
