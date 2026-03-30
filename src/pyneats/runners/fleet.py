@@ -292,7 +292,7 @@ def _create_error_record(
     }
 
 
-_LOW_ALTITUDE_ERROR_MARKER: str = "low_altitude"
+_LOW_ALTITUDE_ERROR_MARKER: str = "low-altitude"
 
 _ZERO_SPECIES: tuple[str, ...] = ("CO2", "CH4", "O3", "H2O", "Contrails")
 

@@ -196,7 +196,7 @@ MAX_NONCO2_CO2_RATIO: Final[float] = 500.0
 # Emissions model parameters
 # Configuration options passed to PyContrails emissions calculation engine
 DEFAULT_EMISSIONS_KWARGS: Final[Mapping[str, Any]] = {
-    "use_meem": False,  # MEEM (Mizin Et Al Empirical Model) for NOx - disabled by default
+    "use_meem": False,  # MEEM (Mission Emissions Estimation Methodology) for NOx - disabled by default
 }
 
 # Contrail cirrus impact parameters (CoCiP Model)

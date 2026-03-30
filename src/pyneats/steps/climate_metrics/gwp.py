@@ -28,7 +28,7 @@ from pyneats.core.steps import BaseParams
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.climate_functions.views import (
-    FlightWithGlobalAGWP,  # Concrete View B (New/Integrated)
+    FlightWithGlobalAGWP,  # Concrete View B
 )
 
 # --- Updated Imports for Views ---
@@ -36,10 +36,10 @@ from pyneats.steps.climate_functions.views import (
     FlightWithNonCO2Impact,  # The Union (for type hinting)
 )
 from pyneats.steps.climate_functions.views import (
-    FlightWithRFContrailsImpact,  # Needed for column validation in View A
+    FlightWithRFContrailsImpact,  # Needed for column validation 
 )
 from pyneats.steps.climate_functions.views import (
-    FlightWithSegmentATR,  # Concrete View A (Legacy/Detailed)
+    FlightWithSegmentATR, 
 )
 from pyneats.steps.climate_metrics.protocol import ClimateImpactModel
 from pyneats.steps.climate_metrics.protocol import ClimateImpactStepError
@@ -383,7 +383,7 @@ class GWPMetrics(
 
             other_results = self._compute_from_segment_atr(flight)
             self.logger.info(
-                "Computed metrics using Segment-Level ATR summation (Legacy)"
+                "Computed metrics using Segment-Level ATR summation"
             )
 
         elif isinstance(flight, FlightWithGlobalAGWP):
