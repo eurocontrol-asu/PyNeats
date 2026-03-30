@@ -5,23 +5,11 @@ All notable changes to PyNeats will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.9] - 2026-03-25
-
-### Bug Fixes
-
-- **accf**: Replace 0 with NaN in validity mask
-- **physics**: Update CO2 AGWP coefficients from AirClim (Dahlmann et al., 2025)
-
-### Changed
-
-- **speed-filter**: Operate on DataFrame instead of FlightWithWeather
+## [0.7.10] - 2026-03-30
 
 ### Features
 
-- **bada-adapters**: Expose v_stall_cas on BaseBADAAdapter
-- **performance**: Add low-speed point filter using VStall threshold
-- **bada-model**: Integrate speed filter in performance pipeline
-- **parsing**: Reject flights with min pressure level > 500 hPa
+- **fleet**: Generate zero-value climate results for low-altitude flights [AXM-907]
 
 ## [0.7.8] - 2026-03-20
 
