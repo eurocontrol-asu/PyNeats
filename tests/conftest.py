@@ -42,6 +42,9 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers", "requires_weather: marks tests requiring weather data"
     )
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
+    config.addinivalue_line(
+        "markers", "geometry: geometry failure mode tests (pycontrails delegation)"
+    )
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -301,3 +304,23 @@ def assert_climate_payload_equal(
     elif isinstance(expected, str):
         if actual != expected:
             raise AssertionError(f"{path}: '{actual}' != '{expected}'")
+
+
+# -----------------------------------------------------------------------------
+# Geometry test fixtures (imported from geometry_test_utils.py)
+# -----------------------------------------------------------------------------
+
+# Import fixtures for geometry failure mode tests
+# These are defined in geometry_test_utils.py and imported here so pytest can discover them
+from .geometry_test_utils import edge_case_flight
+from .geometry_test_utils import minimal_met
+from .geometry_test_utils import polar_flight
+from .geometry_test_utils import tokyo_la_flight
+
+
+__all__ = [
+    "tokyo_la_flight",
+    "polar_flight",
+    "edge_case_flight",
+    "minimal_met",
+]
