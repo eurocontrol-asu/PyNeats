@@ -147,6 +147,24 @@ class ACCFModel(
             raise ACCFStepError(f"ACCF initialization failed: {e}") from e
 
     def run(self, flight: FlightWithEmissions) -> FlightWithNonCO2Impact:
+        """Compute non-CO2 ATR contributions via the CLIMaCCF library (aCCF v1.0A).
+
+        Delegates to the ``climaccf`` package to obtain per-segment aCCF outputs
+        (K per kg NOx or K per kg fuel depending on ``accf_kwargs``), then
+        converts them to ``ATR_20_{CH4,O3,H2O}`` columns on the flight.
+
+        Args:
+            flight: Flight with emissions data. Must expose ``fuel_burn`` and
+                ``nox_ei`` columns.
+
+        Returns:
+            ``FlightWithNonCO2Impact`` — flight with ``ATR_20_CH4``,
+            ``ATR_20_O3``, ``ATR_20_H2O`` columns (Kelvin) consumed by
+            ``GWPMetrics`` downstream.
+
+        Raises:
+            ACCFStepError: If the CLIMaCCF output is missing required columns.
+        """
         try:
             out: Flight = self._impl.eval(flight)
             df: pd.DataFrame = out.to_dataframe()

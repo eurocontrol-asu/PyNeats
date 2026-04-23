@@ -28,7 +28,7 @@ keywords = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: European Union Public Licence 1.2 (EUPL 1.2)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -79,6 +79,9 @@ docs = [
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.0.0",
     "mkdocstrings[python]>=0.24.0",
+    "mkdocs-gen-files>=0.5.0",
+    "mkdocs-literate-nav>=0.6.0",
+    "mkdocs-htmlproofer-plugin>=1.2.0",
 ]
 # All optional dependencies
 all = [
@@ -97,11 +100,15 @@ dev = [
     "pandas-stubs>=2.0.0",
     "pre-commit>=3.0.0",
     "pip-audit>=2.7.0",
+    "pydocstyle>=6.3.0",
 ]
 docs = [
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.0.0",
     "mkdocstrings[python]>=0.24.0",
+    "mkdocs-gen-files>=0.5.0",
+    "mkdocs-literate-nav>=0.6.0",
+    "mkdocs-htmlproofer-plugin>=1.2.0",
 ]
 
 # ============================================
@@ -240,6 +247,21 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = "scripts.*"
 ignore_errors = true
+
+# ============================================
+# PYDOCSTYLE - Docstring quality
+# ============================================
+# Scoped to src/pyneats/ only (not tests, not scripts, not examples).
+# Google convention matches the existing docstring style and what mkdocstrings
+# is configured to render. Before raising docstring coverage, this enforces
+# a quality floor: presence alone is not enough.
+[tool.pydocstyle]
+convention = "google"
+match_dir = "^(?!tests|scripts|examples|docs|site|old).*"
+# Allowed exceptions (common noise on typed codebases):
+# D100 missing module docstring, D104 missing package docstring,
+# D105 magic methods, D107 __init__ (covered via merge_init_into_class)
+add-ignore = ["D100", "D104", "D105", "D107"]
 
 # ============================================
 # PYTEST - Testing

@@ -254,6 +254,26 @@ class LocalACCFModel(
 
     # ---- pipeline entrypoint ----
     def run(self, flight: FlightWithEmissions) -> FlightWithNonCO2Impact:
+        """Compute non-CO2 ATR via the local aCCF regression implementation.
+
+        In-tree reimplementation of the aCCF v1.0A regressions (O3, CH4, H2O),
+        useful when CLIMaCCF is unavailable or pinned. Applies a validity mask
+        based on air pressure: samples where pressure exceeds
+        ``DEFAULT_ACCF_VALIDITY_PRESSURE`` are set to NaN, since aCCF formulas
+        are only valid at cruise altitudes.
+
+        Args:
+            flight: Flight with emissions; required columns are
+                ``air_temperature``, ``geopotential``, ``time``, ``latitude``,
+                and ``potential_vorticity``.
+
+        Returns:
+            ``FlightWithNonCO2Impact`` — flight with ``ATR_20_O3``,
+            ``ATR_20_CH4`` and ``ATR_20_H2O`` columns (NaN outside validity).
+
+        Raises:
+            ACCFStepError: If the local regression evaluation fails.
+        """
         self._require_cols(
             flight,
             [

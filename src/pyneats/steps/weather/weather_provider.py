@@ -244,12 +244,19 @@ class WeatherProvider(
     # --- accessors ----------------------------------------------------
 
     def met(self) -> MetDataset:
+        """Return the full MET (pressure-level) dataset loaded on init."""
         return self._met
 
     def rad(self) -> MetDataset:
+        """Return the full radiation dataset loaded on init."""
         return self._rad
 
     def wind(self) -> MetDataset | None:
+        """Return the dedicated wind dataset if provided, else ``None``.
+
+        When ``None``, wind variables fall back to the MET dataset during
+        ``run()``.
+        """
         return self._wind
 
     def ds_met(self) -> MetDataset | None:
@@ -294,6 +301,33 @@ class WeatherProvider(
     # --- main step ----------------------------------------------------
 
     def run(self, flight: Flight4D) -> FlightWithWeather:
+        """Intersect a trajectory with meteorological fields.
+
+        For each ``met_var → out_col`` entry in ``params.var_map``:
+
+        - **Wind vars** are read from the dedicated wind dataset if provided,
+          otherwise fall back to the MET dataset. NaN values are replaced by 0.
+        - **Non-wind vars** are read from the MET dataset only.
+        - Missing vars raise ``KeyError`` if the column is in
+          ``DEFAULT_REQUIRED_WEATHER_COLS``, otherwise they are silently
+          skipped (optional).
+
+        Also computes ``air_pressure`` from trajectory level coordinates and,
+        if ``params.humidity_scaling`` is set, applies humidity scaling via its
+        ``.eval()`` method.
+
+        Args:
+            flight: Typed ``Flight4D`` view (time, lat, lon, altitude).
+
+        Returns:
+            ``FlightWithWeather`` — zero-copy view with all meteorological
+            columns attached and ``air_pressure`` computed.
+
+        Raises:
+            WeatherStepError: If the input is not a valid Flight4D, if a
+                required meteorological variable is missing, if a column-length
+                mismatch occurs, or if humidity scaling fails.
+        """
         # Ensure upstream contract
         try:
             flight = Flight4D.from_flight(flight)

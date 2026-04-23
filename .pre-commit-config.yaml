@@ -28,6 +28,8 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+        # mkdocs.yml uses !!python/name: tags which require --unsafe
+        args: [--unsafe]
       - id: check-toml
       - id: check-json
       - id: check-added-large-files
