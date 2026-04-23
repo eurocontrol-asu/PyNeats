@@ -78,6 +78,14 @@ plugins:
   - htmlproofer:
       raise_error: true
       validate_external_urls: false
+      # Auto-generated API reference pages emit relative cross-refs (e.g.
+      # `flight/#pyneats.runners.flight.FlightRunner`) that resolve correctly
+      # at the served URL but htmlproofer's file-based lookup doesn't follow
+      # `use_directory_urls` — it can't find `foo/` → `foo.md` or `foo/index.md`.
+      # mkdocstrings already validates symbol cross-refs at build time, so
+      # skip htmlproofer on these pages to avoid false positives.
+      ignore_pages:
+        - reference/api/*
 
 markdown_extensions:
   - admonition

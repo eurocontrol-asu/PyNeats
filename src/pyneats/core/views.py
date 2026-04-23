@@ -1,16 +1,13 @@
-"""
-NEATS Flight Views Module
+"""NEATS Flight Views Module.
 
 This module implements a type-safe view system over pycontrails Flight objects,
 providing schema validation and zero-copy data access. It serves as the foundation
 for all flight data representations in the NEATS pipeline.
 
-Classes
--------
-ValidationError : StepError
-     Raised when a validated Flight view cannot guarantee its schema.
-FlightView : Flight
-     Zero-copy, typed view over a Flight with declarative column requirements and validation.
+Classes:
+    ValidationError: Raised when a validated Flight view cannot guarantee its schema.
+    FlightView: Zero-copy, typed view over a Flight with declarative column
+        requirements and validation.
 """
 
 from __future__ import annotations
