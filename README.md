@@ -131,7 +131,7 @@ PyNeats is organized into modular components:
 
 ```
 src/pyneats/
-├── core/              # Shared types, constants, and protocols
+├── core/              # Shared types, constants, protocols, step registry
 ├── runners/           # Fleet and flight-level computation orchestration
 ├── steps/             # Pipeline stages (parsing, weather, performance, emissions, climate)
 │   ├── parsing/       # Trajectory parsing and flight reconstruction
@@ -139,9 +139,9 @@ src/pyneats/
 │   ├── interpolation/ # Trajectory and performance interpolation
 │   ├── performance/   # Aircraft performance modeling (PyBADA integration)
 │   ├── emissions/     # Fuel burn and emissions calculation
-│   ├── climate_functions/  # Climate response functions (PyContrails, ClimAccf)
+│   ├── climate_functions/  # Climate response functions (CoCiP, CLIMaCCF, local aCCF)
 │   └── climate_metrics/    # GWP and climate impact metrics
-└── adapters/          # Wrappers around external libraries
+└── resources/         # Bundled data resources (engine UIDs, base inventories, etc.)
 ```
 
 **Key Design Principles:**
@@ -219,15 +219,18 @@ make clean             # Clean build artifacts
 
 ## 📚 Documentation
 
-- **[Architecture](docs/architecture.md)** – System design and module overview
-- **[Examples](examples/README.md)** – Runnable examples with explanations
+- **[Quick Start](docs/tutorials/quickstart.md)** – Install and run your first computation
+- **[Usage guide](docs/howto/usage.md)** – How-to recipes (parse, cache weather, read output)
+- **[Architecture](docs/explanation/architecture.md)** – System design and module overview
+- **[MRV specification](docs/explanation/mrv-specification.md)** – Methodology and formulas
+- **[Example scripts](docs/reference/example-scripts.md)** – Runnable example scripts reference
 - **[Contributing](CONTRIBUTING.md)** – Development setup and contribution guidelines
 
 ---
 
 ## 📝 License
 
-PyNeats is released under the **MIT License**. See [LICENSE](LICENSE) for details.
+PyNeats is released under the **EUPL 1.2** with an amendment from EUROCONTROL. See [LICENSE.md](LICENSE.md) and [AMENDMENT_TO_EUPL_license.md](AMENDMENT_TO_EUPL_license.md) for details.
 
 ---
 
@@ -248,7 +251,6 @@ PyNeats integrates with these established open-source projects:
 | Library | Purpose | Link |
 |---------|---------|------|
 | **PyContrails** | Contrail prediction and atmospheric data | [github.com/contrailcirrus/pycontrails](https://github.com/contrailcirrus/pycontrails) |
-| **ClimAccf** | Aviation climate change functions (aCCFs) | [github.com/dlr-pa/climaccf](https://github.com/dlr-pa/climaccf) |
 | **PyBADA** | Aircraft performance modeling | [github.com/eurocontrol-bada/pybada](https://github.com/eurocontrol-bada/pybada) |
 | **open-airclim** | Climate response functions and GWP | [github.com/dlr-pa/oac](https://github.com/dlr-pa/oac) |
 

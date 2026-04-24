@@ -79,6 +79,23 @@ class CoCiPModel(
             raise ContrailsStepError(f"COCIP initialization failed: {e}") from e
 
     def run(self, flight: FlightWithEmissions) -> FlightWithRFContrailsImpact:
+        """Compute contrail radiative forcing with CoCiP.
+
+        Evaluates the `pycontrails` CoCiP model on the input flight and returns a
+        typed view enriched with contrail radiative-forcing columns (notably the
+        per-segment energy forcing ``ef``).
+
+        Args:
+            flight: Flight with emissions data (fuel burn, NOx EI, etc.).
+
+        Returns:
+            ``FlightWithRFContrailsImpact`` — same flight with per-segment
+            contrail RF columns added (in particular ``ef`` used downstream by
+            ``GWPMetrics`` for EAGWP contrail computation).
+
+        Raises:
+            ContrailsStepError: If CoCiP evaluation fails.
+        """
         try:
             out: Flight = self._impl.eval(source=flight)
         except Exception as e:

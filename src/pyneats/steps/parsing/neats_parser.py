@@ -177,6 +177,35 @@ class NeatsTrajectoryParser(
         )
 
     def run(self, flight: pd.DataFrame) -> Flight4D:
+        """Parse a NEATS-format DataFrame into a typed ``Flight4D`` view.
+
+        Performs the standard NEATS trajectory normalisation:
+
+        1. Verifies all required columns are present (``Flight4D.REQUIRED``).
+        2. Converts altitude from flight-level (FL) to metres.
+        3. Parses timestamps in ``params.date_format`` (tz-aware, converts to
+           ``params.timezone`` if set).
+        4. Cleans and deduplicates rows on the ``time`` column.
+        5. Rejects trajectories spanning more than 24 hours (likely a
+           concatenation or timezone bug).
+        6. Builds flight attributes, optionally filling fuel properties from
+           the per-airport fallback map if provided.
+        7. Rejects low-altitude trajectories that never cross the configured
+           ``max_pressure_level`` (no contribution to non-CO2 climate impact).
+
+        Args:
+            flight: Raw NEATS DataFrame containing the ``Flight4D.REQUIRED``
+                columns and trajectory attributes in ``df.attrs``.
+
+        Returns:
+            ``Flight4D`` — typed zero-copy view ready for downstream steps.
+
+        Raises:
+            TrajectoryParserStepError: If required columns are missing, if
+                altitude/timestamp conversion fails, if the cleaned trajectory
+                is empty, if the trajectory duration exceeds 24 hours, or if
+                the trajectory never reaches the minimum pressure altitude.
+        """
         try:
             self.logger.debug("NM parse start: rows=%d, cols=%d", *flight.shape)
 

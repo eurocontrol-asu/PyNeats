@@ -6,7 +6,7 @@ I went through your use case list and compared it against the current `bada_mode
 
 ## Notation
 - **AM** = Aircraft Mass
-- **FF** = Fuel Flow  
+- **FF** = Fuel Flow
 - **EE** = Engine Efficiency
 - **TAS** = True Airspeed
 - **--** = Not provided

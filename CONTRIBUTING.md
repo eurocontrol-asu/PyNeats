@@ -147,9 +147,58 @@ docs(readme): update installation instructions
 
 ## Additional Notes
 
-- **Documentation**: Update README.md or add docstrings as needed.
+- **Documentation**: Update README.md or add docstrings as needed. See the
+  [Documentation](#documentation) section below for building and previewing.
 - **Dependencies**: Add runtime dependencies to `pyproject.toml` under `dependencies`. For dev tools, add to `[dependency-groups]` dev.
 - **Tests**: New features should include tests. Use `@pytest.mark.requires_bada` or `@pytest.mark.requires_weather` for tests requiring external data.
+
+---
+
+## Documentation
+
+The docs live in [`docs/`](docs/) and are published with [MkDocs + Material](https://squidfunk.github.io/mkdocs-material/).
+
+### Build and preview locally
+
+```bash
+# Install the docs dependency group
+uv sync --group docs
+
+# Live-preview at http://127.0.0.1:8000
+uv run mkdocs serve
+
+# Build the static site to ./site (strict mode catches broken refs)
+uv run mkdocs build --strict
+```
+
+### Structure (Diátaxis)
+
+- `docs/tutorials/` — step-by-step learning paths (for new users)
+- `docs/howto/` — task-oriented recipes (for users with a specific goal)
+- `docs/reference/` — API, input/output schemas, example scripts
+- `docs/explanation/` — methodology, architecture, design choices
+- `docs/glossary.md` — project-wide glossary
+
+API reference pages are generated automatically from source docstrings by
+[`docs/gen_ref_pages.py`](docs/gen_ref_pages.py) — do not hand-edit
+`docs/reference/api/`.
+
+### Docstring conventions
+
+- **Style**: Google (matches `mkdocstrings` configuration in `mkdocs.yml`).
+- **Public symbols** must carry a docstring. Tier-A entry points (step
+  `run()` methods, runner constructors, public registry functions) must
+  document `Args`, `Returns` and `Raises` sections.
+- Run `uv run pydocstyle src/pyneats/` to check locally.
+
+### Code examples in docs
+
+Code blocks in `docs/*.md` that use `python` fences are intended to be
+runnable. When adding a new code example, verify it matches the real API —
+`mkdocs build --strict` catches broken internal references and missing anchor
+targets (via the `htmlproofer` plugin), but it cannot catch semantic drift
+(e.g. a renamed function). Prefer importing from `pyneats` public exports
+rather than from `_private` modules.
 
 ---
 

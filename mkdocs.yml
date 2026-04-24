@@ -1,0 +1,121 @@
+site_name: PyNeats
+site_description: Aviation non-CO₂ climate metrics pipeline — the MRV reference implementation.
+site_url: https://eurocontrol-asu.github.io/PyNeats/
+repo_url: https://github.com/eurocontrol-asu/PyNeats
+repo_name: eurocontrol-asu/PyNeats
+copyright: Copyright &copy; 2026 EUROCONTROL
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - Tutorials:
+    - Quick Start: tutorials/quickstart.md
+  - How-To Guides:
+    - howto/index.md
+    - Usage: howto/usage.md
+  - Reference:
+    - Example scripts: reference/example-scripts.md
+    - Input format: reference/input-format.md
+    - Output format: reference/output-format.md
+    - Python API: reference/api/
+  - Explanation:
+    - MRV Specification: explanation/mrv-specification.md
+    - Architecture: explanation/architecture.md
+    - Extending Steps: explanation/extending-steps.md
+    - Input Prioritization: explanation/input-prioritization.md
+  - Glossary: glossary.md
+
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - docs/gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - src
+          options:
+            docstring_style: google
+            show_root_heading: true
+            show_root_full_path: false
+            heading_level: 3
+            merge_init_into_class: true
+  # htmlproofer verifies internal links and anchor targets at build time.
+  # Runs as part of `mkdocs build --strict` (already in CI). External
+  # URLs are not validated by default to avoid CI flakiness on network 404s.
+  - htmlproofer:
+      raise_error: true
+      validate_external_urls: false
+      # Auto-generated API reference pages emit relative cross-refs (e.g.
+      # `flight/#pyneats.runners.flight.FlightRunner`) that resolve correctly
+      # at the served URL but htmlproofer's file-based lookup doesn't follow
+      # `use_directory_urls` — it can't find `foo/` → `foo.md` or `foo/index.md`.
+      # mkdocstrings already validates symbol cross-refs at build time, so
+      # skip htmlproofer on these pages to avoid false positives.
+      ignore_pages:
+        - reference/api/*
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra_css:
+  - assets/custom.css
+
+extra_javascript:
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+exclude_docs: |
+  internal/
+  gen_ref_pages.py

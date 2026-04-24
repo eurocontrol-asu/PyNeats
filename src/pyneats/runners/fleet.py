@@ -433,6 +433,26 @@ class FleetRunner(Runner):
     emission: Callable[[FlightWithPerformance], FlightWithEmissions]
 
     def __init__(self, cfg: FleetRunnerParams) -> None:
+        """Build a fleet runner bound to a validated configuration.
+
+        Validates ``cfg`` at construction time (``FleetRunnerParams.validate``)
+        and pre-binds each pipeline step callable via the global step
+        registry (``make_step_func``). Weather datasets are loaded lazily by
+        ``_load_weather`` inside ``eval()`` — only the ``weather_step`` is
+        created at that point.
+
+        All per-flight state (``parsed_fleet``, ``fleet_with_performance``,
+        etc.) is initialised to ``None`` and populated during ``eval()``. The
+        final output is written to ``self.results`` by ``_extract_results``.
+
+        Args:
+            cfg: Fleet-level runner configuration (trajectory source, weather
+                Zarr paths, BADA path, parallelism, step implementation
+                selectors, etc.).
+
+        Raises:
+            ValidationError: If ``cfg.validate()`` rejects the configuration.
+        """
         self.cfg = cfg
         self.cfg.validate()
 

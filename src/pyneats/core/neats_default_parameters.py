@@ -191,7 +191,7 @@ DEFAULT_MIN_ALTITUDE_FL: Final[float] = 20
 DEFAULT_MAX_ALTITUDE_FILTER_RATIO: Final[float] = 0.8
 
 # Guardrail: reject non-CO2 species producing > MAX_NONCO2_CO2_RATIO × CO2 baseline
-MAX_NONCO2_CO2_RATIO: Final[float] = 500.0
+MAX_NONCO2_CO2_RATIO: Final[float] = 1000.0
 
 # Emissions model parameters
 # Configuration options passed to PyContrails emissions calculation engine

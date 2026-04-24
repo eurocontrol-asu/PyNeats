@@ -304,6 +304,50 @@ class GWPMetrics(
     # ---------- Main Run Method ----------
 
     def run(self, flight: FlightWithNonCO2Impact) -> FlightWithClimateImpact:
+        """Convert non-CO2 ATR contributions into GWP-based CO2-equivalents.
+
+        Implements the EAGWP / CO2eq formulas from *Dahlmann et al. (2025)* —
+        see `docs/explanation/mrv-specification.md` §3.7 for the full spec.
+        Polymorphic on the input view:
+
+        - ``FlightWithSegmentATR`` → Method C (sums per-segment ATR then
+          applies Dahlmann conversion factors).
+        - ``FlightWithGlobalAGWP`` → Method D (reads pre-integrated AGWP
+          attributes from OpenAirClim).
+
+        A guardrail rejects non-CO2 species whose CO2eq exceeds
+        ``MAX_NONCO2_CO2_RATIO`` times the total CO2 (implausible ratio check).
+
+        Args:
+            flight: Non-CO2 impact view. Must carry ``attrs["total_co2"]`` and
+                either per-segment ATR columns (Method C) or flight-level AGWP
+                attrs (Method D).
+
+        Returns:
+            ``FlightWithClimateImpact`` — stores the final payload at
+            ``flight.attrs["climate_impact"]`` with shape::
+
+                {
+                    "flight_information": {
+                        "co2_baseline_kg": float,
+                        "fuel_burn_kg": float,
+                        "contrails_ef_J": float,
+                        ...  # from FlightReport.extract
+                    },
+                    "climate_metrics": [
+                        {"species": "CO2", "value": [{"horizon": 20, ...}, ...]},
+                        {"species": "CH4", "value": [...]},
+                        ...
+                    ],
+                }
+
+        Raises:
+            ClimateImpactStepError: If ``total_co2`` is missing, if the input
+                view shape is inconsistent, or if the non-CO2/CO2 guardrail
+                trips.
+            TypeError: If the input view type is neither segment-ATR nor
+                global-AGWP.
+        """
         # 1. Common Metadata & CO2 Baseline
         try:
             total_co2_kg = float(flight.attrs["total_co2"])
