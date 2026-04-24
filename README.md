@@ -251,7 +251,6 @@ PyNeats integrates with these established open-source projects:
 | Library | Purpose | Link |
 |---------|---------|------|
 | **PyContrails** | Contrail prediction and atmospheric data | [github.com/contrailcirrus/pycontrails](https://github.com/contrailcirrus/pycontrails) |
-| **ClimAccf** | Aviation climate change functions (aCCFs) | [github.com/dlr-pa/climaccf](https://github.com/dlr-pa/climaccf) |
 | **PyBADA** | Aircraft performance modeling | [github.com/eurocontrol-bada/pybada](https://github.com/eurocontrol-bada/pybada) |
 | **open-airclim** | Climate response functions and GWP | [github.com/dlr-pa/oac](https://github.com/dlr-pa/oac) |
 
