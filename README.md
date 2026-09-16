@@ -1,4 +1,4 @@
-# pyneats
+# pyNEATS
 
 [![CI](https://github.com/eurocontrol-asu/PyNeats/actions/workflows/ci.yml/badge.svg)](https://github.com/eurocontrol-asu/PyNeats/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/eurocontrol-asu/PyNeats/branch/main/graph/badge.svg)](https://codecov.io/gh/eurocontrol-asu/PyNeats)
