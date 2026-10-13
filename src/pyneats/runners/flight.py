@@ -95,6 +95,26 @@ class FlightRunner(Runner, ABC):
         bada_path: str | None = None,
         airport_fuel_path: str | None = None,
     ) -> None:
+        """Build the per-flight pipeline steps from the registry.
+
+        Args:
+            weather: Weather provider used for the intersection step.
+            source: One flight as a DataFrame. Trajectory columns use the
+                Flight4D names, in the units the default ``neats`` parser
+                expects: ``latitude`` and ``longitude`` (degrees),
+                ``altitude`` (flight level, hundreds of ft), ``time``
+                (datetime64, naive = UTC, or a string in the parser
+                ``date_format``), ``fuel_flow`` (kg/s, whole aircraft),
+                ``aircraft_mass`` (kg), ``engine_efficiency`` (dimensionless
+                fraction [0, 1]) and ``true_airspeed`` (m/s). Flight-level
+                fields (``flight_id``, ``aobt``, ``aircraft_type``, ...,
+                ``q_fuel`` in J/kg, ``hydrogen_content`` in wt.% (percent by
+                mass)) go in ``source.attrs``. A list ``engine_uid`` is
+                rejected by the NEATS parser; use FleetRunner for those.
+            cfg: Step names and per-step params.
+            bada_path: Root of the BADA 3 / BADA 4 coefficient files.
+            airport_fuel_path: Optional airport -> fuel properties file.
+        """
         self.cfg = cfg or RunnerConfig()
 
         self._source = None  # initialize backing field before using the property

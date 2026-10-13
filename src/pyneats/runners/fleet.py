@@ -143,7 +143,29 @@ StepResult = StepSuccess[U] | StepFailure
 # - kw_only=True avoids dataclass field ordering issues when subclassing.
 @dataclass(kw_only=True)
 class FleetRunnerParams(RunnerConfig):
-    """Fleet runner configuration, extending the FlightRunner-style RunnerConfig."""
+    """Fleet runner configuration, extending the FlightRunner-style RunnerConfig.
+
+    Attributes:
+        zarr_paths: Weather Zarr stores (met, rad, optional wind). Every flight
+            in the run is computed with these stores; the AO JSON field
+            ``nwp_date_time`` is not read by PyNEATS.
+        trajectory_json_filepath: JSON file holding a list (array) of AO-format
+            flight objects, already converted by the NEATS application (``tas``
+            in m/s, ``calorific_value`` in J/kg). A bare single object is not
+            accepted (see ``neats_json_to_flights``).
+        trajectory_dataframe: Concatenated DataFrame of all flights. Trajectory
+            columns use the Flight4D names, in the units the default ``neats``
+            parser expects: ``latitude`` and ``longitude`` (degrees),
+            ``altitude`` (flight level, hundreds of ft), ``time`` (datetime64,
+            naive = UTC, or a string in the parser ``date_format``),
+            ``fuel_flow`` (kg/s, whole aircraft), ``aircraft_mass`` (kg),
+            ``engine_efficiency`` (dimensionless fraction [0, 1]) and
+            ``true_airspeed`` (m/s). All other columns
+            (``flight_id``, ``departure_airport``, ``arrival_airport``,
+            ``aobt``, ``aircraft_type``, ..., ``q_fuel`` in J/kg,
+            ``hydrogen_content`` in wt.% (percent by mass)) are flight-level
+            and are moved to ``attrs`` by ``split_df_into_flights``.
+    """
 
     # Required fleet resource
     zarr_paths: ZarrPaths
@@ -298,7 +320,12 @@ _ZERO_SPECIES: tuple[str, ...] = ("CO2", "CH4", "O3", "H2O", "Contrails")
 
 
 def _build_zero_climate_result(error_record: dict[str, Any]) -> dict[str, Any]:
-    """Build a climate result with all-zero metrics for a low-altitude flight."""
+    """Build a climate result with all-zero metrics for a low-altitude flight.
+
+    ``co2_baseline_kg`` and ``fuel_burn_kg`` are NaN (not computed),
+    ``contrails_ef_J`` is 0.0 and every ``EAGWP_Wm2yr`` (W m-2 yr) and
+    ``CO2eq_kg`` (kg CO2e) entry is 0.0.
+    """
     fi = dict(error_record.get("flight_information", {}))
     fi["low_altitude_flight"] = True
     fi["co2_baseline_kg"] = float("nan")
@@ -367,7 +394,12 @@ def _process_parallel_results(
 def _merge_engine_group(
     group: list[FlightWithEmissions], parent_key: str
 ) -> FlightWithEmissions:
-    """Average numeric DataFrame columns across engine copies; restore original flight identity."""
+    """Average numeric columns over engine copies; restore original flight identity.
+
+    Each copy is the same trajectory run with one engine type, so the merged
+    columns and numeric attrs (e.g. ``total_co2`` in kg) are the mean over
+    engine types, not a sum.
+    """
     import numpy as np
 
     # Use first flight as the structural template
@@ -425,6 +457,47 @@ class FleetRunner(Runner):
 
     This runner keeps "continue-on-error" semantics: per-flight failures are
     recorded and filtered out rather than aborting the whole run.
+
+    After ``eval()``, ``self.results`` has the shape::
+
+        {
+            "fleet_meta_data": {...},
+            "flight_results": [
+                {
+                    "flight_information": {
+                        ...,  # FlightReport fields (flight_id, aobt, ...)
+                        "co2_baseline_kg": float,  # flight total CO2 [kg]
+                        "fuel_burn_kg": float,  # flight total fuel [kg]
+                        "contrails_ef_J": float,  # contrail energy forcing [J]
+                    },
+                    "climate_metrics": [
+                        {
+                            "species": "CO2",  # CO2 first; also CH4, O3, H2O, Contrails
+                            "value": [
+                                {
+                                    "horizon": 20,  # years (20, 50, 100)
+                                    "EAGWP_Wm2yr": float,  # [W m-2 yr]
+                                    "CO2eq_kg": float,  # [kg CO2e]
+                                },
+                                ...,
+                            ],
+                        },
+                        ...,
+                    ],
+                },
+                ...,
+            ],
+        }
+
+    Successful flights come first, then low-altitude zero results, then
+    error records. Error records are ``{"flight_information": {...},
+    "error": str}``. Low-altitude zero results have NaN ``co2_baseline_kg``
+    and ``fuel_burn_kg`` and 0.0 metrics. When metrics come from OpenAirClim
+    AGWP attrs (Method D in ``gwp.py``), ``contrails_ef_J`` holds the 20-year
+    contrail AGWP in W m-2 yr, not an energy forcing in J (see
+    docs/internal/pyneats_units_audit.md). Flights with a list ``engine_uid``
+    are run once per engine and merged back into one result (see
+    ``_merge_engine_group``).
     """
 
     parser: Callable[[pd.DataFrame], Flight4D]
@@ -558,6 +631,8 @@ class FleetRunner(Runner):
         )
 
     def _load_trajectories(self) -> Self:
+        # No unit conversion here: true_airspeed must already be m/s and q_fuel
+        # J/kg (the NEATS application converts the AO knots and MJ/kg values).
         if self.cfg.trajectory_json_filepath is not None:
             path = Path(self.cfg.trajectory_json_filepath)
             logger.info("Loading trajectories from %s", path)
@@ -806,8 +881,8 @@ class FleetRunner(Runner):
         """
         Flatten self.results into one row per flight.
         Climate metrics are expanded into wide columns:
-            <species>_<horizon>_EAGWP_Wm2yr
-            <species>_<horizon>_CO2eq_kg
+            <species>_<horizon>_EAGWP_Wm2yr  (W m-2 yr; horizon in years)
+            <species>_<horizon>_CO2eq_kg     (kg CO2e)
         """
         rows: list[dict[str, Any]] = []
 

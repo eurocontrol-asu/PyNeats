@@ -66,6 +66,20 @@ def make_accf_surface_view(surface: MetDataset) -> MetDataset:
       - variable aliasing / renaming for ClimAccf expectations
       - minimal attrs/unit tweaks
 
+    Notes
+    -----
+    Only names and ``units`` attributes change; no values are converted
+    (see docs/internal/pyneats_units_audit.md):
+
+    - ``toa_outgoing_longwave_flux`` (pycontrails OLR, positive upward,
+      W m-2) is renamed to ECMWF ``top_net_thermal_radiation`` without a
+      sign change, although ECMWF defines ``ttr`` as minus OLR.
+    - ``surface_solar_downward_radiation`` is relabelled ``W m**-2``.
+      ``DWDFactory.build_cache`` (default ``sdr_accumulate_dt_s=3600``)
+      stores this field as W m-2 x 3600 labelled ``J m**-2``; after the
+      relabel, pycontrails ``ACCF`` multiplies by 3600 again. The DWD
+      source field (``sdr``) is TOA incoming solar according to the DWD
+      store history, not surface radiation.
     """
 
     # Work on an xr.Dataset view
@@ -88,6 +102,8 @@ def make_accf_surface_view(surface: MetDataset) -> MetDataset:
     # 2) Align units on the surface shortwave flux if needed
     if SurfaceSolarDownwardRadiation.standard_name in ds:
         # Ensure units are consistent with the radiation flux variables expected by ClimAccf (e.g., W m-2)
+        # Relabels the units attribute only; values are not converted
+        # (see docs/internal/pyneats_units_audit.md).
         ds[SurfaceSolarDownwardRadiation.standard_name].attrs.update(
             {"units": TOAOutgoingLongwaveFlux.units}
         )
@@ -152,14 +168,25 @@ class ACCFModel(
         Delegates to the ``climaccf`` package to obtain per-segment aCCF outputs
         (K per kg NOx or K per kg fuel depending on ``accf_kwargs``), then
         converts them to ``ATR_20_{CH4,O3,H2O}`` columns on the flight.
+        ``climaccf`` is not a declared PyNEATS dependency; this backend is not
+        the default.
+
+        With ``accf_kwargs["unit_K_per_kg_fuel"] = False`` (default), the
+        CH4/O3 aCCFs are multiplied here by the flight's ``nox_ei``
+        [kg NOx (as NO2) / kg fuel]. With ``True``, the flight's ``nox_ei`` is
+        not used: with ``merged`` True (pycontrails default) CLIMaCCF applies
+        its own NOx emission index, selected by the pycontrails ``ACCF``
+        ``nox_ei`` parameter (default ``"TTV"``, a fixed 0.013 kg/kg)
+        (see docs/internal/pyneats_units_audit.md). NaN ``fuel_burn`` and
+        ``nox_ei`` are treated as 0.
 
         Args:
-            flight: Flight with emissions data. Must expose ``fuel_burn`` and
-                ``nox_ei`` columns.
+            flight: Flight with emissions data. Must expose ``fuel_burn``
+                [kg fuel per segment] and ``nox_ei`` [kg/kg fuel] columns.
 
         Returns:
             ``FlightWithNonCO2Impact`` — flight with ``ATR_20_CH4``,
-            ``ATR_20_O3``, ``ATR_20_H2O`` columns (Kelvin) consumed by
+            ``ATR_20_O3``, ``ATR_20_H2O`` columns (K per segment) consumed by
             ``GWPMetrics`` downstream.
 
         Raises:
@@ -172,15 +199,15 @@ class ACCFModel(
             nox_ei = pd.to_numeric(df["nox_ei"], errors="coerce").fillna(0.0)
 
             if not self.params.accf_kwargs["unit_K_per_kg_fuel"]:
-                # Convert aCCF outputs from K per kg NOx to K per kg H2O and K per Fuel
+                # Convert O3/CH4 aCCFs from K per kg NOx (as NO2) to K per kg fuel
                 df["aCCF_CH4"] = df["aCCF_CH4"] * nox_ei
                 df["aCCF_O3"] = df["aCCF_O3"] * nox_ei
 
-            # Compute final ART_20 (K) from aCCF outputs (K per kg fuel)
+            # ATR_20 [K per segment] = fuel_burn [kg] x aCCF [K per kg fuel]
 
-            flight["ATR_20_CH4"] = fuel_burn * df["aCCF_CH4"]  # K
-            flight["ATR_20_O3"] = fuel_burn * df["aCCF_O3"]  # K
-            flight["ATR_20_H2O"] = fuel_burn * df["aCCF_H2O"]  # K
+            flight["ATR_20_CH4"] = fuel_burn * df["aCCF_CH4"]  # K per segment
+            flight["ATR_20_O3"] = fuel_burn * df["aCCF_O3"]  # K per segment
+            flight["ATR_20_H2O"] = fuel_burn * df["aCCF_H2O"]  # K per segment
 
         except KeyError as e:
             self.logger.error("ACCFbackend: %s", e)

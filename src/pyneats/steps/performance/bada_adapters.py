@@ -133,6 +133,12 @@ class BaseBADAAdapter(AircraftProtocol, Protocol):
       - rocd_mps: meters/second (positive = climb)
       - accel_mps2: meters/second^2 (time derivative of TAS)
       - delta_tau: K (delta temperature vs ISA)
+
+    ``thrust_fuel_segment`` returns (fuel flow [kg/s, whole aircraft],
+    thrust [N], phase, thrust segment label "LIDL"/"MCMB"/"TOTAL").
+    ``v_stall_cas`` returns a CAS stall speed [m/s]. Metadata: MTOW, OEW and
+    MPL in kg. The ROCD phase threshold is given in ft/min and converted to
+    m/s at construction.
     """
 
     def thrust_fuel_segment(
@@ -173,7 +179,17 @@ class _PyBADAAdapterBase(Generic[TObj]):
         return "Cruise"
 
     def v_stall_cas(self, mass: float, config: str) -> float | None:
-        """Return CAS stall speed (m/s) or ``None`` when data is unavailable."""
+        """Return CAS stall speed (m/s) or ``None`` when data is unavailable.
+
+        ``mass`` in kg. BADA3: pyBADA returns kt2ms(Vstall) x
+        sqrt(mass / reference mass). BADA4: pyBADA 0.1.12
+        ``FlightEnvelope.VStall`` has the signature
+        ``(mass, HLid, LG, nz=1.0, **kwargs)`` (BADA3: ``(mass, config)``), so
+        this call with ``config`` and no ``HLid``/``LG`` raises ``TypeError``
+        for ``BADA4Adapter``; the caller in ``run_by_bada_version`` catches it
+        and continues without the speed filter
+        (see docs/internal/pyneats_units_audit.md).
+        """
         result = self._obj.flightEnvelope.VStall(mass=mass, config=config)
         if result is None:
             return None
@@ -514,6 +530,8 @@ class BADA3Adapter(_PyBADAAdapterBase[Bada3Aircraft], BaseBADAAdapter):
         value = getattr(self._obj, "span", None)
         return cast("float | None", value)
 
+    # MTOW/OEW [kg]: from OPF files pyBADA converts tonnes to kg (x 1000) and
+    # sets MTOW = OPF maximum mass, OEW = OPF minimum mass.
     @property
     def MTOW(self) -> float | None:
         value = getattr(self._obj, "MTOW", None)
@@ -521,7 +539,10 @@ class BADA3Adapter(_PyBADAAdapterBase[Bada3Aircraft], BaseBADAAdapter):
 
     @property
     def MPL(self) -> float | None:
-        return None  # BADA3 has no MPL attribute ...
+        # Always None. pyBADA 0.1.12 Bada3Aircraft does set MPL (from OPF
+        # files: max payload x 1000, kg), but it is not read here, so mass
+        # estimation uses MTOW - OEW (see docs/internal/pyneats_units_audit.md).
+        return None
 
     @property
     def OEW(self) -> float | None:

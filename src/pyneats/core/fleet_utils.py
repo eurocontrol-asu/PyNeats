@@ -2,7 +2,7 @@
 Utilities for Fleet ↔ List[Flight] conversions.
 
 This module provides utility functions to convert between lists of Flight objects and Fleet objects,
-preserving and restoring fuel information and original columns.
+carrying fuel information across the conversion and restoring original columns.
 """
 
 from __future__ import annotations
@@ -34,8 +34,10 @@ def flights_to_fleet(flights: list[Flight]) -> Fleet:
     """
     Convert a list of Flight objects to a Fleet, preserving fuel information.
 
-    Fuel properties (q_fuel, ei_h2o) are extracted from flight.fuel and stored
-    as columns in the Fleet dataframe. The original fuel object is set to None.
+    Fuel properties are copied from flight.fuel into per-waypoint columns
+    ``q_fuel`` [J/kg, lower calorific value] and ``ei_h2o`` [kg H2O / kg fuel],
+    which pycontrails SAC/CoCiP read on the Fleet. The original fuel object is
+    set to None.
     Flights with different columns are harmonized by padding missing columns
     with NaN values. Original column sets are stored in attrs to enable
     restoration during fleet_to_flights().
@@ -101,9 +103,11 @@ def fleet_to_flights(
     """
     Convert a Fleet object back to a list of Flight objects, restoring fuel information.
 
-    Fuel properties (q_fuel, ei_h2o) are extracted from Fleet columns and used
-    to reconstruct flight.fuel objects. Columns that were added during Fleet
-    conversion (NaN padding) are removed to restore original column sets.
+    flight.fuel is rebuilt with ``NEATSFuel.from_attrs(flight.attrs)``, i.e.
+    from the flight attributes, not from the Fleet columns. Columns that were
+    added during Fleet conversion (NaN padding and the ``q_fuel``/``ei_h2o``
+    columns) are removed without being read, restoring original column sets
+    (see docs/internal/pyneats_units_audit.md).
 
     Any flights present in the original manifest but missing from the Fleet
     are returned as error records.
@@ -111,7 +115,8 @@ def fleet_to_flights(
     Parameters
     ----------
     fleet : Fleet
-        Fleet object with fuel information as columns.
+        Fleet object produced by flights_to_fleet(). Its fuel columns are not
+        read; fuel is rebuilt from each flight's attrs.
     step_name : str
         Name of the processing step, used in error messages for dropped flights.
 
@@ -142,7 +147,7 @@ def fleet_to_flights(
         for col in fleet_columns - original_columns:
             flight.data.pop(col, None)
 
-        # Restore fuel object
+        # Rebuild the fuel object from attrs; the q_fuel/ei_h2o columns are not read
         flight.fuel = NEATSFuel.from_attrs(flight.attrs)
 
     # Create error records for dropped flights

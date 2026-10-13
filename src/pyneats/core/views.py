@@ -218,6 +218,21 @@ class FlightView(Flight):
 
     # Overload method
     def to_dict(self) -> dict[str, Any]:
+        """
+        Convert the FlightView to a dictionary of JSON-compatible values.
+
+        Data columns and attrs are merged; data keys overwrite duplicate attrs.
+
+        Returns
+        -------
+        dict[str, Any]
+            ``time`` is serialised as integer seconds since the Unix epoch,
+            truncated (``astype("datetime64[s]")``), from the tz-naive UTC times
+            that pycontrails stores. ``timedelta64[ns]`` columns (e.g.
+            ``contrail_age``) are serialised by the pycontrails ``NumpyEncoder``
+            as integer nanoseconds. Other values keep the units of the step that
+            produced them.
+        """
         np_encoder = json_utils.NumpyEncoder()
 
         def encode(key: str, obj: Any) -> Any:
@@ -227,11 +242,12 @@ class FlightView(Flight):
 
             # Convert numpy objects to python objects
             if isinstance(obj, np.ndarray | np.generic):
-                # round time to unix seconds
+                # truncate time to integer unix seconds (no rounding)
                 if key == "time":
                     return np_encoder.default(obj.astype("datetime64[s]").astype(int))
 
-                # round specific keys in precision
+                # other arrays: converted to lists, values unchanged
+                # (timedelta64[ns] becomes integer nanoseconds)
                 return np_encoder.default(obj)
 
             # Pass through everything else

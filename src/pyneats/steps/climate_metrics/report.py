@@ -98,6 +98,8 @@ class FlightReport:
     Subset of PyContrails Flight.attrs relevant for *per-flight* reporting.
 
     This class defines the keys you care about; extraction returns a dict.
+    All fields are identifiers, labels or (``aobt``) a timestamp copied from
+    ``Flight.attrs``; none is a numeric physical quantity, so no units apply.
 
     Attributes
     ----------
@@ -112,7 +114,12 @@ class FlightReport:
     aircraft_id : str or None
         Aircraft identifier.
     aobt : Any
-        Actual off-block time (datetime or str).
+        Departure time labelled "actual off-block time", passed through as
+        found in ``Flight.attrs``. The AO field it comes from is the
+        flight-plan Item 13 time, i.e. the EOBT (ICAO Doc 4444).
+        The NEATS JSON parser sets it to the input ``departure_date_time``
+        string, copied verbatim and never parsed
+        (e.g. ``"2025-07-09T18:07:00+0000"``).
     model_type : str or None
         Model type.
     aircraft_type : str or None

@@ -45,7 +45,7 @@ __all__ = [
 # Supported species for aCCFs pathway
 SPECIES: Final[tuple[str, ...]] = ("CH4", "O3", "H2O")
 
-# Column name pattern expected for ATR at H0 = 20 years
+# Column name pattern expected for ATR at H0 = 20 years [K per segment]
 ATR_COL_TEMPLATE: Final[str] = "ATR_20_{spec}"
 
 
@@ -60,9 +60,9 @@ class GWPParams(BaseParams):
     Parameters for GWP climate metrics computation.
     """
 
-    horizons: tuple[int, ...] = METRICS_HORIZONS
-    surface_earth: float = SURFACE_EARTH
-    seconds_per_year: int = SECONDS_PER_YEAR
+    horizons: tuple[int, ...] = METRICS_HORIZONS  # [years]
+    surface_earth: float = SURFACE_EARTH  # [m^2]
+    seconds_per_year: int = SECONDS_PER_YEAR  # [s/yr]
     agwp_coeff_wm2yr_per_kg: Mapping[int, float] = field(
         default_factory=lambda: CO2_AGWP_COEFF_WM2YR_PER_KG
     )
@@ -73,6 +73,7 @@ class GWPParams(BaseParams):
         default_factory=lambda: CONVERSION_FACTORS_ATR_TO_RF
     )
     efficacy: Mapping[str, float] = field(default_factory=lambda: EFFICACY)
+    # H0 of the input ATR columns [years]
     atr_ref_horizon: int = field(
         default_factory=lambda: DEFAULT_CLIMACCF_KWARGS.get("time_horizon", 20)
     )
@@ -136,7 +137,8 @@ class GWPMetrics(
         Returns
         -------
         dict[int, float]
-            EAGWP for each time horizon in W·m⁻²·yr.
+            EAGWP for each time horizon in W·m⁻²·yr (the same value for every
+            horizon).
         """
         eps = float(self.params.efficacy.get("Contrails", 1.0))
         s = self.params.surface_earth
@@ -144,14 +146,17 @@ class GWPMetrics(
         return dict.fromkeys(self.params.horizons, total_ef_J * eps / (s * s_yr))
 
     def _co2eq_from_eagwp_Wm2yr(self, agwp_Wm2yr: dict[int, float]) -> dict[int, float]:
-        """CO2eq(H) = EAGWP(H) / C(H)"""
+        """CO2eq(H) [kg CO2-eq] = EAGWP(H) [W m-2 yr] / C(H) [W m-2 yr kg-1]"""
         return {
             h: agwp_Wm2yr[h] / self.params.agwp_coeff_wm2yr_per_kg[h]
             for h in self.params.horizons
         }
 
     def _eagwp_spec_Wm2yr(self, species: str, atr_H0_K: float) -> dict[int, float]:
-        """Scales ATR(H0) [K] to AGWP(H) [W·m⁻²·yr]"""
+        """Scales ATR(H0) [K] to EAGWP(H) [W·m⁻²·yr].
+
+        EAGWP(H) = ATR(H0) * k_AGWP(H) / k_ATR(H0) / rf_backward * efficacy**2.
+        """
         eps_spec = float(self.params.efficacy.get(species, 1.0))
         h_0 = self.params.atr_ref_horizon
         rf_backward = float(self.params.rf_backward_factor.get(species, 1.0))
@@ -178,9 +183,12 @@ class GWPMetrics(
     ) -> list[dict[str, Any]]:
         """
         Computations for Method C
-        1. Sums 'ef' column for Contrails.
-        2. Sums 'ATR_20_X' columns for Non-CO2.
+        1. Sums 'ef' column for Contrails [J].
+        2. Sums 'ATR_20_X' columns for Non-CO2 [K].
         3. Applies conversion factors.
+
+        Each entry's values hold ``EAGWP_Wm2yr`` [W m-2 yr] and ``CO2eq_kg``
+        [kg CO2-equivalent].
         """
         df = flight.to_dataframe()
         results = []
@@ -246,9 +254,12 @@ class GWPMetrics(
     ) -> list[dict[str, Any]]:
         """
         Computations for Method D
-        1. Reads 'AGWP_{h}_{spec}' directly from attributes.
+        1. Reads 'AGWP_{h}_{spec}' directly from attributes [W m-2 yr].
         2. Applies Efficacy.
         3. Divides by CO2 contribution (CO2eq).
+
+        Each entry's values hold ``EAGWP_Wm2yr`` [W m-2 yr] and ``CO2eq_kg``
+        [kg CO2-equivalent].
         """
         results = []
         horizons = self.params.horizons
@@ -325,7 +336,7 @@ class GWPMetrics(
 
         Returns:
             ``FlightWithClimateImpact`` — stores the final payload at
-            ``flight.attrs["climate_impact"]`` with shape::
+            ``flight.attrs["climate_impact"]`` with shape (units below)::
 
                 {
                     "flight_information": {
@@ -341,6 +352,24 @@ class GWPMetrics(
                     ],
                 }
 
+            Units:
+
+            - ``co2_baseline_kg``: flight total CO2 [kg] (``attrs["total_co2"]``,
+              the pycontrails nansum of per-segment ``co2``).
+            - ``fuel_burn_kg``: flight total fuel burned [kg] (nansum of the
+              per-segment ``fuel_burn`` column, else the ``fuel_burn`` or
+              ``fuel_burn_kg`` attr).
+            - ``contrails_ef_J``: Method C, sum of the CoCiP per-segment energy
+              forcing ``ef`` [J]. Method D stores ``attrs["AGWP_20_CONT"]``
+              under this key, an AGWP in W m-2 yr without efficacy, not J
+              (see docs/internal/pyneats_units_audit.md).
+            - Each ``climate_metrics`` value: ``horizon`` [years],
+              ``EAGWP_Wm2yr`` (efficacy-weighted time-integrated forcing,
+              [W m-2 yr]) and ``CO2eq_kg`` (EAGWP / C(H), [kg CO2-equivalent]).
+              For CO2, ``CO2eq_kg`` is the total CO2 [kg]. CH4 includes PMO in
+              Method D and, with ``accf_kwargs["PMO"]`` True (default), in
+              Method C.
+
         Raises:
             ClimateImpactStepError: If ``total_co2`` is missing, if the input
                 view shape is inconsistent, or if the non-CO2/CO2 guardrail
@@ -349,6 +378,7 @@ class GWPMetrics(
                 global-AGWP.
         """
         # 1. Common Metadata & CO2 Baseline
+        # total_co2: flight total CO2 mass [kg]
         try:
             total_co2_kg = float(flight.attrs["total_co2"])
         except Exception:
@@ -423,6 +453,9 @@ class GWPMetrics(
             self.logger.info(
                 "Computed metrics using Flight-Level AGWP attributes (Integrated)"
             )
+            # Stores AGWP_20_CONT, an AGWP in W m-2 yr (without efficacy), under
+            # the J-named contrails_ef_J key below
+            # (see docs/internal/pyneats_units_audit.md).
             total_ef_J = float(flight.attrs.get("AGWP_20_CONT", 0.0))
         else:
             raise TypeError(f"Unknown input view type: {type(flight)}")

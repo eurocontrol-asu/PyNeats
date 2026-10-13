@@ -7,8 +7,9 @@ Does not compute emissions, contrails, or climate impact.
 Classes
 -------
 FleetRunnerPerformanceOnly
-    Stops after _performance() and serialises fuel_flow / aircraft_mass /
-    true_airspeed trajectory vectors as JSON.
+    Stops after _performance() and serialises fuel_flow (kg/s, whole
+    aircraft) / aircraft_mass (kg) / true_airspeed (m/s) / engine_efficiency
+    (dimensionless fraction) trajectory vectors as JSON.
 """
 
 from __future__ import annotations
@@ -28,7 +29,9 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["FleetRunnerPerformanceOnly"]
 
-# Columns to extract from each FlightWithPerformance trajectory
+# Columns to extract from each FlightWithPerformance trajectory:
+# fuel_flow kg/s (whole aircraft), aircraft_mass kg, true_airspeed m/s,
+# engine_efficiency dimensionless fraction. Emitted without conversion.
 _PERF_VECTOR_COLS = ("fuel_flow", "aircraft_mass", "true_airspeed", "engine_efficiency")
 
 # Flight-level attrs included in the output
@@ -43,7 +46,7 @@ _META_ATTRS = (
 
 
 def _to_list_or_null(series: Any) -> list[float | None]:
-    """Convert a pandas Series (or array-like) to a JSON-safe list."""
+    """Convert a pandas Series (or array-like) to a JSON-safe list (NaN -> None)."""
     result: list[float | None] = []
     for v in series:
         try:
@@ -77,7 +80,7 @@ class FleetRunnerPerformanceOnly(FleetRunnerLargeEmitter):
                         "engine_uid": "...",  # only if present
                     },
                     "performance": {
-                        "timestamps": ["2025-01-01T10:00:00+00:00", ...],
+                        "timestamps": ["2025-01-01T10:00:00", ...],
                         "fuel_flow": [1.2, 1.3, null, ...],
                         "aircraft_mass": [70000.0, 69950.0, ...],
                         "true_airspeed": [240.0, 245.0, ...],
@@ -87,6 +90,16 @@ class FleetRunnerPerformanceOnly(FleetRunnerLargeEmitter):
                 ...,
             ],
         }
+
+    Units: ``timestamps`` are ISO 8601 strings of tz-naive UTC datetimes, so
+    no offset is printed; ``fuel_flow`` kg/s (whole aircraft);
+    ``aircraft_mass`` kg; ``true_airspeed`` m/s; ``engine_efficiency``
+    dimensionless fraction. NaN values are written as ``null``.
+
+    Flights with a list ``engine_uid`` are not merged here: the engine-merge
+    step runs inside ``_emissions``, which this runner skips, so each engine
+    copy gives its own record (``flight_id`` ``"<id>__eng<i>"``, scalar
+    ``engine_uid``).
 
     Error records (flights that failed during parsing / weather / performance)
     are included in ``flight_results`` with an ``"error"`` key, exactly as in

@@ -146,9 +146,13 @@ class BADAPerformanceModelParams(PerformanceModelParams):
     Attributes
     ----------
     true_air_speed_smoothing_window : int
-        Window size for true airspeed smoothing.
+        Savitzky-Golay window length (number of points) passed to pycontrails
+        ``segment_true_airspeed``; used only when TAS is computed from winds.
     reference_q_fuel : float
-        Reference fuel heat value.
+        Reference lower calorific value [J/kg of fuel]. BADA fuel flow is
+        divided by ``q_fuel_used / reference_q_fuel``. The default
+        (``REFERENCE_Q_FUEL`` = 43.13e6 J/kg) is the pycontrails JetA value,
+        not the per-aircraft BADA4 LHV (see docs/internal/pyneats_units_audit.md).
     delta_tau_compute_method : {"point", "zero"}
         Method for delta-tau computation.
     delta_tau_fill_method : {"bffill", "none", "zero"}
@@ -162,15 +166,34 @@ class BADAPerformanceModelParams(PerformanceModelParams):
     bada3_root_path : str
         Root path for BADA3 data.
     payload_factor : float
-        Payload factor for mass estimation.
+        Payload mass as a fraction of the BADA maximum payload (MPL):
+        ZFW = OEW + payload_factor x MPL [kg], with MPL taken as MTOW - OEW
+        when the adapter gives no MPL (always the case with ``BADA3Adapter``).
+        The first-pass constant-mass guess is
+        OEW + payload_factor x (MTOW - OEW). Not a seat load factor; not
+        clipped. Overridden by the ``payload_factor`` flight attribute and
+        used only when neither an ``aircraft_mass`` column nor a
+        ``takeoff_weight`` attribute is given.
     fuel_reserve_fraction : float
-        Fuel reserve fraction for mass estimation.
+        Dimensionless fraction: fuel on board = trip fuel x
+        (1 + fuel_reserve_fraction) in the initial mass estimate.
     max_rel_mass_diff : float
-        Maximum relative mass difference for convergence.
+        Convergence threshold on the relative change of the initial mass
+        between iterations (dimensionless fraction).
     max_mass_estimation_iter : int
         Maximum number of mass estimation iterations.
     rocd_phase_threshold : float
-        Threshold for rate of climb/descent phase detection.
+        Rate of climb/descent threshold for phase detection [ft/min]; the
+        adapters convert it to m/s.
+    fuel_burn_threshold : float
+        Guardrail: the flight is rejected when total fuel burn [kg] exceeds
+        fuel_burn_threshold x (MTOW - OEW) [kg] (dimensionless multiple).
+
+    Notes
+    -----
+    ``ff_outlier_threshold`` [kg/s, whole aircraft] is an upper bound checked
+    only against the BADA-computed (q_fuel-corrected) fuel flow, never against
+    a provided ``fuel_flow`` column.
     """
 
     true_air_speed_smoothing_window: int = DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW
@@ -303,7 +326,8 @@ class BADAPerformanceModel(
         Fallback chain:
             1. Normal BADA (4 or 3) execution (with speed filter applied)
             2. Retry with BADA3 forced (if first attempt used BADA4)
-            3. Altitude fallback — filter points below FL15, retry
+            3. Altitude fallback — filter points below DEFAULT_MIN_ALTITUDE_FL
+               (FL20 = 2000 ft = 609.6 m), retry
         """
 
         # --- Preprocessing + aircraft data extraction ---
@@ -460,6 +484,8 @@ class BADAPerformanceModel(
             )
 
             # 1b) speed filter — remove low-TAS points before perf computation
+            # segment_duration [s], rocd and acceleration are not recomputed
+            # after rows are removed (see docs/internal/pyneats_units_audit.md).
             try:
                 df = filter_low_speed_points(df, adapter)
             except Exception:
@@ -519,6 +545,7 @@ class BADAPerformanceModel(
     ) -> FlightWithPerformance:
         """Apply guardrails, compute efficiency, and build the output flight."""
         # Fuel burn guardrail: reject if total fuel > (MTOW - OEW) * threshold
+        # Total fuel burn in kg (pandas sum skips NaN); MTOW - OEW in kg.
         if adapter.MTOW is not None and adapter.OEW is not None:
             useful_payload = adapter.MTOW - adapter.OEW
             total_fuel = float(df["fuel_burn"].sum())
@@ -566,6 +593,9 @@ class BADAPerformanceModel(
         engine_id: str | None = (
             flight.attrs.get("engine_uid") if hasattr(flight, "attrs") else None
         )
+        # J/kg (LHV), already converted from the AO MJ/kg upstream; see the
+        # NEATSFuel q_fuel docstring. Never None in practice: a pycontrails Fuel
+        # always carries q_fuel (NEATSFuel default DEFAULT_Q_FUEL = 42.8e6 J/kg).
         q_fuel: float | None = flight.fuel.q_fuel
 
         return icao, series, engine_id, q_fuel
@@ -616,9 +646,15 @@ class BADAPerformanceModel(
     def _compute_ground_and_true_airspeed(
         self, flight: Flight, window: int
     ) -> pd.DataFrame:
-        """Compute ground speed and true airspeed columns."""
+        """Compute ground speed and true airspeed columns [m/s].
+
+        A provided ``true_airspeed`` column is used as is (m/s). Otherwise TAS
+        is computed by pycontrails ``segment_true_airspeed`` from the ground
+        speed (Savitzky-Golay smoothed over ``window`` points) and the
+        ``u_wind``/``v_wind`` columns (m/s).
+        """
         df = flight.dataframe.copy(deep=False)
-        df["ground_speed"] = flight.segment_groundspeed()
+        df["ground_speed"] = flight.segment_groundspeed()  # m/s
 
         if "true_airspeed" not in df.columns:
             u: NDArray[np.floating] = df["u_wind"].to_numpy(dtype=float, copy=False)
@@ -631,6 +667,9 @@ class BADAPerformanceModel(
                 polyorder=1,
             )
         else:
+            # PyNEATS input unit: m/s. The AO JSON field `tas` is in knots.
+            # The NEATS application converts knots to m/s (x 1852 / 3600) before
+            # calling PyNEATS. Values received here must already be in m/s.
             self.logger.debug("'true_airspeed' column already provided, keeping it")
 
         # ensure numeric dtype early
@@ -638,7 +677,14 @@ class BADAPerformanceModel(
         return df
 
     def _compute_kinematics(self, flight: Flight, df: pd.DataFrame) -> None:
-        """Compute kinematic columns: rocd, acceleration, segment_duration."""
+        """Compute kinematic columns: rocd, acceleration, segment_duration.
+
+        Forward differences: ``segment_duration`` [s] is t[i+1] - t[i] (NaN at
+        the last point); ``rocd`` [ft/min] comes from pycontrails
+        ``segment_rocd`` (converted to m/s at the adapter call);
+        ``acceleration`` [m/s^2] is the TAS forward difference (0 at the last
+        point, NaN replaced by 0).
+        """
         df["segment_duration"] = flight.segment_duration()
         df["rocd"] = flight.segment_rocd()
         df["segment_duration"] = pd.to_numeric(df["segment_duration"], errors="coerce")
@@ -657,7 +703,12 @@ class BADAPerformanceModel(
         method: Literal["point", "zero"],
         fill: Literal["bffill", "zero", "none"],
     ) -> None:
-        """Compute delta-tau (air temperature deviation from ISA)."""
+        """Compute delta-tau (air temperature deviation from ISA) [K].
+
+        ``air_temperature`` [K] minus the ISA temperature at the ``altitude``
+        column (pressure altitude, m). Passed to the adapters as pyBADA
+        ``deltaTemp``.
+        """
         if method == "point":
             T_isa: NDArray[np.floating] = m_to_T_isa(
                 df["altitude"].to_numpy(dtype=float, copy=False)
@@ -680,7 +731,12 @@ class BADAPerformanceModel(
         engine_id: str,
         flight: Flight,
     ) -> FlightWithPerformance | None:
-        """If AO provided fuel_flow, engine_efficiency, and aircraft_mass, skip BADA model."""
+        """If AO provided fuel_flow, engine_efficiency, and aircraft_mass, skip BADA model.
+
+        ``fuel_burn`` = fuel_flow [kg/s, treated as whole aircraft] x
+        segment_duration [s], i.e. kg per forward segment. No fuel-burn
+        guardrail and no fuel-flow outlier check are applied on this path.
+        """
         if (
             "fuel_flow" in df.columns
             and "engine_efficiency" in df.columns
@@ -707,10 +763,13 @@ class BADAPerformanceModel(
         Derive fuel_flow from aircraft_mass trajectory if mass provided but fuel_flow not.
 
         When airlines provide aircraft_mass along the trajectory, we can infer fuel consumption
-        from the decrease in mass over time:
-            fuel_flow[i] = -(mass[i+1] - mass[i]) / segment_duration[i]
+        from the decrease in mass over time. The code computes:
+            fuel_flow[i] = -(mass[i] - mass[i-1]) / segment_duration[i]
 
-        where segment_duration[i] is in seconds, and fuel_flow is in kg/s.
+        i.e. a backward mass difference [kg] divided by the forward
+        segment_duration[i] = t[i+1] - t[i] [s], giving kg/s for the whole
+        aircraft, clipped at 0. fuel_flow[0] is 0 and fuel_flow[-1] is NaN
+        (segment_duration[-1] is NaN) (see docs/internal/pyneats_units_audit.md).
 
         The derived fuel_flow will be preserved in the output (like airline-provided fuel_flow),
         while engine efficiency will still be computed using BADA thrust and fuel_flow for
@@ -730,7 +789,9 @@ class BADAPerformanceModel(
         mass_vals = df["aircraft_mass"].values
         dt_vals = df["segment_duration"].values
 
-        # fuel_flow[i] = -(mass[i+1] - mass[i]) / segment_duration[i]
+        # mass_diff[i] = mass[i] - mass[i-1] (backward, kg), divided by the
+        # forward segment_duration[i] = t[i+1] - t[i] (s); last value is NaN
+        # (see docs/internal/pyneats_units_audit.md).
         # Use prepend to handle first waypoint (assumes no mass change at t=0)
         mass_diff = np.diff(mass_vals, prepend=mass_vals[0])  # First segment: diff=0
         fuel_flow_derived = -mass_diff / dt_vals  # Negative sign because mass decreases
@@ -821,7 +882,15 @@ class BADAPerformanceModel(
         default_q_fuel: float,
     ) -> PerfOutput:
         """Single pass performance calculation with given or initial mass.
-        Now applies q_fuel correction during calculation."""
+        Now applies q_fuel correction during calculation.
+
+        With ``initial_mass`` [kg, at the first retained trajectory point] the
+        mass is integrated with the BADA fuel flow
+        (mass -= ff_corrected [kg/s] x segment_duration [s]), even when a
+        ``fuel_flow`` column is provided. Without it, the ``aircraft_mass``
+        column [kg] is used point by point. Returned fuel flow is kg/s for the
+        whole aircraft and thrust is N.
+        """
 
         if initial_mass is None and "aircraft_mass" not in df.columns:
             raise PerformanceStepError(
@@ -837,7 +906,10 @@ class BADAPerformanceModel(
         max_consecutive_failures = self.params.max_consecutive_failures
         ff_outlier_threshold = self.params.ff_outlier_threshold
 
-        # Calculate correction ratio
+        # Calculate correction ratio (dimensionless: J/kg / J/kg).
+        # ff_corrected [kg/s] = ff_BADA / (q_fuel_used / reference_q_fuel), so
+        # ff_corrected x q_fuel_used = ff_BADA x reference_q_fuel (see
+        # ``reference_q_fuel`` in BADAPerformanceModelParams).
         q_fuel_ratio = q_fuel_used / default_q_fuel
 
         mass_arr: list[float] = []
@@ -867,8 +939,8 @@ class BADAPerformanceModel(
                     _as_float(pt.true_airspeed),
                     ft_to_m(_as_float(pt.rocd))
                     / 60,  # Convert ft/min to m/s. The adapter requires SI
-                    _as_float(pt.acceleration),
-                    _as_float(pt.delta_tau),
+                    _as_float(pt.acceleration),  # m/s^2
+                    _as_float(pt.delta_tau),  # K
                 )
 
                 # Apply q_fuel correction immediately
@@ -943,7 +1015,13 @@ class BADAPerformanceModel(
         q_fuel_used: float,
         default_q_fuel: float,
     ) -> PerfOutput:
-        """Iterative initial mass estimation using BADA performance model."""
+        """Iterative initial mass estimation using BADA performance model.
+
+        All masses in kg. Initial mass = min(MTOW, ZFW + trip fuel x
+        (1 + fuel_reserve_fraction)), with ZFW = OEW + payload_factor x MPL
+        (or x (MTOW - OEW) when MPL is None) and trip fuel = sum of BADA fuel
+        flow [kg/s] x segment_duration [s] (NaN skipped).
+        """
 
         payload_factor: float | None = flight.attrs.get("payload_factor")
 
@@ -1041,7 +1119,15 @@ class BADAPerformanceModel(
         q_fuel_used: float,
     ) -> None:
         """Compute engine_efficiency column if missing in flight.
-        Now uses the correct q_fuel_used value."""
+        Now uses the correct q_fuel_used value.
+
+        Overall propulsion efficiency (dimensionless) from pycontrails
+        ``overall_propulsion_efficiency``: thrust [N] x TAS [m/s] /
+        (BADA fuel flow [kg/s] x q_fuel_used [J/kg]), clipped to [0, 0.5].
+        By design it uses the BADA fuel flow, not a provided ``fuel_flow``.
+        Runs only when the column is absent: NaN values in a provided column
+        are not filled, and provided values are not clipped.
+        """
 
         if "engine_efficiency" in df.columns:
             self.logger.debug("'engine_efficiency' column already provided, keeping it")
@@ -1063,6 +1149,14 @@ class BADAPerformanceModel(
         )
 
     def _finalize_columns(self, df: pd.DataFrame, perf: PerfOutput) -> None:
+        """Write BADA outputs to ``df``.
+
+        ``thrust`` [N]; ``aircraft_mass`` [kg] is the input column when given,
+        otherwise the mass integrated with the BADA fuel flow (the constant
+        first-pass guess if ``max_mass_estimation_iter`` <= 1); a provided or
+        mass-derived ``fuel_flow`` [kg/s] is kept as is; ``fuel_burn`` =
+        fuel_flow x segment_duration [kg per segment].
+        """
         df["thrust"] = perf["thrust"]
         df["aircraft_mass"] = perf["mass"]
         df["phase"] = perf["phase"]
@@ -1086,6 +1180,9 @@ class BADAPerformanceModel(
         nb_eng: int,
         engine_id: str,
     ) -> None:
+        # n_engine: engine count. pycontrails Emissions divides fuel_flow by
+        # n_engine to get per-engine flow, so fuel_flow is treated as
+        # whole-aircraft flow.
         out.attrs["n_engine"] = nb_eng
         out.attrs["wingspan"] = adapter.span
         out.attrs["bada_version"] = bada_version

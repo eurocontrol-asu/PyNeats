@@ -24,7 +24,9 @@ class TrajectoryParserParams(BaseParams):
     max_pressure_level : float | None
         Maximum pressure level (hPa) allowed for the flight's highest point.
         Flights whose *minimum* pressure level exceeds this threshold (i.e. never
-        reach high enough altitude) are rejected.  ``500 hPa`` ≈ FL180.
+        reach high enough altitude) are rejected. The default, 550 hPa
+        (``DEFAULT_MAX_PRESSURE_LEVEL``), is about FL160 ISA pressure
+        altitude.
         Set to ``None`` to disable the filter.
     """
 

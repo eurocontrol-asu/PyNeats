@@ -49,12 +49,17 @@ class LocalACCFParams(ACCFParams):
     col_geopotential: str = "geopotential"  # [m^2 s^-2]
     col_time: str = "time"  # datetime64
     col_latitude: str = "latitude"  # [deg]
+    # [K m^2 kg^-1 s^-1] (SI, pycontrails PotentialVorticity), not PVU
+    # (1 PVU = 1e-6 SI). Used as supplied; see h2o_raw_formula and
+    # docs/internal/pyneats_units_audit.md.
     col_potential_vorticity: str = "potential_vorticity"
-    col_nox_ei: str = "nox_ei"  # [kg(NOx)/kg(fuel)]
-    col_fuel_burn: str = "fuel_burn"  # [kg(fuel)]
-    col_air_pressure: str = "air_pressure"
+    # [kg(NOx)/kg(fuel)]; pycontrails NOx EI, NOx expressed as NO2 (ICAO EDB)
+    col_nox_ei: str = "nox_ei"
+    col_fuel_burn: str = "fuel_burn"  # [kg(fuel)] per segment
+    col_air_pressure: str = "air_pressure"  # [Pa]
     col_phase: str = "phase"
 
+    # Version-specific divisors applied to the raw regressions (dimensionless)
     scale_o3: Mapping[str, float] = field(default_factory=lambda: ACCF_SCALE_03)
     scale_ch4: Mapping[str, float] = field(
         default_factory=lambda: ACCF_SCALE_CH4,
@@ -62,7 +67,7 @@ class LocalACCFParams(ACCFParams):
     scale_h2o: Mapping[str, float] = field(
         default_factory=lambda: ACCF_SCALE_H2O,
     )
-    solar_constant: float = SOLAR_CONSTANT
+    solar_constant: float = SOLAR_CONSTANT  # [W m^-2]
 
     def __post_init__(self) -> None:
         if self.accf_kwargs["accf_v"] not in self.scale_o3:
@@ -94,7 +99,11 @@ def _fin_rowwise(
     lat_series: pd.Series | FloatArray,
     solar_constant: float,
 ) -> FloatArray:
-    """Top-of-atmosphere incoming shortwave parametrization."""
+    """Top-of-atmosphere incoming shortwave parametrization [W m^-2].
+
+    ``lat_series`` is in degrees; the result has the units of
+    ``solar_constant`` (W m^-2).
+    """
     times = np.asarray(pd.to_datetime(time_series), dtype="datetime64[ns]")
     doy = (times.astype("datetime64[D]") - times.astype("datetime64[Y]")).astype(
         "timedelta64[D]"
@@ -145,15 +154,19 @@ class LocalACCFModel(
     # ---- O3: raw formula & compute ----
     @staticmethod
     def o3_raw_formula(t: FloatArray, gp: FloatArray) -> FloatArray:
-        """Returns raw (unscaled, unclamped) P-ATR20-O3 [K/kg(NOx)]."""
+        """Returns raw (unscaled, unclamped) P-ATR20-O3 [K/kg(NOx)].
+
+        ``t`` in K, ``gp`` (geopotential) in m^2 s^-2. NOx mass is expressed
+        as NO2 (CLIMaCCF states K/kg(NO2)).
+        """
 
         return -5.20e-11 + 2.30e-13 * t + 4.85e-16 * gp - 2.04e-18 * t * gp
 
     def compute_o3(self, flight: Flight) -> FloatArray:
         """Compute ozone (O3) Pulse-based Average Temperature Response over 20 years (P-ATR20)
         for ozone formation from NOx emissions.
-        Uses air temperature and geopotential as input parameters
-
+        Uses air temperature and geopotential as input parameters.
+        Returns K per segment.
         """
 
         t = _as_np(flight[self.params.col_air_temperature])
@@ -167,10 +180,10 @@ class LocalACCFModel(
             # Scaling with version-specific factor
             accf /= self.params.scale_o3[self.params.accf_kwargs["accf_v"]]
 
-            # convert from K-per-kg(NOx) to K-per-kg(fuel) with NOx EI
+            # convert from K-per-kg(NOx as NO2) to K-per-kg(fuel) with NOx EI
             accf *= _as_np(flight[self.params.col_nox_ei])
 
-            # Final conversion from K-per-kg(fuel) to K
+            # Final conversion from K-per-kg(fuel) to K per segment
             accf *= _as_np(flight[self.params.col_fuel_burn])
 
         except KeyError as e:
@@ -183,7 +196,11 @@ class LocalACCFModel(
     # ---- CH4: raw formula & compute ----
     @staticmethod
     def ch4_raw_formula(gp: FloatArray, fin: FloatArray) -> FloatArray:
-        """Returns raw (unscaled, unclamped) P-ATR20-CH4 [K/kg(NOx)]."""
+        """Returns raw (unscaled, unclamped) P-ATR20-CH4 [K/kg(NOx)].
+
+        ``gp`` (geopotential) in m^2 s^-2, ``fin`` (TOA incoming solar) in
+        W m^-2. NOx mass is expressed as NO2 (CLIMaCCF states K/kg(NO2)).
+        """
 
         return -9.83e-13 + 1.99e-18 * gp - 6.32e-16 * fin + 6.12e-21 * gp * fin
 
@@ -191,6 +208,7 @@ class LocalACCFModel(
         """Compute methane (CH4) Pulse-based Average Temperature Response over 20 years (P-ATR20)
         for methane depletion from NOx emissions.
         Uses geopotential and top-of-atmosphere incoming shortwave radiation as input parameters.
+        Returns K per segment (PMO included when ``accf_kwargs["PMO"]`` is True).
         """
 
         gp = _as_np(flight[self.params.col_geopotential])
@@ -208,10 +226,10 @@ class LocalACCFModel(
             # Scaling with version-specific factor
             accf /= self.params.scale_ch4[self.params.accf_kwargs["accf_v"]]
 
-            # convert from K-per-kg(NOx) to K-per-kg(fuel) with NOx EI
+            # convert from K-per-kg(NOx as NO2) to K-per-kg(fuel) with NOx EI
             accf *= _as_np(flight[self.params.col_nox_ei])
 
-            # Final conversion from K-per-kg(fuel) to K
+            # Final conversion from K-per-kg(fuel) to K per segment
             accf *= _as_np(flight[self.params.col_fuel_burn])
 
         except KeyError as e:
@@ -219,6 +237,7 @@ class LocalACCFModel(
                 f"Unknown ACCF version for CH4: {self.params.accf_kwargs['accf_v']}"
             ) from e
         if self.params.accf_kwargs["PMO"]:
+            # PMO effect merged into CH4 (dimensionless factor 1.29)
             accf = accf * 1.29
 
         return accf
@@ -226,14 +245,23 @@ class LocalACCFModel(
     # ---- H2O: raw formula & compute ----
     @staticmethod
     def h2o_raw_formula(pv: FloatArray) -> FloatArray:
-        """Returns raw (unscaled) P-ATR20-H2O [K/kg(fuel)]."""
+        """Returns raw (unscaled) P-ATR20-H2O [K/kg(fuel)].
+
+        ``pv`` is used as supplied, i.e. in SI units (K m^2 kg^-1 s^-1). The
+        CLIMaCCF reference implementation applies this regression to PV in
+        PVU (``pv * 1e6``). Without that factor the PV term here is ~1e-6 of
+        the CLIMaCCF value, so the result is effectively the constant term
+        (see docs/internal/pyneats_units_audit.md).
+        """
 
         return 4.05e-16 + 1.48e-16 * np.abs(pv)
 
     def compute_h2o(self, flight: Flight) -> FloatArray:
         """Compute water vapor (H2O) Pulse-based Average Temperature Response
         over 20 years (P-ATR20) for water vapor emissions.
-        Uses potential vorticity as input parameter.
+        Uses potential vorticity as input parameter (SI units, not PVU; see
+        ``h2o_raw_formula`` and docs/internal/pyneats_units_audit.md).
+        Returns K per segment.
         """
 
         pv = _as_np(flight[self.params.col_potential_vorticity])
@@ -242,7 +270,7 @@ class LocalACCFModel(
             # Scaling with version-specific factor
             accf /= self.params.scale_h2o[self.params.accf_kwargs["accf_v"]]
 
-            # Final conversion from K-per-kg(fuel) to K
+            # Final conversion from K-per-kg(fuel) to K per segment
             accf *= _as_np(flight[self.params.col_fuel_burn])
 
         except KeyError as e:
@@ -259,8 +287,8 @@ class LocalACCFModel(
         In-tree reimplementation of the aCCF v1.0A regressions (O3, CH4, H2O),
         useful when CLIMaCCF is unavailable or pinned. Applies a validity mask
         based on air pressure: samples where pressure exceeds
-        ``DEFAULT_ACCF_VALIDITY_PRESSURE`` are set to NaN, since aCCF formulas
-        are only valid at cruise altitudes.
+        ``DEFAULT_ACCF_VALIDITY_PRESSURE`` (40000 Pa) are set to NaN, since aCCF
+        formulas are only valid at cruise altitudes.
 
         Args:
             flight: Flight with emissions; required columns are
@@ -269,7 +297,8 @@ class LocalACCFModel(
 
         Returns:
             ``FlightWithNonCO2Impact`` — flight with ``ATR_20_O3``,
-            ``ATR_20_CH4`` and ``ATR_20_H2O`` columns (NaN outside validity).
+            ``ATR_20_CH4`` and ``ATR_20_H2O`` columns in K per segment
+            (P-ATR20 of that segment's emissions; NaN outside validity).
 
         Raises:
             ACCFStepError: If the local regression evaluation fails.

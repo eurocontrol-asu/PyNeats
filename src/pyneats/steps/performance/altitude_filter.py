@@ -27,8 +27,10 @@ def filter_low_altitude_points(
 ) -> FlightWithWeather:
     """Filter trajectory points below *min_altitude_fl* and return a new view.
 
-    At this pipeline stage altitude is already in **metres**, so the FL
-    threshold is converted: ``FL x 100 x 0.3048``.
+    At this pipeline stage the ``altitude`` column is already in **metres**
+    (pressure altitude; the NEATS parser converts FL x 100 ft to m), so the
+    FL threshold is converted: ``ft_to_m(FL x 100)`` = ``FL x 100 x 0.3048``
+    m (the default FL20 is 609.6 m).
 
     Parameters
     ----------
@@ -37,8 +39,8 @@ def filter_low_altitude_points(
     min_altitude_fl : float
         Minimum Flight Level (inclusive).  Default ``DEFAULT_MIN_ALTITUDE_FL``.
     max_filter_ratio : float
-        Maximum fraction of points that may be removed.  If exceeded the
-        flight is considered un-recoverable.
+        Maximum fraction of points that may be removed (dimensionless
+        fraction [0, 1]).  If exceeded the flight is considered un-recoverable.
 
     Raises
     ------
