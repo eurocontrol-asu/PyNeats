@@ -60,6 +60,7 @@ from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
 from pyneats.steps.emissions.protocol import EmissionModel
 from pyneats.steps.emissions.views import FlightWithEmissions
 from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
+from pyneats.steps.parsing.neats_io import FlightConversionFailure
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
 from pyneats.steps.parsing.neats_io import split_df_into_flights
 from pyneats.steps.parsing.protocol import TrajectoryParser
@@ -626,9 +627,12 @@ class FleetRunner(Runner):
     # -------------------------------------------------------------------------
 
     def _load_data(self) -> Self:
-        return (
-            self._load_trajectories()._load_weather()  # pylint: disable=protected-access  # pylint: disable=protected-access
-        )
+        self._load_trajectories()
+        # Every flight already failed at loading: the run stops here, so
+        # the weather is not needed.
+        if self._pipeline_aborted:
+            return self
+        return self._load_weather()
 
     def _load_trajectories(self) -> Self:
         # No unit conversion here: true_airspeed must already be m/s and q_fuel
@@ -638,8 +642,29 @@ class FleetRunner(Runner):
             logger.info("Loading trajectories from %s", path)
             with path.open("r", encoding="utf-8") as f:
                 json_flights: list[dict[str, Any]] = json.load(f)
-            self.source_fleet = neats_json_to_flights(json_flights)
-            logger.info("Loaded %d flights from JSON", len(self.source_fleet))
+            # A flight that cannot be converted (e.g. an invalid trajectory
+            # timestamp) becomes an error record; the other flights go on.
+            failures: list[FlightConversionFailure] = []
+            self.source_fleet = neats_json_to_flights(json_flights, failures=failures)
+            for failure in failures:
+                flight_id = failure.attrs.get(
+                    "flight_id", f"input_flight_{failure.index}"
+                )
+                self.error_records.append(
+                    _create_error_record(
+                        failure, flight_id, "parsing", repr(failure.error)
+                    )
+                )
+                logger.warning(
+                    "Flight %s failed at parsing: %s", flight_id, failure.error
+                )
+            logger.info(
+                "Loaded %d flights from JSON (%d could not be converted)",
+                len(self.source_fleet),
+                len(failures),
+            )
+            if failures and not self.source_fleet:
+                self._pipeline_aborted = True
             return self
 
         if self.cfg.trajectory_dataframe is not None:

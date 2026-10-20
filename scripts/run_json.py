@@ -31,6 +31,7 @@ from pyneats.runners.fleet import FleetRunnerParams
 from pyneats.runners.flight import RunnerConfig
 from pyneats.runners.large_emitter import FleetRunnerLargeEmitter
 from pyneats.runners.large_emitter import FlightRunnerLargeEmitter
+from pyneats.steps.parsing.neats_io import FlightConversionFailure
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
 from pyneats.steps.weather.weather_store import ZarrPaths
 from pyneats.steps.weather.weather_store import get_weather_from_zarr
@@ -89,7 +90,10 @@ def _print_summary(
         print("Failed flights:")
         print("-" * 60)
         for err in errors:
-            fid = err.get("flight_id", "unknown")
+            fid = str(
+                err.get("flight_id")
+                or err.get("flight_information", {}).get("flight_id", "unknown")
+            )
             msg = err.get("error", err.get("error_msg", str(err)))
             step = err.get("step_name", "")
             detail = f"step={step:<20}  {msg}" if step else msg
@@ -150,13 +154,25 @@ def run_flight_loop(
     weather = get_weather_from_zarr(zarr_paths)
     log.info("Weather loaded for flight-mode execution")
 
-    # 2. Convert JSON dicts → list[pd.DataFrame]
-    flight_dfs = neats_json_to_flights(input_flights)
-    log.info("Converted %d flights from JSON", len(flight_dfs))
+    # 2. Convert JSON dicts → list[pd.DataFrame]; a flight that cannot be
+    #    converted is reported as an error and the others go on.
+    failures: list[FlightConversionFailure] = []
+    flight_dfs = neats_json_to_flights(input_flights, failures=failures)
+    log.info(
+        "Converted %d flights from JSON (%d could not be converted)",
+        len(flight_dfs),
+        len(failures),
+    )
 
     # 3. Loop over flights
     succeeded = 0
-    errors: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = [
+        {
+            "flight_id": f.attrs.get("flight_id", f"input_flight_{f.index}"),
+            "error": str(f.error),
+        }
+        for f in failures
+    ]
 
     cfg = RunnerConfig(
         params={
@@ -186,7 +202,7 @@ def run_flight_loop(
             errors.append({"flight_id": fid, "error": str(exc)})
 
     # 4. Print summary
-    _print_summary("FlightRunnerLargeEmitter", len(flight_dfs), succeeded, errors)
+    _print_summary("FlightRunnerLargeEmitter", len(input_flights), succeeded, errors)
 
 
 # ---------------------------------------------------------------------------
