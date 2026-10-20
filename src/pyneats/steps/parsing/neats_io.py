@@ -6,14 +6,63 @@ Converts NEATS/NM JSON flight objects into a list of per-flight DataFrames in th
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from collections.abc import Sequence
+from datetime import UTC
 from datetime import datetime
 from typing import Any
 
 import pandas as pd
 
 from pyneats.steps.parsing.views import Flight4D
+
+
+# Fractional seconds of the seconds field (".5" in "2025-11-02T10:02:00.5Z").
+_FRACTIONAL_SECONDS_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.\d+", re.ASCII
+)
+
+
+def _ts_to_utc_string(ts_raw: str) -> str:
+    """Convert an AO trajectory ``ts`` to a naive UTC ``"%Y-%m-%d %H:%M:%S"`` string.
+
+    ``ts`` is an RFC 3339 date-time (AO schema ``"format": "date-time"``).
+    The UTC offset is applied, so ``"2025-11-02T12:02:00+02:00"`` becomes
+    ``"2025-11-02 10:02:00"``. A ``ts`` without offset is read as UTC, the
+    time scale the AO schema prescribes. Also accepted: a lowercase ``t`` or
+    ``z`` and a space instead of ``T``. Fractional seconds are truncated to
+    whole seconds. Leap seconds (``:60``) are not supported. UTC values
+    (``Z``, ``+0000``, ``+00:00``) give the same string as before this
+    function existed.
+
+    Raises
+    ------
+    ValueError
+        If ``ts`` is not a string or not a valid date-time, or if the UTC
+        result falls outside years 1 to 9999.
+    """
+    if not isinstance(ts_raw, str):
+        raise ValueError(f"ts {ts_raw!r} is not a string")
+    s = ts_raw.upper()
+    if len(s) > 10 and s[10] == " ":
+        s = s[:10] + "T" + s[11:]
+    s = _FRACTIONAL_SECONDS_RE.sub(r"\1", s, count=1)
+    try:
+        dt = datetime.strptime(s, "%Y-%m-%dT%H:%M:%S%z")
+    except ValueError as err:
+        try:
+            dt = datetime.strptime(s, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC)
+        except ValueError:
+            raise ValueError(
+                f"ts {ts_raw!r} is not a valid RFC 3339 date-time ({err})"
+            ) from None
+    try:
+        return dt.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+    except OverflowError:
+        raise ValueError(
+            f"ts {ts_raw!r} falls outside years 1 to 9999 in UTC"
+        ) from None
 
 
 def neats_json_to_flights(
@@ -53,14 +102,15 @@ def neats_json_to_flights(
 
     Per-point columns, from ``flight_information.trajectory.trajectory_data[*]``:
 
-    - ``ts`` -> ``time``: string ``"%Y-%m-%d %H:%M:%S"``. Parsed with
-      ``"%Y-%m-%dT%H:%M:%S%z"``; the UTC offset is parsed but discarded, not
-      applied, so a ``+02:00`` value keeps its local clock time and is later
-      read as UTC by ``NeatsTrajectoryParser`` (``utc=True``). Values must
-      already be UTC (``Z``, ``+0000`` or ``+00:00``), as the AO schema
-      requires. Fractional seconds, a lowercase ``z`` or a missing offset
-      raise ``ValueError`` (see docs/internal/pyneats_units_audit.md). Point
-      spacing is not assumed (the interpolation step resamples).
+    - ``ts`` -> ``time``: UTC string ``"%Y-%m-%d %H:%M:%S"``, read as UTC
+      by ``NeatsTrajectoryParser``. ``ts`` is an RFC 3339 date-time and its
+      UTC offset is applied (``"2025-11-02T12:02:00+02:00"`` ->
+      ``"2025-11-02 10:02:00"``); a ``ts`` without offset is read as UTC. A
+      lowercase ``t``/``z`` and a space separator are accepted; fractional
+      seconds are truncated to whole seconds, and points that then share a
+      second are reduced to one by the parser. An invalid ``ts`` raises
+      ``ValueError`` naming the flight and point. Point spacing is not
+      assumed (the interpolation step resamples).
     - ``lat`` / ``lon`` -> ``latitude`` / ``longitude``: decimal degrees
       (WGS 84), unchanged.
     - ``fl`` -> ``altitude``: still flight level (hundreds of ft).
@@ -134,17 +184,21 @@ def neats_json_to_flights(
         tr = fi.get("trajectory", {}) or {}
         pts = tr.get("trajectory_data", []) or []
 
-        for p in pts:
+        for i, p in enumerate(pts):
             ts_raw = p.get("ts")
 
             if ts_raw is None:
                 time_over = None
             else:
-                # "2025-11-02T10:02:00+0000" → "2025-11-02 10:02:00"
-                # The UTC offset is parsed but discarded (not applied); the
-                # parser reads the result as UTC, so ts must already be UTC.
-                dt = datetime.strptime(ts_raw, "%Y-%m-%dT%H:%M:%S%z")
-                time_over = dt.strftime("%Y-%m-%d %H:%M:%S")
+                # "2025-11-02T12:02:00+02:00" → "2025-11-02 10:02:00" (UTC);
+                # the parser reads the result as UTC.
+                try:
+                    time_over = _ts_to_utc_string(ts_raw)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"flight {fi.get('flight_identification')!r}, "
+                        f"trajectory point {i}: {exc}"
+                    ) from exc
 
             rows.append(
                 {
