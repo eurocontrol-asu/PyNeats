@@ -11,7 +11,9 @@ note under its item. Items not listed here are open.
 
 | Item | Status | Branch / PR | Date |
 | --- | --- | --- | --- |
-| D2 (trajectory `ts` offsets) | Fixed | `fix/d2-timestamp-utc` | 2026-10-20 |
+| D2 (trajectory `ts` offsets) | Fixed | #70 | 2026-10-20 |
+| One flight that cannot be converted no longer stops the run (D2 follow-up) | Fixed | `fix/isolate-invalid-flights` | 2026-10-20 |
+| D1 (bare single-flight object) | Open; now a clear `TypeError` on the `FleetRunner` JSON path | `fix/isolate-invalid-flights` | 2026-10-20 |
 
 ## 1. Outcome
 
@@ -444,6 +446,10 @@ Each entry gives:
 ### On the AO input path
 
 **D1. Bare single-flight object rejected.**
+*Still open. On the `FleetRunner` JSON path and in `scripts/run_json.py`, a file whose top
+level is an object or a string now raises `TypeError("expected a sequence of flight objects")`
+instead of an `AttributeError` (`fix/isolate-invalid-flights`). Accepting a bare object is not
+decided.*
 1. Top-level JSON → `neats_json_to_flights` (`neats_io.py:45-46`) → `FleetRunner._load_trajectories`
    (`fleet.py:561-566`) and `scripts/run_json.py:238-240`.
 2. Expected: the AO schema's `anyOf` allows one object. Observed: iterating a dict yields its
@@ -459,8 +465,11 @@ Each entry gives:
 *Fixed on branch `fix/d2-timestamp-utc` (see the follow-up status table). The UTC offset
 is now applied. Fractional seconds are truncated. A lowercase `t` or `z` and a space
 separator are accepted. A `ts` without offset is read as UTC (maintainer decision). An
-invalid `ts` still aborts the batch, now with an error naming the flight and point; isolating
-it per flight is a separate change. No effect on existing data: on 148 NEATS JSON files on
+invalid `ts` raises an error naming the flight and point. On the `FleetRunner` JSON path and
+in `scripts/run_json.py`, such a flight (or any flight object that cannot be converted) becomes
+a `Failed at parsing` error record and the other flights go on (`fix/isolate-invalid-flights`);
+a direct call to `neats_json_to_flights` without a `failures` list still raises. If every
+flight fails, the run returns only error records. No effect on existing data: on 148 NEATS JSON files on
 the NEATS server (85,128 flights, 10,995,586 points, all `+0000`, `Z` or `+00:00`) the output
 is identical.*
 1. `ts` → `neats_io.py:61-68` → `neats_parser.py:233-242`.

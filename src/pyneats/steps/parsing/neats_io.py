@@ -6,9 +6,11 @@ Converts NEATS/NM JSON flight objects into a list of per-flight DataFrames in th
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Mapping
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
 from typing import Any
@@ -16,6 +18,9 @@ from typing import Any
 import pandas as pd
 
 from pyneats.steps.parsing.views import Flight4D
+
+
+logger = logging.getLogger(__name__)
 
 
 # Fractional seconds of the seconds field (".5" in "2025-11-02T10:02:00.5Z").
@@ -65,10 +70,58 @@ def _ts_to_utc_string(ts_raw: str) -> str:
         ) from None
 
 
+@dataclass(frozen=True)
+class FlightConversionFailure:
+    """A flight that ``neats_json_to_flights`` could not convert.
+
+    ``index`` is the flight's position in the input sequence. ``attrs`` holds
+    the identifying attrs that could be read (``flight_id``, airports,
+    ``aobt``, ``aircraft_type``, ``engine_uid``); it may be empty.
+    """
+
+    index: int
+    attrs: dict[str, Any]
+    error: Exception
+
+
+def _identity_attrs(flight: Any) -> dict[str, Any]:
+    """Read the identifying attrs of a flight object, never raising."""
+    try:
+        fi = flight.get("flight_information", {}) or {}
+        ap = fi.get("aircraft_properties", {}) or {}
+        found = {
+            "flight_id": fi.get("flight_identification"),
+            "departure_airport": fi.get("departure_airport"),
+            "arrival_airport": fi.get("arrival_airport"),
+            "aobt": fi.get("departure_date_time"),
+            "aircraft_type": ap.get("aircraft_type"),
+            "engine_uid": ap.get("engine_uid"),
+        }
+    except Exception:  # malformed flight object
+        return {}
+    return {k: v for k, v in found.items() if v is not None}
+
+
+def _without_tracebacks(exc: Exception) -> Exception:
+    """Drop the tracebacks of ``exc`` and of every exception it chains to.
+
+    A stored traceback keeps its frames alive, and through them the whole
+    input of ``neats_json_to_flights``.
+    """
+    seen: set[int] = set()
+    e: BaseException | None = exc
+    while e is not None and id(e) not in seen:
+        seen.add(id(e))
+        e.__traceback__ = None
+        e = e.__cause__ or e.__context__
+    return exc
+
+
 def neats_json_to_flights(
     flights: Sequence[Mapping[str, Any]],
     *,
     model_type: str = "NM",
+    failures: list[FlightConversionFailure] | None = None,
 ) -> list[pd.DataFrame]:
     """
     Convert a sequence of NEATS / NM JSON flight objects into a list of
@@ -89,11 +142,19 @@ def neats_json_to_flights(
         docs/internal/pyneats_units_audit.md).
     model_type : str, optional
         Model type label to assign to each flight (default is "NM").
+    failures : list of FlightConversionFailure, optional
+        If ``None`` (default), the first flight that cannot be converted
+        raises and stops the conversion. If a list is given, such a flight is
+        left out of the result and recorded in ``failures`` instead, so the
+        other flights are still converted. ``flights`` must then be a
+        sequence of flight objects; a mapping or a string raises
+        ``TypeError``.
 
     Returns
     -------
     list of pd.DataFrame
-        List of per-flight DataFrames in Flight4D schema.
+        List of per-flight DataFrames in Flight4D schema, in input order
+        (without the failed flights when ``failures`` is given).
 
     Notes
     -----
@@ -167,107 +228,130 @@ def neats_json_to_flights(
       ``"naphtalene"``, so the ``allowed_attrs`` filter drops the value here
       (see docs/internal/pyneats_units_audit.md).
     """
+    if failures is not None and isinstance(flights, (Mapping, str, bytes)):
+        # A whole-file shape error, not a flight error: do not record each
+        # key or character as a failed flight.
+        raise TypeError(
+            f"expected a sequence of flight objects, got {type(flights).__name__}"
+        )
+
     result: list[pd.DataFrame] = []
 
-    for flight in flights:
-        fi = flight.get("flight_information", {}) or {}
-        ap = fi.get("aircraft_properties", {}) or {}
-        fp = fi.get("fuel_properties", {}) or {}
-
-        # ...existing code...
-
-        # -----------------------------
-        # 2. Per-point rows (canonical column names)
-        # -----------------------------
-        rows: list[dict[str, Any]] = []
-
-        tr = fi.get("trajectory", {}) or {}
-        pts = tr.get("trajectory_data", []) or []
-
-        for i, p in enumerate(pts):
-            ts_raw = p.get("ts")
-
-            if ts_raw is None:
-                time_over = None
-            else:
-                # "2025-11-02T12:02:00+02:00" → "2025-11-02 10:02:00" (UTC);
-                # the parser reads the result as UTC.
-                try:
-                    time_over = _ts_to_utc_string(ts_raw)
-                except ValueError as exc:
-                    raise ValueError(
-                        f"flight {fi.get('flight_identification')!r}, "
-                        f"trajectory point {i}: {exc}"
-                    ) from exc
-
-            rows.append(
-                {
-                    # canonical 4D columns
-                    "latitude": p.get("lat"),
-                    "longitude": p.get("lon"),
-                    "time": time_over,
-                    # NB: still FL in hundreds of feet; conversion stays in parser
-                    "altitude": p.get("fl"),
-                    # optional
-                    "fuel_flow": p.get("ff"),
-                    "engine_efficiency": p.get("ee"),
-                    "aircraft_mass": p.get("am"),
-                    # PyNEATS input unit: m/s. The AO JSON field `tas` is in
-                    # knots. The NEATS application converts knots to m/s
-                    # (x 1852 / 3600) before calling PyNEATS. Values received
-                    # here must already be in m/s.
-                    "true_airspeed": p.get("tas"),
-                }
+    for index, flight in enumerate(flights):
+        if failures is None:
+            result.append(_flight_to_frame(flight, model_type))
+            continue
+        try:
+            result.append(_flight_to_frame(flight, model_type))
+        except Exception as exc:
+            logger.debug("Flight %d could not be converted", index, exc_info=exc)
+            failures.append(
+                FlightConversionFailure(
+                    index=index,
+                    attrs=_identity_attrs(flight),
+                    error=_without_tracebacks(exc),
+                )
             )
 
-        df = pd.DataFrame(rows)
-
-        # Keep only columns that are part of the Flight4D schema
-        if not df.empty:
-            allowed_cols = set(Flight4D.REQUIRED) | set(Flight4D.OPTIONAL)
-            df = df[[c for c in df.columns if c in allowed_cols]]
-
-            # Drop columns that are entirely NaN
-            df = df.dropna(axis=1, how="all")
-
-        # Attach attrs (canonical)
-        # Reconstruct flight-level attrs as in original logic
-        allowed_attrs = set(Flight4D.ATTRS_REQUIRED) | set(Flight4D.ATTRS_OPTIONAL)
-        attrs = {
-            k: v
-            for k, v in {
-                "flight_id": fi.get("flight_identification"),
-                "departure_airport": fi.get("departure_airport"),
-                "arrival_airport": fi.get("arrival_airport"),
-                "model_type": model_type,
-                "aobt": fi.get("departure_date_time"),
-                "arrival_date_time": fi.get("arrival_date_time"),
-                # Aircraft
-                "aircraft_type": ap.get("aircraft_type"),
-                "aircraft_series": ap.get("aircraft_version"),
-                "engine_uid": ap.get("engine_uid"),
-                "takeoff_weight": ap.get("takeoff_mass"),
-                "payload_factor": ap.get("load_factor"),
-                # Fuel (canonical names aligned with NEATSFuel / Flight4D)
-                "hydrogen_content": fp.get("hydrogen_content"),
-                "h_c_ratio": fp.get("hydrogen_per_carbon_ratio"),
-                "aromatic_content": fp.get("aromatic_content"),
-                # PyNEATS input unit: J/kg of fuel (lower calorific value).
-                # The AO JSON field `calorific_value` is in MJ/kg of fuel.
-                # The NEATS application multiplies by 1e6 before calling
-                # PyNEATS. Values received here must already be in J/kg; do
-                # not convert again.
-                "q_fuel": fp.get("calorific_value"),
-                "sulphur_content": fp.get("sulphur"),
-                "naphthalene": fp.get("naphthalene"),
-            }.items()
-            if v is not None and k in allowed_attrs
-        }
-        df.attrs = attrs
-
-        result.append(df)
-
     return result
+
+
+def _flight_to_frame(flight: Mapping[str, Any], model_type: str) -> pd.DataFrame:
+    """Convert one NEATS / NM JSON flight object (see ``neats_json_to_flights``)."""
+    fi = flight.get("flight_information", {}) or {}
+    ap = fi.get("aircraft_properties", {}) or {}
+    fp = fi.get("fuel_properties", {}) or {}
+
+    # -----------------------------
+    # 2. Per-point rows (canonical column names)
+    # -----------------------------
+    rows: list[dict[str, Any]] = []
+
+    tr = fi.get("trajectory", {}) or {}
+    pts = tr.get("trajectory_data", []) or []
+
+    for i, p in enumerate(pts):
+        ts_raw = p.get("ts")
+
+        if ts_raw is None:
+            time_over = None
+        else:
+            # "2025-11-02T12:02:00+02:00" → "2025-11-02 10:02:00" (UTC);
+            # the parser reads the result as UTC.
+            try:
+                time_over = _ts_to_utc_string(ts_raw)
+            except ValueError as exc:
+                raise ValueError(
+                    f"flight {fi.get('flight_identification')!r}, "
+                    f"trajectory point {i}: {exc}"
+                ) from exc
+
+        rows.append(
+            {
+                # canonical 4D columns
+                "latitude": p.get("lat"),
+                "longitude": p.get("lon"),
+                "time": time_over,
+                # NB: still FL in hundreds of feet; conversion stays in parser
+                "altitude": p.get("fl"),
+                # optional
+                "fuel_flow": p.get("ff"),
+                "engine_efficiency": p.get("ee"),
+                "aircraft_mass": p.get("am"),
+                # PyNEATS input unit: m/s. The AO JSON field `tas` is in
+                # knots. The NEATS application converts knots to m/s
+                # (x 1852 / 3600) before calling PyNEATS. Values received
+                # here must already be in m/s.
+                "true_airspeed": p.get("tas"),
+            }
+        )
+
+    df = pd.DataFrame(rows)
+
+    # Keep only columns that are part of the Flight4D schema
+    if not df.empty:
+        allowed_cols = set(Flight4D.REQUIRED) | set(Flight4D.OPTIONAL)
+        df = df[[c for c in df.columns if c in allowed_cols]]
+
+        # Drop columns that are entirely NaN
+        df = df.dropna(axis=1, how="all")
+
+    # Attach attrs (canonical)
+    # Reconstruct flight-level attrs as in original logic
+    allowed_attrs = set(Flight4D.ATTRS_REQUIRED) | set(Flight4D.ATTRS_OPTIONAL)
+    attrs = {
+        k: v
+        for k, v in {
+            "flight_id": fi.get("flight_identification"),
+            "departure_airport": fi.get("departure_airport"),
+            "arrival_airport": fi.get("arrival_airport"),
+            "model_type": model_type,
+            "aobt": fi.get("departure_date_time"),
+            "arrival_date_time": fi.get("arrival_date_time"),
+            # Aircraft
+            "aircraft_type": ap.get("aircraft_type"),
+            "aircraft_series": ap.get("aircraft_version"),
+            "engine_uid": ap.get("engine_uid"),
+            "takeoff_weight": ap.get("takeoff_mass"),
+            "payload_factor": ap.get("load_factor"),
+            # Fuel (canonical names aligned with NEATSFuel / Flight4D)
+            "hydrogen_content": fp.get("hydrogen_content"),
+            "h_c_ratio": fp.get("hydrogen_per_carbon_ratio"),
+            "aromatic_content": fp.get("aromatic_content"),
+            # PyNEATS input unit: J/kg of fuel (lower calorific value).
+            # The AO JSON field `calorific_value` is in MJ/kg of fuel.
+            # The NEATS application multiplies by 1e6 before calling
+            # PyNEATS. Values received here must already be in J/kg; do
+            # not convert again.
+            "q_fuel": fp.get("calorific_value"),
+            "sulphur_content": fp.get("sulphur"),
+            "naphthalene": fp.get("naphthalene"),
+        }.items()
+        if v is not None and k in allowed_attrs
+    }
+    df.attrs = attrs
+
+    return df
 
 
 def concat_neats_flight(
