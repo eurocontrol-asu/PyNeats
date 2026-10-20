@@ -4,6 +4,15 @@ Reviewed revision: `f7502fe6344e5e085df1042ac817f02a05bd100d` (`origin/main`, 20
 on branch `docs/units-audit`. Every `file:line` reference below points to that revision,
 before the comment patch was applied. The patch moves lines in the files it touches.
 
+## Follow-up status
+
+The findings below are the audit as written. Each fix updates this table and adds a status
+note under its item. Items not listed here are open.
+
+| Item | Status | Branch / PR | Date |
+| --- | --- | --- | --- |
+| D2 (trajectory `ts` offsets) | Fixed | `fix/d2-timestamp-utc` | 2026-10-20 |
+
 ## 1. Outcome
 
 - **Two known interface differences.** `tas` (knots in the AO JSON, m/s in PyNEATS) and
@@ -447,6 +456,13 @@ Each entry gives:
    document that the array form is required.
 
 **D2. Trajectory timestamp offsets discarded; some valid forms rejected.**
+*Fixed on branch `fix/d2-timestamp-utc` (see the follow-up status table). The UTC offset
+is now applied. Fractional seconds are truncated. A lowercase `t` or `z` and a space
+separator are accepted. A `ts` without offset is read as UTC (maintainer decision). An
+invalid `ts` still aborts the batch, now with an error naming the flight and point; isolating
+it per flight is a separate change. No effect on existing data: on 148 NEATS JSON files on
+the NEATS server (85,128 flights, 10,995,586 points, all `+0000`, `Z` or `+00:00`) the output
+is identical.*
 1. `ts` → `neats_io.py:61-68` → `neats_parser.py:233-242`.
 2. Expected: every RFC 3339 `date-time` maps to the same instant in UTC. Observed:
    - `strptime('%Y-%m-%dT%H:%M:%S%z')` followed by `strftime('%Y-%m-%d %H:%M:%S')` **drops**
