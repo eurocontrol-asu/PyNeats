@@ -7,29 +7,36 @@ metrics horizons, surface area, radiative forcing coefficients, and scaling fact
 Attributes
 ----------
 METRICS_HORIZONS : tuple of int
-    Supported time horizons for metrics.
+    Supported time horizons for metrics, in years.
 SURFACE_EARTH : float
     Surface area of the Earth in m².
 SECONDS_PER_YEAR : int
-    Number of seconds in a year.
+    Number of seconds in a year: 31,556,952 s = 365.2425 d (Gregorian mean
+    year). docs/explanation/mrv-specification.md uses 31,536,000 s (365 d)
+    (see docs/internal/pyneats_units_audit.md).
 SOLAR_CONSTANT : float
     Solar constant in W m^-2.
 CO2_AGWP_COEFF_WM2YR_PER_KG : Mapping[int, float]
-    CO2 GWP coefficients in W·m⁻²·yr·kg⁻¹.
+    CO2 AGWP coefficients C(H) in W m-2 yr per kg CO2, keyed by horizon in
+    years.
 CONVERSION_FACTORS_AGWP_TO_RF : dict
-    Conversion factors from AGWP to RF for various species and horizons.
+    Conversion factors from RF to AGWP(H) (Dahlmann et al., 2025; the name
+    reads the other way), keyed by horizon in years and species. Absolute
+    units not verified.
 CONVERSION_FACTORS_ATR_TO_RF : dict
-    Conversion factors from ATR to RF for various species and horizons.
+    Conversion factors from RF to ATR(H) (Dahlmann et al., 2025; the name
+    reads the other way), keyed by horizon in years and species. Absolute
+    units not verified.
 EFFICACY : dict
-    Efficacy values for different species.
+    Efficacy values for different species (dimensionless).
 RF_BACKWARD_FACTOR : dict
-    Backward calculation factors for radiative forcing.
+    Backward calculation factors for radiative forcing (divisors).
 ACCF_SCALE_03 : Mapping[str, float]
-    Scaling factors for O3 ACCFs.
+    Scaling factors for O3 ACCFs (divisors), keyed by aCCF version.
 ACCF_SCALE_CH4 : Mapping[str, float]
-    Scaling factors for CH4 ACCFs.
+    Scaling factors for CH4 ACCFs (divisors), keyed by aCCF version.
 ACCF_SCALE_H2O : Mapping[str, float]
-    Scaling factors for H2O ACCFs.
+    Scaling factors for H2O ACCFs (divisors), keyed by aCCF version.
 DEFAULT_PRESSURE_LEVELS_HPA : tuple of float
     Default pressure levels in hPa.
 """
@@ -55,11 +62,15 @@ __all__ = [
 
 METRICS_HORIZONS: Final[tuple[int, ...]] = (20, 50, 100)
 SURFACE_EARTH: Final[float] = 5.101e14  # m²
+# Gregorian mean year (365.2425 d); used as s/yr to turn contrail energy forcing
+# [J] into EAGWP [W m-2 yr]
 SECONDS_PER_YEAR: Final[int] = 31_556_952  # s
 SOLAR_CONSTANT: Final[float] = 1360.0  # [W m^-2]
 
 # CO2 GWP coefficients from AirClim (Dahlmann et al., 2025)
-# C(H) in W·m⁻²·yr·kg⁻¹ (per kgCO2)
+# C(H) in W·m⁻²·yr·kg⁻¹ (per kgCO2); keys are horizons in years.
+# Values from commit bf3aa7b; docs/explanation/mrv-specification.md still lists
+# the older 24.16 / 47.57 / 74.36e-15 (see docs/internal/pyneats_units_audit.md).
 CO2_AGWP_COEFF_WM2YR_PER_KG: Mapping[int, float] = {
     20: 24.12e-15,
     50: 47.50e-15,
@@ -68,6 +79,9 @@ CO2_AGWP_COEFF_WM2YR_PER_KG: Mapping[int, float] = {
 
 # New generic conversion factors to convert RF to AGWP or ATR
 # (Dahlmann et al., 2025) for Pulse 2025 scenario
+# Absolute units are not stated here and not verified. gwp.py uses only the ratio
+# k_AGWP(H) / k_ATR(H0), combined with efficacy**2 / RF_BACKWARD_FACTOR, to map
+# ATR [K] to EAGWP [W m-2 yr], so that combined scale must carry W m-2 yr per K.
 CONVERSION_FACTORS_AGWP_TO_RF: Final[dict[int, dict[str, float]]] = {
     20: {"CH4": 10.6318, "O3": 1.0192, "H2O": 1.0192, "PMO": 10.6318},
     50: {"CH4": 13.0968, "O3": 1.0192, "H2O": 1.0192, "PMO": 13.0968},
@@ -95,17 +109,21 @@ EFFICACY: Final[dict[str, float]] = {
 # Dahlmann et al., 2025
 # Therefore used here to discount accf output value before applying
 # conversion factors from Dahlmann et al., 2025
+# Used as a divisor in gwp.py. The values are approximately 1 / ACCF_SCALE_*["V1.0"]
+# (1/1.97 = 0.508, 1/2.03 = 0.493, 1/1.92 = 0.521), so the two tables are coupled.
 RF_BACKWARD_FACTOR: Final[dict[str, float]] = {
     "CH4": 0.492,
     "O3": 0.508,
     "H2O": 0.52,
 }
 
-# ACCFs scaling factors
+# ACCFs scaling factors, keyed by aCCF version; local_accf divides the aCCF output
+# by them
 ACCF_SCALE_03: Final[Mapping[str, float]] = {"V1.0": 1.97, "V1.0A": 11.0}
 ACCF_SCALE_CH4: Final[Mapping[str, float]] = {"V1.0": 2.03, "V1.0A": 35.0}
 ACCF_SCALE_H2O: Final[Mapping[str, float]] = {"V1.0": 1.92, "V1.0A": 3.0}
 
+# Pressure levels in hPa
 DEFAULT_PRESSURE_LEVELS_HPA: Final[tuple[float, ...]] = (
     550,
     500,

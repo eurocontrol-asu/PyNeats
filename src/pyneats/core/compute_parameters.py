@@ -13,11 +13,15 @@ DEFAULT_BATCH_SIZE : int
 DEFAULT_JOBLIB_PREFERENCE : str
     Default joblib backend preference.
 DEFAULT_WEATHER_OFFSET_H : int
-    Default weather offset in hours.
+    Default weather time-window length in hours: ERA5 and the DWD Zarr path
+    load ``[asofdate, asofdate + offset]``.
 DEFAULT_HORIZONTAL_RES_DEG : float
-    Default horizontal resolution in degrees.
+    Default horizontal grid resolution in degrees (ERA5 ``grid``).
 DEFAULT_SDR_ACCUMULATE_DT_S : int
-    Default SDR accumulation time in seconds.
+    Default SDR accumulation step in seconds (3600 s = 1 h). When the DWD Zarr
+    cache is built, the ``sdr`` values (assumed W m-2) are multiplied by it and
+    labelled J m**-2; the live NetCDF path does not apply it (see
+    docs/internal/pyneats_units_audit.md).
 DEFAULT_MET_CHUNKS : Mapping[str, Any]
     Default chunk sizes for meteorological data.
 DEFAULT_RAD_CHUNKS : Mapping[str, Any]
@@ -40,13 +44,14 @@ DEFAULT_NJOBS: Final[int] = -1
 DEFAULT_BATCH_SIZE: Final[int] = 16
 DEFAULT_JOBLIB_PREFERENCE: Final[str] = "processes"
 
-DEFAULT_WEATHER_OFFSET_H: Final[int] = 36
+DEFAULT_WEATHER_OFFSET_H: Final[int] = 36  # h
 
-DEFAULT_HORIZONTAL_RES_DEG: Final[float] = 0.25
-DEFAULT_SDR_ACCUMULATE_DT_S: Final[int] = 3600  # 1 hour
+DEFAULT_HORIZONTAL_RES_DEG: Final[float] = 0.25  # degrees
+DEFAULT_SDR_ACCUMULATE_DT_S: Final[int] = 3600  # s (1 hour)
 
 
 # Default chunk dimensions for xarray operations using zarr backend
+# (number of elements per chunk along each dimension)
 
 DEFAULT_MET_CHUNKS: Final[Mapping[str, Any]] = {
     "time": 1,

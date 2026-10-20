@@ -72,6 +72,13 @@ class PyContrailsInterpolator(
         """
         Interpolate a flight trajectory using pycontrails and linear interpolation for optional columns.
 
+        The latitude, longitude and altitude columns are resampled by
+        ``Flight.resample_and_fill(freq=interpolation_time)`` (default
+        ``"1min"`` = 60 s). Optional columns (fuel_flow, aircraft_mass,
+        engine_efficiency, true_airspeed) are linearly interpolated in time
+        with ``np.interp``; their units are unchanged. A NaN input value
+        makes every resampled sample strictly between its two neighbours NaN.
+
         Parameters
         ----------
         flight : Flight4D
@@ -102,6 +109,7 @@ class PyContrailsInterpolator(
                 )
 
             # Interpolate optional columns
+            # Time as int64 ns since epoch (pycontrails stores datetime64[ns]).
             t_orig_num = original["time"].values.astype(np.int64)
             t_new_num = interpolated_flight["time"].astype(np.int64)
 

@@ -48,10 +48,10 @@ class OpenAirClimParams(ClimateParams):
     base_inventory_path: str | None = str(
         files("pyneats.resources").joinpath("ELK_aviation_2025_res5deg_flat.nc")
     )
-    grid_res: float = OPEN_AIRCLIM_GRID_RES
-    oac_levels: tuple[int, ...] = OPEN_AIRCLIM_LEVELS
-    computation_horizon: int = OPEN_AIRCLIM_COMPUTATION_HORIZON
-    horizons: tuple[int, ...] = METRICS_HORIZONS
+    grid_res: float = OPEN_AIRCLIM_GRID_RES  # [degrees] lat/lon bin size
+    oac_levels: tuple[int, ...] = OPEN_AIRCLIM_LEVELS  # [hPa]
+    computation_horizon: int = OPEN_AIRCLIM_COMPUTATION_HORIZON  # [years]
+    horizons: tuple[int, ...] = METRICS_HORIZONS  # [years]
 
 
 def _create_worker_toml(
@@ -65,6 +65,15 @@ def _create_worker_toml(
 ):
     """
     Generate OpenAirClim configuration file for a computation worker.
+
+    ``time.range`` covers every year from ``year`` (the inventory year, i.e.
+    the year of the first waypoint) to ``year + horizon`` [years].
+    ``metrics.t_0`` is kept from the base TOML (2025 in the bundled
+    ``openairclim.toml``), and ``OpenAirClimModel.run`` reads
+    ``AGWP_{H}_2025``. openairclim raises when a metric window
+    [t_0, t_0 + H) falls outside ``time.range``, so the shipped
+    configuration matches the emission year only for flights dated 2025
+    (see docs/internal/pyneats_units_audit.md).
     """
     with open(base_toml_path) as f:
         config = toml.load(f)
@@ -125,6 +134,23 @@ class OpenAirClimModel(
     default_params = OpenAirClimParams
 
     def _flight_to_inventory(self, flight: Flight) -> xr.Dataset:
+        """Bin the flight into an openairclim emission inventory.
+
+        Variables are sums over waypoints in each (lat, lon, plev) cell:
+        ``fuel`` (``fuel_burn``), ``CO2``, ``H2O`` and ``NOx`` (pycontrails
+        ``co2``/``h2o``/``nox``) in kg, from per-segment masses; ``distance``
+        in km (``segment_length`` m / 1000). ``plev`` is the nearest
+        ``oac_levels`` entry to ``air_pressure`` (Pa / 100, i.e. hPa);
+        ``lat``/``lon`` are bin centres in degrees. ``Inventory_Year`` is the
+        year of the first waypoint; openairclim treats the inventory as that
+        year's emissions (no time-evolution file).
+
+        NaN NOx, CO2 and H2O (e.g. NOx outside the met domain) are filled
+        with 0. NOx is the pycontrails NOx mass (expressed as NO2 by ICAO
+        EDB convention), while the bundled ``openairclim.toml`` sets
+        ``[species] nox = "NO"``, for which openairclim applies no 30/46
+        correction (see docs/internal/pyneats_units_audit.md).
+        """
         grid_res = self.params.grid_res
         df = flight.to_dataframe()
 
@@ -186,6 +212,14 @@ class OpenAirClimModel(
         return ds
 
     def run(self, flight: FlightWithEmissions) -> FlightWithGlobalAGWP:
+        """Run openairclim on the flight inventory (Method D).
+
+        Sets ``flight.attrs["AGWP_{H}_{O3,CH4,H2O,CONT}"]`` for H = 20, 50 and
+        100 years, in W m-2 yr (openairclim "W m-2 year"), without efficacy,
+        read from openairclim's ``AGWP_{H}_2025`` (window starting at
+        ``metrics.t_0``; see ``_create_worker_toml``). ``AGWP_{H}_CH4``
+        includes PMO.
+        """
         with tempfile.TemporaryDirectory(dir=self.params.tmp_base_dir_path) as temp_dir:
             # 1. SETUP SYMLINK FOR REPOSITORY (Must be done before chdir if using absolute source paths)
             local_repo_link = os.path.join(temp_dir, "repository")

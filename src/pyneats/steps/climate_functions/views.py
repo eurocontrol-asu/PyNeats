@@ -21,12 +21,15 @@ __all__ = [
     "FlightWithGlobalAGWP",
 ]
 
+# P-ATR20 of each segment's emissions, per species [K per segment]
 REQUIRED_ATR_COLS: Final[tuple[str, ...]] = (
     "ATR_20_CH4",
     "ATR_20_O3",
     "ATR_20_H2O",
 )
 
+# Flight-level AGWP at H = 20/50/100 years [W m-2 yr], without efficacy
+# (openairclim "W m-2 year"); CH4 includes PMO.
 REQUIRED_AGWP_ATTRS: Final[tuple[str, ...]] = (
     "AGWP_20_CH4",
     "AGWP_20_O3",
@@ -43,8 +46,8 @@ REQUIRED_AGWP_ATTRS: Final[tuple[str, ...]] = (
 )
 
 REQUIRED_CONTRAIL_COLS: Final[tuple[str, ...]] = (
-    "ef",
-    "sac",
+    "ef",  # CoCiP energy forcing of the contrail formed at each waypoint [J]
+    "sac",  # Schmidt-Appleman criterion flag: 1.0 met, 0.0 not met (NaN propagates)
 )
 
 

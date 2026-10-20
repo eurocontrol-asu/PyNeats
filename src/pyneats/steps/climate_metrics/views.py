@@ -17,6 +17,10 @@ class FlightWithClimateImpact(FlightWithEmissions):
     Zero-copy view guaranteeing that attrs['climate_impact'] exists.
 
     Provides convenient accessors for the climate impact metadata and results.
+
+    The payload is written by ``GWPMetrics.run``, which documents its shape
+    and units (``EAGWP_Wm2yr`` in W m-2 yr, ``CO2eq_kg`` in kg
+    CO2-equivalent, ``co2_baseline_kg`` and ``fuel_burn_kg`` in kg).
     """
 
     '''

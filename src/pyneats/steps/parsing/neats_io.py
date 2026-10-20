@@ -26,12 +26,18 @@ def neats_json_to_flights(
     per-flight DataFrames in the canonical Flight4D schema.
 
     This function assumes the JSON is already decoded (list[dict]).
-    It does *not* perform any file I/O.
+    It does *not* perform any file I/O. No unit conversion is applied here;
+    values are copied as received, except that ``ts`` is reformatted (see
+    Notes).
 
     Parameters
     ----------
     flights : Sequence[Mapping[str, Any]]
-        Sequence of decoded NEATS/NM JSON flight objects.
+        Sequence of decoded NEATS/NM JSON flight objects. Must be a list (or
+        other sequence) of flight objects. The AO schema also allows a bare
+        single object at top level; it is not accepted here, because
+        iterating a dict yields its keys (see
+        docs/internal/pyneats_units_audit.md).
     model_type : str, optional
         Model type label to assign to each flight (default is "NM").
 
@@ -39,6 +45,77 @@ def neats_json_to_flights(
     -------
     list of pd.DataFrame
         List of per-flight DataFrames in Flight4D schema.
+
+    Notes
+    -----
+    Field mapping (JSON field -> Flight4D name: unit as passed on). "MRR"
+    is Implementing Regulation (EU) 2018/2066 as amended by (EU) 2024/2493.
+
+    Per-point columns, from ``flight_information.trajectory.trajectory_data[*]``:
+
+    - ``ts`` -> ``time``: string ``"%Y-%m-%d %H:%M:%S"``. Parsed with
+      ``"%Y-%m-%dT%H:%M:%S%z"``; the UTC offset is parsed but discarded, not
+      applied, so a ``+02:00`` value keeps its local clock time and is later
+      read as UTC by ``NeatsTrajectoryParser`` (``utc=True``). Values must
+      already be UTC (``Z``, ``+0000`` or ``+00:00``), as the AO schema
+      requires. Fractional seconds, a lowercase ``z`` or a missing offset
+      raise ``ValueError`` (see docs/internal/pyneats_units_audit.md). Point
+      spacing is not assumed (the interpolation step resamples).
+    - ``lat`` / ``lon`` -> ``latitude`` / ``longitude``: decimal degrees
+      (WGS 84), unchanged.
+    - ``fl`` -> ``altitude``: still flight level (hundreds of ft).
+      ``NeatsTrajectoryParser`` converts it to metres of ISA pressure
+      altitude (FL x 100 ft x 0.3048 m/ft).
+    - ``tas`` -> ``true_airspeed``: m/s. The AO JSON field ``tas`` is in
+      knots; the NEATS application converts knots to m/s (x 1852 / 3600)
+      before calling PyNEATS, so values received here must already be in m/s.
+    - ``ff`` -> ``fuel_flow``: kg/s, whole aircraft. The AO schema does not
+      say so, but MRR Annex IIIa §1(33) defines fuel flow as the fuel mass
+      passing "into the aircraft's engines per second"; pycontrails
+      ``Emissions`` divides by ``n_engine`` to get per-engine flow.
+    - ``ee`` -> ``engine_efficiency``: dimensionless fraction [0, 1]. MRR
+      Annex IIIa §1(34) and the Commission NEATS guidance define it as the
+      (overall propulsion) efficiency, useful thrust relative to fuel energy input;
+      the regulation words it as a "percentage". pycontrails consumes it in
+      the SAC mixing-line slope as F * TAS / (fuel_flow * q_fuel).
+    - ``am`` -> ``aircraft_mass``: kg.
+
+    Per-flight attributes (``df.attrs``), from ``flight_information``:
+
+    - ``departure_date_time`` -> ``aobt``: copied verbatim as a string,
+      never parsed (used only in flight keys and outputs). The AO schema
+      describes it as the flight-plan Item 13 time in UTC, which ICAO
+      Doc 4444 defines as the estimated off-block time (EOBT); PyNEATS
+      labels the attr AOBT.
+    - ``arrival_date_time`` is mapped but then dropped (not a Flight4D attr).
+      ``nwp_date_time``, ``confidential``, ``ets_exemption`` and
+      ``trajectory.trj_data_source`` are not read; ``model_type`` comes from
+      the function argument.
+    - ``aircraft_properties.takeoff_mass`` -> ``takeoff_weight``: kg, the
+      mass "at beginning of the take-off run" (MRR Annex IIIa §1(29)).
+    - ``aircraft_properties.load_factor`` -> ``payload_factor``:
+      dimensionless fraction, used as payload mass / maximum payload (BADA
+      MPL, or MTOW - OEW when MPL is unavailable), not a seat load factor,
+      as defined in MRR Annex IIIa §1(32).
+    - ``fuel_properties.hydrogen_content`` -> ``hydrogen_content``: wt.%
+      (percent by mass, e.g. 13.79), not a 0-1 fraction.
+    - ``fuel_properties.hydrogen_per_carbon_ratio`` -> ``h_c_ratio``: used
+      by ``NEATSFuel`` as an atomic (molar) H/C ratio, only when
+      ``hydrogen_content`` is absent; MRR Annex IIIa §1(36) defines it as
+      hydrogen atoms per carbon atom.
+    - ``fuel_properties.calorific_value`` -> ``q_fuel``: J/kg of fuel (lower
+      calorific value). The AO JSON field ``calorific_value`` is in MJ/kg of
+      fuel; the NEATS application multiplies by 1e6 before calling PyNEATS,
+      so values received here must already be in J/kg.
+    - ``fuel_properties.aromatic_content`` -> ``aromatic_content`` and
+      ``fuel_properties.sulphur`` -> ``sulphur_content``: stored, not used in
+      calculations. Basis per the defaults in MRR Annex IIIa §5(4):
+      aromatics % by volume, sulphur % by mass. Whether the JSON value is a
+      percentage or a fraction is not defined.
+    - ``fuel_properties.naphthalene`` is emitted under the key
+      ``"naphthalene"``, but ``Flight4D.ATTRS_OPTIONAL`` spells it
+      ``"naphtalene"``, so the ``allowed_attrs`` filter drops the value here
+      (see docs/internal/pyneats_units_audit.md).
     """
     result: list[pd.DataFrame] = []
 
@@ -64,6 +141,8 @@ def neats_json_to_flights(
                 time_over = None
             else:
                 # "2025-11-02T10:02:00+0000" → "2025-11-02 10:02:00"
+                # The UTC offset is parsed but discarded (not applied); the
+                # parser reads the result as UTC, so ts must already be UTC.
                 dt = datetime.strptime(ts_raw, "%Y-%m-%dT%H:%M:%S%z")
                 time_over = dt.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -79,6 +158,10 @@ def neats_json_to_flights(
                     "fuel_flow": p.get("ff"),
                     "engine_efficiency": p.get("ee"),
                     "aircraft_mass": p.get("am"),
+                    # PyNEATS input unit: m/s. The AO JSON field `tas` is in
+                    # knots. The NEATS application converts knots to m/s
+                    # (x 1852 / 3600) before calling PyNEATS. Values received
+                    # here must already be in m/s.
                     "true_airspeed": p.get("tas"),
                 }
             )
@@ -115,6 +198,11 @@ def neats_json_to_flights(
                 "hydrogen_content": fp.get("hydrogen_content"),
                 "h_c_ratio": fp.get("hydrogen_per_carbon_ratio"),
                 "aromatic_content": fp.get("aromatic_content"),
+                # PyNEATS input unit: J/kg of fuel (lower calorific value).
+                # The AO JSON field `calorific_value` is in MJ/kg of fuel.
+                # The NEATS application multiplies by 1e6 before calling
+                # PyNEATS. Values received here must already be in J/kg; do
+                # not convert again.
                 "q_fuel": fp.get("calorific_value"),
                 "sulphur_content": fp.get("sulphur"),
                 "naphthalene": fp.get("naphthalene"),
@@ -248,6 +336,16 @@ def split_df_into_flights(
     attr_columns : list[str] or None
         Columns that should be stored in df.attrs instead of standard columns.
         If None, defaults to all non-trajectory columns except `flight_key`.
+
+    Notes
+    -----
+    No unit conversion is applied. Trajectory columns use the same names and
+    units as the ``NeatsTrajectoryParser`` input (see
+    ``neats_json_to_flights``): ``altitude`` in flight level, ``time`` as
+    datetime64 (naive values are read as UTC, tz-aware values are converted
+    to UTC) or as a string in the parser ``date_format``. Per-flight columns
+    (e.g. ``q_fuel`` in J/kg, ``hydrogen_content`` in wt.%) are moved to
+    ``df.attrs``.
     """
 
     flight_key_cols = ["flight_id", "arrival_airport", "departure_airport", "aobt"]

@@ -7,8 +7,11 @@ Supports both ERA5 reanalysis and DWD ICON-2mom forecast data with flexible cach
 Features
 --------
 - Flexible caching strategies (disk/Zarr)
-- Automatic unit conversions
-- Variable standardization
+- Variable standardization (DWD names mapped to pycontrails MetVariables)
+- Limited DWD unit handling: level Pa -> hPa (heuristic on the first level),
+  clc percent -> fraction, and SDR x ``sdr_accumulate_dt_s`` when building the
+  Zarr cache. Every other variable is relabelled with the pycontrails unit
+  without converting its values (see docs/internal/pyneats_units_audit.md)
 - Chunked data access
 - Thread-safe operations
 - Comprehensive error handling
@@ -113,7 +116,10 @@ class DWDZarrCacheSpec:
     met_chunks: Mapping[str, int] | None = None
     rad_chunks: Mapping[str, int] | None = None
     wind_chunks: Mapping[str, int] | None = None
-    # Unit fix: convert SDR [W m-2] to [J m-2] by multiplying by dt (seconds)
+    # Accumulation step [s]. build_cache multiplies the DWD 'sdr' values
+    # (assumed W m-2) by this and labels them 'J m**-2'. The live NetCDF
+    # path relabels them 'J m**-2' without multiplying, so the two paths
+    # differ by this factor (see docs/internal/pyneats_units_audit.md).
     sdr_accumulate_dt_s: int | None = (
         DEFAULT_SDR_ACCUMULATE_DT_S  # 1 hour by default; None to skip
     )
@@ -136,9 +142,9 @@ class WeatherFactoryParams:
 
     # for ERA5 and for DWD live reading
     data_dir: str
-    horizontal_resolution: float = DEFAULT_HORIZONTAL_RES_DEG
-    pressure_levels: tuple[float, ...] = DEFAULT_PRESSURE_LEVELS_HPA
-    weather_offset_hours: int = DEFAULT_WEATHER_OFFSET_H
+    horizontal_resolution: float = DEFAULT_HORIZONTAL_RES_DEG  # degrees
+    pressure_levels: tuple[float, ...] = DEFAULT_PRESSURE_LEVELS_HPA  # hPa
+    weather_offset_hours: int = DEFAULT_WEATHER_OFFSET_H  # h, window length
 
     # unified optional cache config
     cache: WeatherCacheConfig | None = None
@@ -147,6 +153,11 @@ class WeatherFactoryParams:
     chunks: Mapping[str, int] | None = None
 
     def time_bounds(self, dt: datetime) -> tuple[str, str]:
+        """Return ``(dt, dt + weather_offset_hours)`` as "%Y-%m-%d %H:%M:%S".
+
+        ``strftime`` drops any time zone without converting, so ``dt`` must be
+        naive UTC or UTC-aware.
+        """
         later = dt + timedelta(hours=self.weather_offset_hours)
         fmt = "%Y-%m-%d %H:%M:%S"
         return dt.strftime(fmt), later.strftime(fmt)
@@ -239,11 +250,16 @@ class DWDFactory(WeatherFactoryProtocol):
         "geopot": Geopotential,
         "clc": CloudAreaFractionInAtmosphereLayer,
         "rhi": RelativeHumidity,
+        # pv: labelled K m**2 kg**-1 s**-1 (SI); values are not rescaled.
         "pv": PotentialVorticity,
     }
     _rad_map: ClassVar[Mapping[str, MetVariable]] = {
         "tsr": TOANetDownwardShortwaveFlux,
         "olr": TOAOutgoingLongwaveFlux,
+        # The DWD 'sdr' field is TOA incoming solar radiation (store history:
+        # swflx_dn, "solar incoming radiation at TOA") but is mapped to the
+        # pycontrails surface variable (J m**-2); see
+        # docs/internal/pyneats_units_audit.md.
         "sdr": SurfaceSolarDownwardRadiation,
     }
 
@@ -259,6 +275,14 @@ class DWDFactory(WeatherFactoryProtocol):
     def __call__(
         self, asofdate: datetime, hour: int | None = None
     ) -> WeatherProviderProtocol:
+        """Open (or build) the DWD weather for one forecast run.
+
+        The run is selected from ``asofdate`` (date) and ``hour`` (run hour,
+        defaults to ``asofdate.hour``). The file names and, on the Zarr path,
+        the ``[asofdate, asofdate + weather_offset_hours]`` window are built
+        with ``strftime`` and no time-zone conversion, so ``asofdate`` must be
+        naive UTC or UTC-aware.
+        """
         zc = self.params.cache.zarr if self.params.cache else None
         run_hour = asofdate.hour if hour is None else hour
         date_str = asofdate.strftime("%Y%m%d")
@@ -402,7 +426,8 @@ class DWDFactory(WeatherFactoryProtocol):
             os.makedirs(met_dir, exist_ok=True)
             os.makedirs(rad_dir, exist_ok=True)
 
-            # optional SDR accumulation (W m-2 -> J m-2)
+            # optional SDR accumulation: values (assumed W m-2) x
+            # sdr_accumulate_dt_s [s], labelled J m**-2
             if (zc.sdr_accumulate_dt_s is not None) and (
                 "surface_solar_downward_radiation" in rad_ds_xr
             ):
@@ -511,14 +536,20 @@ class DWDFactory(WeatherFactoryProtocol):
         try:
             ds = xr.open_mfdataset(files, combine="by_coords")
             ds = self._standardize_dims(ds)
-            # Convert Pa → hPa on level coord if needed
+            # Convert Pa → hPa on level coord if needed (tests the first
+            # level only; the level units attribute is dropped, not set to hPa)
             if "level" in ds and float(ds["level"].values[0]) > 2000.0:
                 ds = ds.assign_coords(level=ds["level"].astype("float64") / 100.0)
 
             # Unit fixes BEFORE mapping
+            # clc: percent -> dimensionless fraction [0, 1], unconditional
+            # (assumes the source is in percent; not checked).
             if "clc" in ds:
                 ds["clc"] = ds["clc"] / 100.0
                 ds["clc"].attrs["units"] = "1"
+            # rhi: relabel only; '%' (or '-') becomes '1' without dividing by
+            # 100, so no mismatch warning follows (see
+            # docs/internal/pyneats_units_audit.md).
             if "rhi" in ds and ds["rhi"].attrs.get("units", "-") in ("-", "%"):
                 ds["rhi"].attrs["units"] = "1"
 
@@ -572,6 +603,12 @@ class DWDFactory(WeatherFactoryProtocol):
     def _standardize_vars(
         self, ds: xr.Dataset, var_map: Mapping[str, MetVariable]
     ) -> xr.Dataset:
+        """Rename DWD variables to pycontrails names and set their attrs.
+
+        ``attrs['units']`` is overwritten with the MetVariable unit. On a unit
+        mismatch only a warning is logged; values are not converted (see
+        docs/internal/pyneats_units_audit.md).
+        """
         for raw, mv in var_map.items():
             if raw not in ds:
                 logger.debug("%s not found in dataset", raw)

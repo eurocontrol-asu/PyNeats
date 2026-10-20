@@ -34,23 +34,51 @@ class NEATSFuel(SAFBlend):
     Parameters
     ----------
     hydrogen_content : float, optional
-        Hydrogen content in weight percent (wt.% H).
+        Hydrogen content in wt.% (percent by mass, e.g. 13.8 for Jet-A), the
+        same scale as the AO field "percentage of hydrogen mass content". Not
+        a fraction. Defaults to ``DEFAULT_HYDROGEN_CONTENT`` (13.79 wt.%).
     h_c_ratio : float, optional
-        Atomic H/C ratio.
+        H/C ratio, dimensionless, atomic (molar): hydrogen atoms per carbon
+        atom (Reg. (EU) 2018/2066 Annex IIIa §1(36)). Converted to wt.% with
+        ``r * 1.008 / (12.011 + r * 1.008) * 100``; used only when
+        ``hydrogen_content`` is None.
     q_fuel : float, optional
-        Lower heating value (J/kg).
+        PyNEATS input unit: J/kg of fuel (lower calorific value).
+        The AO JSON field ``calorific_value`` is in MJ/kg of fuel.
+        The NEATS application multiplies by 1e6 before calling PyNEATS.
+        Values received here must already be in J/kg; do not convert again.
+        Defaults to ``DEFAULT_Q_FUEL`` (42.8e6 J/kg).
     pct_blend_gate : float, optional
         Blend gate for SAFBlend compatibility.
     sulphur_content : float, optional
-        Sulphur content (not used in calculations).
+        Sulphur content, % by mass basis (Reg. (EU) 2018/2066 Annex IIIa §5(4) default);
+        fraction vs percentage scale not defined by the AO schema. Stored
+        only, not used in calculations.
     aromatics_content : float, optional
-        Aromatics content (not used in calculations).
+        Aromatics content, % by volume basis (Annex IIIa §5(4) default);
+        fraction vs percentage scale not defined by the AO schema. Stored
+        only, not used in calculations.
     naphthalene : float, optional
-        Naphthalene content (not used in calculations).
+        Naphthalene content, % by volume basis (Annex IIIa §5(4) default);
+        fraction vs percentage scale not defined by the AO schema. Stored
+        only, not used in calculations.
     name : str, optional
         Name of the fuel.
+
+    Notes
+    -----
+    Derived emission indices, all in kg per kg of fuel:
+
+    - ``ei_co2`` is the pycontrails JetA value, independent of hydrogen content.
+    - ``ei_h2o`` is the JetA value scaled by the resolved hydrogen content
+      (wt.%) divided by 13.8 (JetA hydrogen content, wt.%).
+    - ``ei_so2`` (and ``ei_sulphates`` derived from it) is the JetA value
+      whatever ``sulphur_content`` is, so SO2 and sulphate outputs do not
+      depend on the supplied sulphur (see docs/internal/pyneats_units_audit.md).
     """
 
+    # Class defaults are fraction scale (see neats_default_parameters); values
+    # supplied by the AO keep the AO scale, which the schema does not define.
     aromatics_content: float = (
         DEFAULT_AROMATICS_CONTENT  # default value - Not used in calculations
     )
@@ -82,13 +110,14 @@ class NEATSFuel(SAFBlend):
             h_wt_pct = float(hydrogen_content)
         elif h_c_ratio is not None:
             r = float(h_c_ratio)
-            # Convert H/C atomic ratio to hydrogen *mass percent*
-            # (×100 to keep PyContrails' convention)
+            # Convert H/C atomic (molar) ratio to hydrogen *mass percent* using
+            # atomic masses H = 1.008, C = 12.011 g/mol
+            # (×100 to keep PyContrails' wt.% convention)
             h_wt_pct = (r * 1.008) / (12.011 + r * 1.008) * 100.0
         else:
             h_wt_pct = DEFAULT_HYDROGEN_CONTENT
 
-        # --- Resolve q_fuel
+        # --- Resolve q_fuel [J/kg, LHV]; already in J/kg on entry (see docstring)
         qf = float(q_fuel) if q_fuel is not None else DEFAULT_Q_FUEL
 
         # --- Storing Optional Fuel Attributes from AOs, not used at this stage
@@ -101,7 +130,8 @@ class NEATSFuel(SAFBlend):
         if naphthalene is not None:
             object.__setattr__(self, "naphthalene", naphthalene)
 
-        # --- Derive dependent indices consistently
+        # --- Derive dependent indices consistently [kg/kg fuel]
+        # ei_co2 and ei_so2 are the JetA values; only ei_h2o follows h_wt_pct
         ei_co2 = base.ei_co2
         ei_h2o = base.ei_h2o * (h_wt_pct / base.hydrogen_content)
         ei_so2 = base.ei_so2
@@ -171,6 +201,14 @@ class NEATSFuel(SAFBlend):
         Accepts both None and missing values; applies NEATS defaults.
         Handles the case where fuel properties are stored as arrays (from column serialization)
         by extracting the first element.
+
+        Values are passed through unconverted, so they must already be in the
+        units of the constructor (``q_fuel`` in J/kg, ``hydrogen_content`` in
+        wt.%). Only the key ``naphthalene`` is read; the airport-file path stores
+        the value under ``naphtalene`` and the AO JSON path drops it, so a parsed
+        naphthalene value is not picked up. Alternative keys are joined with
+        ``or``, so an explicit 0.0 under the first key falls back to the second
+        key, then to the default (see docs/internal/pyneats_units_audit.md).
 
         Parameters
         ----------

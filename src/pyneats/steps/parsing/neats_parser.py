@@ -32,6 +32,12 @@ __all__ = [
 
 # Maps CSV column names → Flight4D attr names.
 # "naphtalene" matches the existing (typo'd) key in ATTRS_OPTIONAL.
+# NEATSFuel.from_attrs reads "naphthalene", so this value is stored but not
+# read by NEATSFuel (see docs/internal/pyneats_units_audit.md).
+# Values are converted with float() only (no unit conversion): q_fuel is
+# expected in J/kg; h_c_ratio is used by NEATSFuel as an atomic H/C ratio;
+# the fraction vs percentage scale of aromatics/sulphur/naphthalene is not
+# established.
 _FUEL_COL_MAP: dict[str, str] = {
     "aromatics_content": "aromatic_content",
     "h_c_ratio": "h_c_ratio",
@@ -52,6 +58,12 @@ def _load_airport_fuel_props(
       the keys in ``_FUEL_COL_MAP`` (legacy q_fuel-only CSV also accepted)
     - JSON: ``{airport: float}`` (treated as q_fuel-only) or
       ``{airport: {attr: value, ...}}`` (multi-property)
+
+    Values are converted with ``float()`` only; no unit conversion is applied.
+    This file is read by PyNEATS directly, so the NEATS application's x 1e6
+    conversion of the AO ``calorific_value`` does not apply: ``q_fuel`` must be
+    given in J/kg (bare JSON numbers are taken as ``q_fuel``). There is no
+    ``hydrogen_content`` column mapping.
 
     Returns ``{}`` on missing/invalid file (with a warning logged).
     """
@@ -128,18 +140,24 @@ class NeatsTrajectoryParserParams(TrajectoryParserParams):
     Attributes
     ----------
     date_format : str
-        Format string for parsing dates.
+        Format string for parsing string timestamps. The default has no UTC
+        offset; values are parsed with ``utc=True``, i.e. read as UTC.
+        Strings that do not match become NaT and their rows are dropped.
     timezone : str
-        Output timezone; parsing is done as UTC then converted.
+        Timezone the parsed timestamps are converted to before the ``Flight``
+        is built. It has no effect on the result: pycontrails ``Flight``
+        converts any tz-aware time column to tz-naive UTC, so ``Flight.time``
+        is always naive UTC (see docs/internal/pyneats_units_audit.md).
     airport_fuel_path : str | None
         Optional path to a CSV or JSON file mapping airport codes to fuel properties
-        (q_fuel, h_c_ratio, aromatic_content, sulphur_content, naphtalene).
+        (q_fuel in J/kg, h_c_ratio, aromatic_content, sulphur_content,
+        naphtalene). Values are used as-is, without unit conversion.
         Operator-provided values always take precedence; airport values fill only the
         gaps not supplied by the operator.
     """
 
     date_format: str = "%Y-%m-%d %H:%M:%S"
-    timezone: str = "UTC"  # output tz; parsing is done as UTC then converted
+    timezone: str = "UTC"  # no effect on output: Flight.time is naive UTC
     airport_fuel_path: str | None = None
 
 
@@ -162,7 +180,7 @@ class NeatsTrajectoryParser(
     Ensures:
     - All required columns are present
     - Numeric values are valid
-    - Timestamps are properly formatted and timezone-aware
+    - Timestamps are parsed as UTC (output ``Flight.time`` is tz-naive UTC)
     - No duplicate timestamps exist
     - No missing values in required columns
     """
@@ -182,16 +200,18 @@ class NeatsTrajectoryParser(
         Performs the standard NEATS trajectory normalisation:
 
         1. Verifies all required columns are present (``Flight4D.REQUIRED``).
-        2. Converts altitude from flight-level (FL) to metres.
-        3. Parses timestamps in ``params.date_format`` (tz-aware, converts to
-           ``params.timezone`` if set).
+        2. Converts altitude from flight level (FL) to metres of ISA pressure
+           altitude (FL x 100 ft x 0.3048 m/ft).
+        3. Parses timestamps in ``params.date_format`` as UTC. The output
+           ``Flight.time`` is tz-naive UTC whatever ``params.timezone`` is.
         4. Cleans and deduplicates rows on the ``time`` column.
         5. Rejects trajectories spanning more than 24 hours (likely a
            concatenation or timezone bug).
         6. Builds flight attributes, optionally filling fuel properties from
            the per-airport fallback map if provided.
         7. Rejects low-altitude trajectories that never cross the configured
-           ``max_pressure_level`` (no contribution to non-CO2 climate impact).
+           ``max_pressure_level`` in hPa (no contribution to non-CO2 climate
+           impact).
 
         Args:
             flight: Raw NEATS DataFrame containing the ``Flight4D.REQUIRED``
@@ -214,7 +234,9 @@ class NeatsTrajectoryParser(
             if missing:
                 raise TrajectoryParserStepError(f"missing required columns: {missing}")
 
-            # 2) FL → meters
+            # 2) FL → meters: FL x 100 ft x 0.3048 m/ft (= FL x 30.48 m). The
+            #    result is ISA pressure altitude, not geometric altitude;
+            #    pycontrails derives level/air_pressure from it with the ISA.
             try:
                 alt_ft = (
                     pd.to_numeric(flight["altitude"], errors="coerce")
@@ -229,7 +251,8 @@ class NeatsTrajectoryParser(
                     f"altitude conversion failed: {e}"
                 ) from e
 
-            # 3) Parse time (tz-aware)
+            # 3) Parse time as UTC. Any tz conversion below is undone by
+            #    pycontrails Flight, which stores time as tz-naive UTC.
             try:
                 ts = pd.to_datetime(
                     df["time"],
@@ -282,6 +305,7 @@ class NeatsTrajectoryParser(
                     attrs[k] = attrs_input[k]
 
             # 5.5) Airport-based fuel-property fallback (operator values always win)
+            #      Values are used as-is (no unit conversion; q_fuel in J/kg).
             if self._airport_fuel_props:
                 airport = str(attrs.get("departure_airport", "")).upper()
                 if airport in self._airport_fuel_props:
@@ -312,6 +336,7 @@ class NeatsTrajectoryParser(
             base = Flight(data=data_req, attrs=attrs, fuel=fuel_obj)
 
             # 8.5) Reject flights that never reach high enough altitude
+            #      max_pressure_level and Flight.level are both in hPa.
             if self.params.max_pressure_level is not None:
                 min_level = float(base.level.min())
                 if min_level > self.params.max_pressure_level:

@@ -24,27 +24,27 @@ DEFAULT_NON_CO2_MODEL_SMALL_EMITTERS : str
 DEFAULT_CLIMATE_IMPACT : str
     Default climate impact metric.
 DEFAULT_INTERPOLATION_TIME : str
-    Default interpolation time step.
+    Default interpolation time step, as a pandas frequency string ("1min" = 60 s).
 DEFAULT_BADA4_VERSION : str
     Default BADA4 version.
 DEFAULT_BADA3_VERSION : str
     Default BADA3 version.
 DEFAULT_PAYLOAD_FACTOR : float
-    Default payload factor.
+    Default payload factor: dimensionless fraction of maximum payload mass.
 DEFAULT_FUEL_RESERVE_FRACTION : float
-    Default fuel reserve fraction.
+    Default fuel reserve fraction: dimensionless fraction of trip fuel mass.
 DEFAULT_MAX_MASS_ESTIMATION_ITER : int
     Default max mass estimation iterations.
 DEFAULT_MAX_REL_MASS_DIFF : float
-    Default max relative mass difference.
+    Default max relative mass difference (dimensionless fraction).
 DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW : int
-    Default smoothing window for true air speed.
+    Default smoothing window for true air speed, in number of points.
 DEFAULT_DELTA_TAU_COMPUTE_METHOD : Literal
     Default delta tau compute method.
 DEFAULT_DELTA_TAU_FILL_METHOD : Literal
     Default delta tau fill method.
 DEFAULT_ROCD_PHASE_THRESHOLD : float
-    Default rate of climb/descent phase threshold.
+    Default rate of climb/descent phase threshold, in ft/min.
 DEFAULT_EMISSIONS_KWARGS : Mapping[str, Any]
     Default emissions model keyword arguments.
 DEFAULT_COCIP_KWARGS : Mapping[str, Any]
@@ -52,23 +52,23 @@ DEFAULT_COCIP_KWARGS : Mapping[str, Any]
 DEFAULT_CLIMACCF_KWARGS : Mapping[str, Any]
     Default ClimAccf model keyword arguments.
 DEFAULT_AROMATICS_CONTENT : float
-    Default aromatics content for fuel.
+    Default aromatics content for fuel (fraction scale; unused).
 DEFAULT_SULPHUR_CONTENT : float
-    Default sulphur content for fuel.
+    Default sulphur content for fuel (fraction scale; unused).
 DEFAULT_NAPHTHALEN_CONTENT : float
-    Default naphthalene content for fuel.
+    Default naphthalene content for fuel (fraction scale; unused).
 DEFAULT_HYDROGEN_CONTENT : float
-    Default hydrogen content for fuel.
+    Default hydrogen content for fuel, in wt.% (percent by mass).
 REFERENCE_Q_FUEL : float
-    Reference q_fuel value.
+    Reference q_fuel value, in J/kg (pycontrails JetA lower calorific value).
 DEFAULT_Q_FUEL : float
-    Default q_fuel value.
+    Default q_fuel value, in J/kg (lower calorific value).
 OPEN_AIRCLIM_LEVELS : tuple of int
-    Default pressure levels for Open Air Clim.
+    Default pressure levels for Open Air Clim, in hPa.
 OPEN_AIRCLIM_GRID_RES : float
-    Default grid resolution for Open Air Clim.
+    Default grid resolution for Open Air Clim, in degrees.
 OPEN_AIRCLIM_COMPUTATION_HORIZON : int
-    Default computation horizon for Open Air Clim.
+    Default computation horizon for Open Air Clim, in years.
 """
 
 from collections.abc import Mapping
@@ -121,6 +121,7 @@ DEFAULT_CLIMATE_IMPACT: Final[str] = "gwp"  # Global Warming Potential
 
 # Interpolation defaults
 # Specifies the temporal resolution for trajectory
+# pandas frequency string passed to Flight.resample_and_fill ("1min" = 60 s)
 DEFAULT_INTERPOLATION_TIME: Final[str] = "1min"
 
 # Performance model defaults
@@ -134,10 +135,13 @@ DEFAULT_BADA_MAX_CONSECUTIVE_FAILURES = 5
 
 # Very conservative threshold on the fuel flow. An error in BADA will be thown if higher
 # Further studies need to be performed to better handle out of envelop data points
+# Unit: kg/s, whole aircraft; compared only with the BADA-computed fuel flow
+# (after the q_fuel correction).
 DEFAULT_FF_OUTLIER_THRESHOLD = 100
 
 # Mass estimation parameters
 # Used in iterative aircraft mass computation from fuel consumption
+# Fraction of the maximum payload mass MPL (MTOW - OEW when MPL is unavailable)
 DEFAULT_PAYLOAD_FACTOR: Final[float] = (
     1.0  # Multiplier for expected payload (1.0 = full capacity)
 )
@@ -176,21 +180,24 @@ DEFAULT_ROCD_PHASE_THRESHOLD: Final[float] = (
 )
 
 # Fuel burn guardrail: reject if total fuel > (MTOW - OEW) * threshold
-# A ratio of 1.1 allows 10% margin above the useful payload capacity
+# (masses in kg). A ratio of 1.2 allows a 20% margin above MTOW - OEW.
 DEFAULT_FUEL_BURN_THRESHOLD: Final[float] = 1.2
 
 # Altitude filter for performance fallback
 # Minimum Flight Level (FL) threshold: points below this FL are filtered
 # when retrying after a performance step failure.
-# FL15 = 2000 ft ≈ 610 m — filters out ground-level / taxi data.
+# FL20 = 2000 ft = 609.6 m — filters out ground-level / taxi data.
+# Converted to m (FL x 100 ft) and compared with the altitude column [m].
 DEFAULT_MIN_ALTITUDE_FL: Final[float] = 20
 
-# Maximum ratio of filtered points before giving up on altitude fallback.
+# Maximum ratio of filtered points before giving up on altitude fallback
+# (dimensionless fraction [0, 1] of trajectory points).
 # If more than 80% of trajectory points are below min FL, the flight is
 # likely a low-altitude operation — retrying is unlikely to help.
 DEFAULT_MAX_ALTITUDE_FILTER_RATIO: Final[float] = 0.8
 
 # Guardrail: reject non-CO2 species producing > MAX_NONCO2_CO2_RATIO × CO2 baseline
+# (dimensionless ratio of CO2-equivalent mass to emitted CO2 mass, both in kg)
 MAX_NONCO2_CO2_RATIO: Final[float] = 1000.0
 
 # Emissions model parameters
@@ -262,6 +269,7 @@ DEFAULT_CLIMACCF_KWARGS: Final[Mapping[str, Any]] = {
     "horizontal_resolution": None,  # Use native data resolution
     "unit_K_per_kg_fuel": False,  # Output in ATR units (not K per kg fuel)
 }
+# Compared with the pycontrails air_pressure column [Pa]; 40000 Pa = 400 hPa
 DEFAULT_ACCF_VALIDITY_PRESSURE = 40000  # Pressure level (Pa) for ACCF validity check
 
 # Weather field interpolation configuration
@@ -297,6 +305,9 @@ DEFAULT_WEATHER_USE_INDICES: Final[bool] = False
 
 # Jet fuel composition and thermodynamic properties
 # Used in emissions and energy calculations. Default values from consortium (DLR/TO70)
+# Aromatics, sulphur and naphthalene defaults are fraction scale (0.25 = 25%); the AO
+# schema does not define the scale of the corresponding fields. None of the three is
+# used in calculations. Hydrogen content is in wt.% (percent by mass), not a fraction.
 DEFAULT_AROMATICS_CONTENT: Final[float] = (
     0.25  # 25% - Default value (not used in current calculations)
 )
@@ -307,14 +318,19 @@ DEFAULT_NAPHTHALEN_CONTENT: Final[float] = (
     0.03  # 3% - Default value (not used in current calculations)
 )
 DEFAULT_HYDROGEN_CONTENT: Final[float] = (
-    13.79  # 13.79% - Default value provided by consortium (DLR/TO70) for fuel composition
+    13.79  # wt.% - Default value from consortium (DLR/TO70) for fuel composition
 )
 
-# Fuel energy content (specific energy)
+# Fuel energy content (specific energy), lower calorific value in J/kg of fuel
 # Critical for converting fuel consumption to energy and emissions estimates
+# REFERENCE_Q_FUEL is the pycontrails JetA q_fuel (pycontrails/core/fuel.py); it is
+# not read from BADA files. The BADA fuel flow is divided by q_fuel / REFERENCE_Q_FUEL.
+# Because NEATSFuel always carries a q_fuel (DEFAULT_Q_FUEL when none is supplied),
+# this correction always applies (see docs/internal/pyneats_units_audit.md).
 REFERENCE_Q_FUEL: Final[float] = (
-    43_130_000.0  # J/kg - Baseline value from PyContrails/BADA
+    43_130_000.0  # J/kg - Baseline value from PyContrails JetA
 )
+# DEFAULT_Q_FUEL is used when neither the AO nor the airport fuel file supplies q_fuel
 DEFAULT_Q_FUEL: Final[float] = (
     42_800_000.0  # J/kg - Default value provided by consortium (DLR/TO70)
 )

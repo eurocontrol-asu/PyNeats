@@ -25,6 +25,10 @@ def filter_low_speed_points(
 ) -> pd.DataFrame:
     """Filter trajectory points with TAS below VStall.
 
+    Drops points whose ``true_airspeed`` [m/s] is below the BADA stall speed
+    [m/s, CAS] at MTOW in the "TO" configuration. The comparison is TAS
+    against CAS; the two coincide only near sea level.
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -32,7 +36,8 @@ def filter_low_speed_points(
     adapter : BaseBADAAdapter
         BADA adapter providing ``v_stall_cas()`` and ``MTOW``.
     max_filter_ratio : float
-        Maximum fraction of points that may be removed.
+        Maximum fraction of points that may be removed (dimensionless
+        fraction [0, 1]).
 
     Returns
     -------
