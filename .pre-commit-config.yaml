@@ -11,15 +11,18 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  # Mypy - Type checking (run on src/ only)
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.14.1
+  # Mypy - Type checking (run on src/ only), in the project environment
+  # (uv.lock), exactly as CI and `make check` run it. The isolated
+  # mirrors-mypy environment installed unpinned numpy, whose stubs need a
+  # newer Python than mypy's target, so the hook failed for every commit.
+  - repo: local
     hooks:
       - id: mypy
-        args: [src/pyneats/]
+        name: mypy
+        entry: uv run --frozen mypy src/pyneats/
+        language: system
+        types: [python]
         pass_filenames: false
-        additional_dependencies:
-          - pandas-stubs>=2.0.0
 
   # General pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
