@@ -15,7 +15,7 @@ note under its item. Items not listed here are open.
 | One flight that cannot be converted no longer stops the run (D2 follow-up) | Fixed | #71 | 2026-10-20 |
 | D1 (bare single-flight object) | Open; now a clear `TypeError` on the `FleetRunner` JSON path | #71 | 2026-10-20 |
 | I4 (BADA3 maximum payload) | Fixed; changes BADA3 fuel and CO2 | #73 | 2026-10-21 |
-| Fuel reserve stated as 3 % in the user docs (Section 9) | Fixed (docs only; the code uses 15 %) | `docs/fuel-reserve-15pct` | 2026-10-21 |
+| Fuel reserve and number of mass iterations misstated in the user docs (Section 9) | Fixed (docs only) | `docs/fuel-reserve-15pct` | 2026-10-21 |
 
 ## 1. Outcome
 
@@ -709,6 +709,7 @@ discrepancies:
 | `scripts/parquet_to_neats_json.py` | treats `altitude` as feet and stamps `+0000` without converting | basis (barometric or geometric) and time zone unverified | document expected input |
 | `tests/test_performance_fallback.py:4,74,80`; `tests/test_guardrails.py:133,142,151` | FL15; 500 hPa | FL20; 550 hPa | update test docstrings |
 | `docs/explanation/input-prioritization.md:60`; `docs/explanation/mrv-specification.md:203` | initial-mass fuel reserve ≈ 3 % of trip fuel | 15 % (`DEFAULT_FUEL_RESERVE_FRACTION = 0.15`, `neats_default_parameters.py:148`; `bada_model.py:1058`). Found after this audit, during the I4 review | fixed (`docs/fuel-reserve-15pct`) |
+| `docs/explanation/input-prioritization.md:70`; `docs/explanation/mrv-specification.md:214` | the mass estimate runs steps 2–4 "twice" | when neither an `aircraft_mass` column nor a `takeoff_weight` attribute is given, steps 2–4 run at least twice and at most four times per estimate: one constant-mass BADA pass, then up to three passes from the updated TOW, stopping when the TOW changes by ≤ 1 % of the previous TOW (`max_mass_estimation_iter = 4`, `max_rel_mass_diff = 0.01`, `bada_model.py:1065-1117`); the last pass is kept. Measured on the 4,303 flights computed from the NEATS_FINAL sample: 2,769 stop after two passes, 1,415 after three, 119 after four, 3 of which stop at the cap with a change of 1.0–1.4 % (1.04, 1.17 and 1.39 %) | fixed (`docs/fuel-reserve-15pct`) |
 
 ## 10. Incidental observations outside the unit scope
 

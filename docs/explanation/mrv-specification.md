@@ -211,7 +211,7 @@ The following rules are applied **sequentially** to determine how the primary da
         !!! note "MPL source"
             MPL is read from the BADA files (the OPF maximum payload for BADA 3). Only if a BADA file gives no MPL is $\text{MPL} = MTOW - OEW$ used.
 
-    5. **Iteration:** steps 2–4 are repeated until convergence (fixed number of iterations, or relative-tolerance stopping criterion). In PyNeats, **steps 2–4 are performed twice** to reduce computational effort.
+    5. **Iteration:** steps 2–4 are repeated, with the mass along the trajectory now starting at the updated TOW, until the TOW changes by 1 % or less of the previous TOW (`max_rel_mass_diff`). Within one estimate, steps 2–4 run at least twice and at most four times (`max_mass_estimation_iter`); after the fourth time the result is kept even if the change is still above 1 %. A retry with BADA 3, or after points below FL20 are removed, starts the estimate again from step 1. The fuel flow, thrust and mass kept are those of the last BADA calculation, which started from the TOW of the previous update; the TOW computed after that calculation is used only for the convergence test.
 
 See [Input Prioritization](input-prioritization.md) for the full decision flowchart.
 
