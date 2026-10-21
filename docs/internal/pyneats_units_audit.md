@@ -822,6 +822,12 @@ for a separate decision and were not fixed.
     retries. On this path only two internal consistency errors carry that flag (a BADA file
     without MTOW or OEW when the take-off mass is estimated, and a missing initial mass), and
     neither occurs with the BADA files in use.
+  - **Known, not changed (existed before).** For a type without a BADA4 code, the altitude
+    fallback runs the same BADA3 calculation twice (its "BADA4" attempt resolves to BADA3).
+    When the altitude filter cannot run (no point below FL20, or more than 80 % below it),
+    such a flight's error record reads "already performed with BADA3" and the actual reason
+    (for example the fuel-burn rejection) is only in the exception cause, which the fleet
+    runner does not record. Candidates for the AO-input / error-reporting work.
   - **Effect on results.** No flight of the NEATS_FINAL sample reaches the guardrail, so its
     results do not change (fleet before/after on the 4,959 sample flights).
 
