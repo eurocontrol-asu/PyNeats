@@ -478,6 +478,11 @@ class BADAPerformanceModel(
         degrades gracefully and proceeds with the original unfiltered data.
         """
 
+        # Work on a copy: the steps below write columns (aircraft_mass, thrust,
+        # fuel_flow, ...) into df. run() and the altitude fallback pass the same
+        # df to a BADA3 retry, which would otherwise take those columns as AO data.
+        df = df.copy()
+
         try:
             # 1) resolve adapter + core attrs
             adapter, bada_version, nb_eng, engine_id = self._resolve_bada_adapter(
