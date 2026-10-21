@@ -17,9 +17,10 @@ cite line numbers on `dev` before the fix they describe.
 | D1 (bare single-flight object) | Open; now a clear `TypeError` on the `FleetRunner` JSON path | #71 | 2026-10-20 |
 | I4 (BADA3 maximum payload) | Fixed; changes BADA3 fuel and CO2 | #73 | 2026-10-21 |
 | Fuel reserve and number of mass iterations misstated in the user docs (Section 9) | Fixed (docs only) | #74 | 2026-10-21 |
-| Performance input decision tree and data-sources table in the user docs (Section 9) | Fixed (docs only) | `docs/performance-input-logic` | 2026-10-21 |
-| A13 (mixed fuel-flow provenance) | Documented in the user docs; the design choice stays open | `docs/performance-input-logic` | 2026-10-21 |
-| I9 (`segment_duration` not recomputed after the speed filter) | Open; recorded, part of the low-speed filter work | `docs/performance-input-logic` | 2026-10-21 |
+| Performance input decision tree and data-sources table in the user docs (Section 9) | Fixed (docs only) | #75 | 2026-10-21 |
+| A13 (mixed fuel-flow provenance) | Documented in the user docs; the design choice stays open | #75 | 2026-10-21 |
+| I9 (`segment_duration` not recomputed after the speed filter) | Open; recorded, part of the low-speed filter work | #75 | 2026-10-21 |
+| I10 (a failed attempt leaked columns into the BADA3 retry) | Fixed; no change on the NEATS_FINAL sample | `fix/performance-retry-isolation` | 2026-10-21 |
 
 ## 1. Outcome
 
@@ -446,8 +447,8 @@ Each entry gives:
 - Units agree throughout. The issue is provenance, not scale.
 - **Recommendation**: document this, or integrate mass from the provided `ff`. The decision
   belongs to the method owner.
-- *Documented in `input-prioritization.md` and `mrv-specification.md` on branch
-  `docs/performance-input-logic` (see the follow-up status table). The design choice
+- *Documented in `input-prioritization.md` and `mrv-specification.md` (#75, see the
+  follow-up status table). The design choice
   (integrate mass from the provided `ff` or not) stays open for the method owner.*
 
 ## 7. New discrepancies
@@ -717,12 +718,12 @@ discrepancies:
 | `tests/test_performance_fallback.py:4,74,80`; `tests/test_guardrails.py:133,142,151` | FL15; 500 hPa | FL20; 550 hPa | update test docstrings |
 | `docs/explanation/input-prioritization.md:60`; `docs/explanation/mrv-specification.md:203` | initial-mass fuel reserve ≈ 3 % of trip fuel | 15 % (`DEFAULT_FUEL_RESERVE_FRACTION = 0.15`, `neats_default_parameters.py:148`; `bada_model.py:1058`). Found after this audit, during the I4 review | fixed (#74) |
 | `docs/explanation/input-prioritization.md:70`; `docs/explanation/mrv-specification.md:214` | the mass estimate runs steps 2–4 "twice" | when neither an `aircraft_mass` column nor a `takeoff_weight` attribute is given, steps 2–4 run at least twice and at most four times per estimate: one constant-mass BADA pass, then up to three passes from the updated TOW, stopping when the TOW changes by ≤ 1 % of the previous TOW (`max_mass_estimation_iter = 4`, `max_rel_mass_diff = 0.01`, `bada_model.py:1065-1117`); the last pass is kept. Measured on the 4,303 flights computed from the NEATS_FINAL sample: 2,769 stop after two passes, 1,415 after three, 119 after four, 3 of which stop at the cap with a change of 1.0–1.4 % (1.04, 1.17 and 1.39 %) | fixed (#74) |
-| `docs/explanation/input-prioritization.md:23-44`; `docs/explanation/mrv-specification.md:187-193` | the decision tree and rules 1–5 are exclusive cases checked in order: fuel flow + η skips the performance step; fuel flow only uses BADA only for η; with aircraft mass, BADA computes the fuel flow | each quantity has its own source. The BADA thrust and fuel-flow calculation is skipped only when fuel flow, η and aircraft mass are all given (`bada_model.py:741-745`); the BADA adapter is still resolved and, for BADA3 runs, the low-speed filter still removes rows on that path (`bada_model.py:483-495`). Otherwise the mass is the AO mass, else the AO TOW, else the iterative estimate, whatever fuel flow or η were given (`bada_model.py:850-874`); with aircraft mass and no fuel flow, the fuel flow is derived from the mass decrease (`bada_model.py:762-812`); the BADA mapping is needed for every flight. Checked by running one golden flight (EAF2143) with six input combinations (fuel flow + η + mass, fuel flow + η, fuel flow, mass, TOW, none) and with an aircraft type missing from the BADA mapping. A retry bug (a BADA3 retry after a BADA4 guardrail rejection reused the BADA4 columns and could take this exit) is fixed separately | fixed (`docs/performance-input-logic`) |
-| `docs/explanation/input-prioritization.md:17` | modelled take-off weight = OEW + load_factor × (MTOW − OEW) | that is only the constant first-pass mass; the take-off weight used is min(MTOW, OEW + load_factor × MPL + 1.15 × trip fuel) from the iteration (MPL = MTOW − OEW when BADA gives no positive MPL). On the 4,303 computed NEATS_FINAL sample flights the first-pass mass equals MTOW on all, the take-off weight on 243 | fixed (`docs/performance-input-logic`) |
-| `docs/explanation/input-prioritization.md:83,85` | unmapped types fall back to fleet-statistics proxies; the engine UID defaults to the MRR conservative value | the fleet statistics were used to build the mapping tables; a type absent from them makes the flight fail. Without a declared engine, the engine UID is the MRR conservative engine where the type has one (`MRR_conservative_mapping.csv`), otherwise the engine of the mapping row | fixed (`docs/performance-input-logic`) |
-| `docs/explanation/input-prioritization.md:96-97` | "Fuel flow only: η derived from BADA"; "Mass evolution: full BADA performance chain" | with fuel flow only, the mass and TOW are also estimated from the load factor; with mass evolution, the fuel flow is derived from the mass decrease (star ranking left unchanged) | fixed (`docs/performance-input-logic`) |
-| `docs/explanation/mrv-specification.md:119,172` | missing points of optional AO variables are filled by interpolation; the performance model estimates values "not available at a point" | a provided column is used whole; empty points are not filled, and resampling widens them (D4) | fixed (`docs/performance-input-logic`) |
-| `docs/explanation/mrv-specification.md:181` | without AO TAS, TAS is set to 0 below 840 hPa | the wind is set to 0 where it is missing (`weather_provider.py:382-383`), so TAS equals the smoothed ground speed | fixed (`docs/performance-input-logic`) |
+| `docs/explanation/input-prioritization.md:23-44`; `docs/explanation/mrv-specification.md:187-193` | the decision tree and rules 1–5 are exclusive cases checked in order: fuel flow + η skips the performance step; fuel flow only uses BADA only for η; with aircraft mass, BADA computes the fuel flow | each quantity has its own source. The BADA thrust and fuel-flow calculation is skipped only when fuel flow, η and aircraft mass are all given (`bada_model.py:741-745`); the BADA adapter is still resolved and, for BADA3 runs, the low-speed filter still removes rows on that path (`bada_model.py:483-495`). Otherwise the mass is the AO mass, else the AO TOW, else the iterative estimate, whatever fuel flow or η were given (`bada_model.py:850-874`); with aircraft mass and no fuel flow, the fuel flow is derived from the mass decrease (`bada_model.py:762-812`); the BADA mapping is needed for every flight. Checked by running one golden flight (EAF2143) with six input combinations (fuel flow + η + mass, fuel flow + η, fuel flow, mass, TOW, none) and with an aircraft type missing from the BADA mapping. A retry bug (a BADA3 retry after a BADA4 guardrail rejection reused the BADA4 columns and could take this exit) is fixed separately (I10) | fixed (#75) |
+| `docs/explanation/input-prioritization.md:17` | modelled take-off weight = OEW + load_factor × (MTOW − OEW) | that is only the constant first-pass mass; the take-off weight used is min(MTOW, OEW + load_factor × MPL + 1.15 × trip fuel) from the iteration (MPL = MTOW − OEW when BADA gives no positive MPL). On the 4,303 computed NEATS_FINAL sample flights the first-pass mass equals MTOW on all, the take-off weight on 243 | fixed (#75) |
+| `docs/explanation/input-prioritization.md:83,85` | unmapped types fall back to fleet-statistics proxies; the engine UID defaults to the MRR conservative value | the fleet statistics were used to build the mapping tables; a type absent from them makes the flight fail. Without a declared engine, the engine UID is the MRR conservative engine where the type has one (`MRR_conservative_mapping.csv`), otherwise the engine of the mapping row | fixed (#75) |
+| `docs/explanation/input-prioritization.md:96-97` | "Fuel flow only: η derived from BADA"; "Mass evolution: full BADA performance chain" | with fuel flow only, the mass and TOW are also estimated from the load factor; with mass evolution, the fuel flow is derived from the mass decrease (star ranking left unchanged) | fixed (#75) |
+| `docs/explanation/mrv-specification.md:119,172` | missing points of optional AO variables are filled by interpolation; the performance model estimates values "not available at a point" | a provided column is used whole; empty points are not filled, and resampling widens them (D4) | fixed (#75) |
+| `docs/explanation/mrv-specification.md:181` | without AO TAS, TAS is set to 0 below 840 hPa | the wind is set to 0 where it is missing (`weather_provider.py:382-383`), so TAS equals the smoothed ground speed | fixed (#75) |
 
 ## 10. Incidental observations outside the unit scope
 
@@ -784,6 +785,26 @@ for a separate decision and were not fixed.
   removed (639 leading, 1,947 trailing, 587 interior), carrying 1.36 % of flight time;
   CO2 / (3.159 × fuel) from 0.961 to 1.360 (median 0.995) per flight, 0.17 % below at fleet
   level.
+- **I10. A failed attempt leaked columns into the BADA3 retry.** Found after this audit
+  (2026-10-21), while checking the user docs. *Fixed on branch
+  `fix/performance-retry-isolation` (see the follow-up status table).* `run()` passed the same
+  preprocessed DataFrame to the first attempt and to the BADA3 retry (`bada_model.py:350-391`),
+  and `_run_with_altitude_fallback` did the same for its two attempts (`bada_model.py:429-451`).
+  `run_by_bada_version` writes `aircraft_mass`, `thrust`, `fuel_flow`, `phase`,
+  `thrust_segment`, `fuel_burn` and `fuel` into that DataFrame (`_finalize_columns`) before the
+  fuel-burn guardrail (`_build_result`). The copy is shared whenever the low-speed filter removes
+  nothing, which is always the case for BADA4 (I1). After a guardrail rejection on BADA4, the
+  BADA3 retry therefore took the BADA4 columns as AO data:
+  - with AO fuel flow and engine efficiency, it saw fuel flow, efficiency and mass "provided",
+    took the early exit and returned the flight without the guardrail and without
+    `bada_version` (reproduced on golden flight EAF2143 with the AO fuel flow × 15: 55,674 kg
+    accepted against a limit of 45,600 kg);
+  - otherwise it used the BADA4 mass (and BADA4 fuel flow) as AO data and was rejected again,
+    the right outcome for the wrong reason.
+
+  Each attempt now works on its own copy (`df = df.copy()` at the start of
+  `run_by_bada_version`). No flight of the NEATS_FINAL sample reaches the guardrail, so its
+  results do not change.
 
 ## 11. Patch summary and checks performed
 
