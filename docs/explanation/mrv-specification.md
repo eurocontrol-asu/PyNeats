@@ -116,7 +116,7 @@ The interpolation module converts the input trajectory (primary or secondary) to
 
 *PyNeats currently uses straightforward linear interpolation via PyContrails' `resample_and_fill` method. For secondary data, the coarse native sampling can yield segments that are not fully realistic and may stray outside the flight envelope after interpolation. To obtain more realistic trajectories, smoothing is applied to ground speed using the **Savitzky–Golay filter** from PyContrails, reducing the number of segments that fall outside the flight envelope.*
 
-For optional primary variables along the trajectory (e.g. true airspeed, aircraft mass, fuel flow, or engine efficiency), **linear interpolation** is applied to align their values with the trajectory timestamps. Missing data points are filled using the same interpolation method.
+For optional primary variables along the trajectory (e.g. true airspeed, aircraft mass, fuel flow, or engine efficiency), **linear interpolation** is applied to align their values with the trajectory timestamps. Missing data points are not filled: a point the AO leaves empty also empties the resampled points between its two neighbours, and these stay empty in the performance step.
 
 ### 3.3 Weather
 
@@ -169,7 +169,7 @@ The emissions and climate modules require the following aircraft-performance val
 - **Fuel flow**
 - **Engine efficiency**
 
-The performance model is used to estimate these values when they are not available at a point along the trajectory.
+The performance model is used to estimate these values when the AO does not provide them. A quantity is taken from the AO when at least one point has a value; points the AO leaves empty are not estimated (see Input Decision Logic).
 
 **BADA** is the current chosen model for performance computation in PyNeats, in its open-source version from EUROCONTROL (**pyBADA**). BADA requires, at a given point of the trajectory:
 
@@ -178,18 +178,26 @@ The performance model is used to estimate these values when they are not availab
 
 #### Basic Parameterisation
 
-- If TAS is not provided by the AO, wind fields **above 840 hPa (FL050)** are used to compute it; below that pressure level TAS is set to 0.
+- If TAS is not provided by the AO, it is computed from the (smoothed) ground speed and the wind fields, available **above 840 hPa (FL050)**; where no wind is available (below that level) the wind is set to 0, so TAS equals the smoothed ground speed.
 - The International Standard Atmosphere is corrected with actual air above 550 hPa, backfilling and forward-filling the correction for lower altitudes.
 - BADA flight phases are determined from **vertical speed** using simple decision thresholds.
 
 #### Input Decision Logic
 
-The following rules are applied **sequentially** to determine how the primary data provided by the AO is used:
+Each performance quantity has its own source, so the cases below are not exclusive (an AO fuel flow can be combined with a BADA aircraft mass); the source of one quantity can still depend on what else is provided, as rules 2 and 4 show:
 
-1. **Fuel flow and engine efficiency provided at each point:** no additional computation; the performance step is **skipped** and provided values are used directly downstream.
-2. **Fuel flow only provided at each point:** AO fuel flow (kg/s) is used downstream. However, **engine efficiency requires thrust AND fuel flow** from a consistent source. To avoid mixing AO fuel flow with BADA-estimated thrust (which would be inconsistent), BADA fuel flow must **still be computed** at each trajectory point so that **engine efficiency = f(BADA thrust, BADA fuel flow)**.
-3. **Aircraft mass evolution provided:** used directly in BADA to compute fuel flow, thrust, and engine efficiency.
-4. **Only take-off weight (TOW) provided:** TOW is used in the performance model to estimate mass evolution along the trajectory, and then fuel flow, thrust, and engine efficiency are computed with BADA.
+1. **BADA mapping:** every flight needs its aircraft type in the BADA mapping, even when the AO provides all performance data. The BADA file gives the wingspan (contrails); the mapping gives the number of engines (emissions; read from the BADA file when no BADA calculation is made) and, when no engine is declared, the engine UID (the MRR conservative engine where the type has one, otherwise the engine of the mapping row). A type not in the mapping makes the flight fail.
+2. **Fuel flow, engine efficiency and aircraft mass all provided:** no BADA thrust or fuel-flow calculation; the provided values are used directly downstream. The fuel-burn plausibility check (total fuel burn at most 1.2 × (MTOW − OEW), applied on every other path with the fuel flow actually used) is not applied on this path.
+3. **Otherwise BADA computes thrust and fuel flow at each point**, with the aircraft mass taken from, in order: the AO aircraft mass, if provided; else the AO take-off weight (TOW), decreased along the trajectory with the BADA fuel flow; else the iterative estimate of rule 5.
+4. **Outputs:**
+    - **Fuel flow:** AO fuel flow (kg/s) if provided; else, if the AO provides aircraft mass, the mass decrease since the previous point divided by the time step to the next point (set to 0 where the mass increases; 0 at the first point and empty at the last, so the last segment's mass decrease is not counted); else the BADA fuel flow.
+    - **Engine efficiency:** AO value if provided; else computed from BADA thrust and BADA fuel flow. This also holds when the AO provides fuel flow: **engine efficiency requires thrust AND fuel flow** from a consistent source, so engine efficiency = f(BADA thrust, BADA fuel flow), while the AO fuel flow is used downstream.
+    - **Aircraft mass:** as in rule 3. When the AO provides fuel flow but no aircraft mass, the mass decreases with the BADA fuel flow (from the AO TOW or from the estimated TOW, whose trip fuel also uses the BADA fuel flow), so the mass decrease differs from the reported fuel burn.
+
+    A quantity counts as provided when at least one point has a value; points left empty are not filled from BADA and are left out of the fuel totals.
+
+    Before any of these rules, points whose true airspeed is below the BADA stall speed (at MTOW, take-off configuration), or that have no true airspeed, are removed, also on the path of rule 2; if more than 80 % of the points would be removed, none are. Currently this applies only to aircraft computed with BADA 3; this filter is under review.
+
 5. **Neither mass nor TOW provided:** the load factor is used (AO-provided or conservative default of 1). The following approach (similar to PyContrails) is applied:
 
     1. **Initial estimate** (constant along the trajectory):
