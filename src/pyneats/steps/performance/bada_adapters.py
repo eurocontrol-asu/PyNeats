@@ -537,12 +537,12 @@ class BADA3Adapter(_PyBADAAdapterBase[Bada3Aircraft], BaseBADAAdapter):
         value = getattr(self._obj, "MTOW", None)
         return cast("float | None", value)
 
+    # MPL [kg]: pyBADA 0.1.12 Bada3Aircraft sets it from the OPF maximum
+    # payload (tonnes x 1000), as it does MTOW and OEW.
     @property
     def MPL(self) -> float | None:
-        # Always None. pyBADA 0.1.12 Bada3Aircraft does set MPL (from OPF
-        # files: max payload x 1000, kg), but it is not read here, so mass
-        # estimation uses MTOW - OEW (see docs/internal/pyneats_units_audit.md).
-        return None
+        value = getattr(self._obj, "MPL", None)
+        return cast("float | None", value)
 
     @property
     def OEW(self) -> float | None:

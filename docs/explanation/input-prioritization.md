@@ -69,8 +69,8 @@ Reduce aircraft mass along the trajectory according to fuel burnt at each point.
 
 **Step 5 — Iterate** steps 2–4 until convergence. In PyNeats, **two iterations** are used to balance accuracy and computational cost.
 
-!!! info "BADA 3 and MPL"
-    BADA 3 does not provide MPL (Maximum Payload). In that case, $\text{MPL} = MTOW - OEW$.
+!!! info "MPL source"
+    MPL (Maximum Payload) is read from the BADA files: the OPF maximum payload for BADA 3, the aircraft file for BADA 4. Only if a BADA file gives no MPL is $\text{MPL} = MTOW - OEW$ used.
 
 ---
 

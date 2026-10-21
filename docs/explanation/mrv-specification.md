@@ -208,8 +208,8 @@ The following rules are applied **sequentially** to determine how the primary da
 
         where MPL is the maximum payload and `consumed_fuel` is the total fuel burn estimated in step 2. Aircraft mass along the trajectory is then reduced according to fuel burnt.
 
-        !!! note "BADA 3 and MPL"
-            BADA 3 does not provide MPL. If BADA 3 is used, $\text{MPL} = MTOW - OEW$.
+        !!! note "MPL source"
+            MPL is read from the BADA files (the OPF maximum payload for BADA 3). Only if a BADA file gives no MPL is $\text{MPL} = MTOW - OEW$ used.
 
     5. **Iteration:** steps 2–4 are repeated until convergence (fixed number of iterations, or relative-tolerance stopping criterion). In PyNeats, **steps 2–4 are performed twice** to reduce computational effort.
 
