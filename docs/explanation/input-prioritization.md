@@ -57,7 +57,7 @@ $$
 
 **Step 2 — Compute fuel flow** and fuel burn at each trajectory point using BADA.
 
-**Step 3 — Estimate fuel reserve** (≈ 3 % of trip fuel).
+**Step 3 — Estimate fuel reserve:** 15 % of trip fuel (`fuel_reserve_fraction`, following Teoh et al., 2024).
 
 **Step 4 — Update TOW:**
 

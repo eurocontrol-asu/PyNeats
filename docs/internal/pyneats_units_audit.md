@@ -14,7 +14,8 @@ note under its item. Items not listed here are open.
 | D2 (trajectory `ts` offsets) | Fixed | #70 | 2026-10-20 |
 | One flight that cannot be converted no longer stops the run (D2 follow-up) | Fixed | #71 | 2026-10-20 |
 | D1 (bare single-flight object) | Open; now a clear `TypeError` on the `FleetRunner` JSON path | #71 | 2026-10-20 |
-| I4 (BADA3 maximum payload) | Fixed; changes BADA3 fuel and CO2 | `fix/bada3-max-payload` | 2026-10-21 |
+| I4 (BADA3 maximum payload) | Fixed; changes BADA3 fuel and CO2 | #73 | 2026-10-21 |
+| Fuel reserve stated as 3 % in the user docs (Section 9) | Fixed (docs only; the code uses 15 %) | `docs/fuel-reserve-15pct` | 2026-10-21 |
 
 ## 1. Outcome
 
@@ -707,6 +708,7 @@ discrepancies:
 | `docs/internal/performance_use_cases_analysis.md` | TAS always recomputed; early exit on FF+EE; FF never derived from mass | TAS kept when provided; early exit needs FF+EE+AM; FF derived from AM | mark superseded |
 | `scripts/parquet_to_neats_json.py` | treats `altitude` as feet and stamps `+0000` without converting | basis (barometric or geometric) and time zone unverified | document expected input |
 | `tests/test_performance_fallback.py:4,74,80`; `tests/test_guardrails.py:133,142,151` | FL15; 500 hPa | FL20; 550 hPa | update test docstrings |
+| `docs/explanation/input-prioritization.md:60`; `docs/explanation/mrv-specification.md:203` | initial-mass fuel reserve ≈ 3 % of trip fuel | 15 % (`DEFAULT_FUEL_RESERVE_FRACTION = 0.15`, `neats_default_parameters.py:148`; `bada_model.py:1058`). Found after this audit, during the I4 review | fixed (`docs/fuel-reserve-15pct`) |
 
 ## 10. Incidental observations outside the unit scope
 

@@ -200,7 +200,7 @@ The following rules are applied **sequentially** to determine how the primary da
 
     2. **First performance calculation:** compute fuel flow and fuel burn at each trajectory point from this mass.
 
-    3. **Fuel-reserve estimation:** the required reserve is approximated at **3 % of trip fuel**.
+    3. **Fuel-reserve estimation:** the required reserve is **15 % of trip fuel** (`fuel_reserve_fraction`, following Teoh et al., 2024).
 
     4. **Updated TOW:**
 
