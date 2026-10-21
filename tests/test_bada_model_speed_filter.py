@@ -119,10 +119,12 @@ class TestSpeedFilterCalledBeforePerf:
 
         model.run_by_bada_version(flight, df, "A320", None, None, None)
 
-        # filter was called with the df and the resolved adapter
+        # filter was called with a copy of the df and the resolved adapter
+        # (each attempt works on its own copy, see run_by_bada_version)
         mock_filter.assert_called_once()
         call_args = mock_filter.call_args
-        assert call_args[0][0] is df  # first positional: df
+        pd.testing.assert_frame_equal(call_args[0][0], df)  # first positional: df
+        assert call_args[0][0] is not df
         assert call_args[0][1] is adapter  # second positional: adapter
 
 
