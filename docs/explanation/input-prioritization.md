@@ -57,7 +57,7 @@ $$
 
 **Step 2 — Compute fuel flow** and fuel burn at each trajectory point using BADA.
 
-**Step 3 — Estimate fuel reserve** (≈ 3 % of trip fuel).
+**Step 3 — Estimate fuel reserve:** 15 % of trip fuel (`fuel_reserve_fraction`, following Teoh et al., 2024).
 
 **Step 4 — Update TOW:**
 
@@ -67,7 +67,7 @@ $$
 
 Reduce aircraft mass along the trajectory according to fuel burnt at each point.
 
-**Step 5 — Iterate** steps 2–4 until convergence. In PyNeats, **two iterations** are used to balance accuracy and computational cost.
+**Step 5 — Iterate** steps 2–4, with the mass now starting at the updated TOW and decreasing along the trajectory, until the TOW changes by 1 % or less of the previous TOW (`max_rel_mass_diff`). Within one estimate, steps 2–4 run at least twice and at most four times (`max_mass_estimation_iter`); after the fourth time the result is kept even if the change is still above 1 %. A retry with BADA 3, or after points below FL20 are removed, starts the estimate again from step 1. The fuel flow, thrust and mass kept are those of the last BADA calculation, which started from the TOW of the previous update; the TOW computed after that calculation is used only for the convergence test.
 
 !!! info "MPL source"
     MPL (Maximum Payload) is read from the BADA files: the OPF maximum payload for BADA 3, the aircraft file for BADA 4. Only if a BADA file gives no MPL is $\text{MPL} = MTOW - OEW$ used.
