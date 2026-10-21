@@ -236,12 +236,12 @@ class TestRunWithAltitudeFallback:
         model = self._make_model()
         model.run_by_bada_version = MagicMock(
             side_effect=[
-                PerformanceStepError("Total fuel burn too high", retryable=False),
+                PerformanceStepError("does not provide OEW or MTOW", retryable=False),
             ],
         )
 
         flight = _make_flight_with_weather([5, 10, 100, 200, 350])
-        with pytest.raises(PerformanceStepError, match="Total fuel burn too high"):
+        with pytest.raises(PerformanceStepError, match="does not provide OEW or MTOW"):
             model._run_with_altitude_fallback(
                 flight,
                 "A320",

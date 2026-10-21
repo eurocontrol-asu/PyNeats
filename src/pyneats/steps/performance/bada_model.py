@@ -330,11 +330,13 @@ class BADAPerformanceModel(
             3. Altitude fallback — filter points below DEFAULT_MIN_ALTITUDE_FL
                (FL20 = 2000 ft = 609.6 m), retry
 
-        A failure raised with ``retryable=False`` ends the chain where it
-        occurs: no BADA3 retry and no altitude fallback. This covers the
-        fuel-burn guardrail (impossible total fuel points to bad trajectory
-        data, not to the BADA version), a BADA file without MTOW or OEW, and
-        a missing initial mass.
+        A fuel-burn guardrail rejection goes through the whole chain: BADA3
+        retry, then altitude fallback; the flight fails only if every attempt
+        is rejected. A failure raised with ``retryable=False`` ends the chain
+        where it occurs; only two internal consistency errors carry that flag
+        on this path (a BADA file without MTOW or OEW when the take-off mass
+        is estimated, and a missing initial mass), and neither occurs with the
+        BADA files in use.
         """
 
         # --- Preprocessing + aircraft data extraction ---
@@ -568,11 +570,12 @@ class BADAPerformanceModel(
             total_fuel = float(df["fuel_burn"].sum())
             limit = useful_payload * self.params.fuel_burn_threshold
             if total_fuel > limit:
+                # Retryable: the BADA3 retry and the altitude fallback (points
+                # below FL20 removed) may still give a plausible result.
                 raise PerformanceStepError(
                     f"Total fuel burn {total_fuel:.0f} kg exceeds "
                     f"useful payload capacity {useful_payload:.0f} kg x "
                     f"{self.params.fuel_burn_threshold} = {limit:.0f} kg",
-                    retryable=False,
                 )
         else:
             self.logger.warning(

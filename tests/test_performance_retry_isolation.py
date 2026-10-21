@@ -1,4 +1,4 @@
-"""Retries in the performance step: clean start, and final guardrail rejections.
+"""Retries in the performance step: clean start, and fuel-burn rejections.
 
 ``run()`` passes the same preprocessed DataFrame to the first attempt and to
 the BADA3 retry (the altitude fallback does the same). ``run_by_bada_version``
@@ -7,9 +7,8 @@ the BADA3 retry took the columns left by a failed BADA4 attempt as AO data:
 with AO fuel flow and engine efficiency it saw "all AO data provided", took
 the early exit and was accepted without the fuel-burn guardrail.
 
-Each attempt now works on its own copy, and a failure raised with
-``retryable=False`` (the fuel-burn guardrail among them) ends the chain: no
-BADA3 retry and no altitude fallback.
+Each attempt now works on its own copy. A fuel-burn rejection goes through the
+whole fallback chain: BADA3 retry, then altitude fallback.
 """
 
 from __future__ import annotations
@@ -133,7 +132,13 @@ def _make_model(bada_results: list[Any], ao: set[str]) -> tuple[MagicMock, Magic
     model._choose_mass_strategy = MagicMock(
         side_effect=[r if isinstance(r, Exception) else _perf(r) for r in bada_results]
     )
-    model._compute_engine_efficiency_if_missing = MagicMock()
+
+    def efficiency(df: pd.DataFrame, perf: Any, q_fuel_used: float) -> None:
+        # As the real step: fill engine_efficiency only when it is absent.
+        if "engine_efficiency" not in df.columns:
+            df["engine_efficiency"] = 0.3
+
+    model._compute_engine_efficiency_if_missing = MagicMock(side_effect=efficiency)
     model._preprocess = MagicMock(return_value=_make_df(ao))
     model._extract_aircraft_attrs = MagicMock(return_value=("A320", None, None, None))
     model._run_with_altitude_fallback = MagicMock(
@@ -163,36 +168,48 @@ def test_attempt_does_not_modify_callers_dataframe(_: MagicMock) -> None:
     pd.testing.assert_frame_equal(df, before)
 
 
-@pytest.mark.parametrize(
-    ("ao", "bada_fuel_flow"),
-    [
-        # AO fuel flow is impossible: before the fix, the BADA3 retry saw
-        # fuel flow + efficiency + the BADA4 mass and skipped the guardrail.
-        ({"ff", "ee"}, PLAUSIBLE_FUEL_FLOW),
-        # BADA4 fuel flow is impossible, no or partial AO data.
-        (set(), IMPOSSIBLE_FUEL_FLOW),
-        ({"ee"}, IMPOSSIBLE_FUEL_FLOW),
-    ],
-    ids=["ao_ff_ee", "no_ao", "ao_ee"],
-)
+@pytest.mark.parametrize("ao", [set(), {"ee"}], ids=["no_ao", "ao_ee"])
 @patch(
     "pyneats.steps.performance.bada_model.filter_low_speed_points",
     side_effect=_speed_filter_fails,
 )
-def test_guardrail_rejection_is_final(
-    _: MagicMock, ao: set[str], bada_fuel_flow: float
-) -> None:
-    model, _adapter = _make_model([bada_fuel_flow, PLAUSIBLE_FUEL_FLOW], ao)
+def test_guardrail_rejection_retried_with_bada3(_: MagicMock, ao: set[str]) -> None:
+    # BADA4 fuel is impossible, BADA3 fuel is plausible: the flight is
+    # accepted with BADA3. Before the fix, the BADA3 retry reused the rejected
+    # BADA4 columns (rejected again, or accepted via the early exit with "ee").
+    model, _adapter = _make_model([IMPOSSIBLE_FUEL_FLOW, PLAUSIBLE_FUEL_FLOW], ao)
 
-    with pytest.raises(PerformanceStepError, match="fuel burn") as exc_info:
-        model.run(_make_flight())
+    result = model.run(_make_flight())
 
-    assert exc_info.value.retryable is False
-    # One BADA4 attempt only: no BADA3 retry, no altitude fallback.
     forced = [c.args[3] for c in model._resolve_bada_adapter.call_args_list]
-    assert forced == [False]
-    assert model._choose_mass_strategy.call_count == 1
+    assert forced == [False, True]
+    assert model._choose_mass_strategy.call_count == 2
+    assert result.attrs["bada_version"] == "BADA3"
     model._run_with_altitude_fallback.assert_not_called()
+
+
+@patch(
+    "pyneats.steps.performance.bada_model.filter_low_speed_points",
+    side_effect=_speed_filter_fails,
+)
+def test_guardrail_rejection_reaches_altitude_fallback(_: MagicMock) -> None:
+    # AO fuel flow is impossible: BADA4 and BADA3 are both rejected, then the
+    # altitude fallback runs. Before the fix, the BADA3 retry saw fuel flow +
+    # efficiency + the BADA4 mass, skipped the guardrail and accepted the flight.
+    model, _adapter = _make_model(
+        [PLAUSIBLE_FUEL_FLOW, PLAUSIBLE_FUEL_FLOW], {"ff", "ee"}
+    )
+    fallback_result = MagicMock(name="altitude fallback result")
+    model._run_with_altitude_fallback = MagicMock(return_value=fallback_result)
+
+    result = model.run(_make_flight())
+
+    assert result is fallback_result
+    forced = [c.args[3] for c in model._resolve_bada_adapter.call_args_list]
+    assert forced == [False, True]
+    assert model._choose_mass_strategy.call_count == 2
+    (call,) = model._run_with_altitude_fallback.call_args_list
+    assert "fuel burn" in str(call.args[-1])
 
 
 @patch(
