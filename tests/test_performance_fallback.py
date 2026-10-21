@@ -231,6 +231,28 @@ class TestRunWithAltitudeFallback:
 
         assert model.run_by_bada_version.call_count == 2
 
+    def test_final_bada4_failure_on_filtered_not_retried(self) -> None:
+        """A non-retryable BADA4 failure on filtered data is not retried with BADA3."""
+        model = self._make_model()
+        model.run_by_bada_version = MagicMock(
+            side_effect=[
+                PerformanceStepError("Total fuel burn too high", retryable=False),
+            ],
+        )
+
+        flight = _make_flight_with_weather([5, 10, 100, 200, 350])
+        with pytest.raises(PerformanceStepError, match="Total fuel burn too high"):
+            model._run_with_altitude_fallback(
+                flight,
+                "A320",
+                None,
+                None,
+                None,
+                PerformanceStepError("original"),
+            )
+
+        model.run_by_bada_version.assert_called_once()
+
     def test_no_low_points_propagates_original_error(self) -> None:
         """If flight has no low-altitude points, the original error is re-raised."""
         model = self._make_model()

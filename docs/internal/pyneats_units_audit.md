@@ -20,7 +20,7 @@ cite line numbers on `dev` before the fix they describe.
 | Performance input decision tree and data-sources table in the user docs (Section 9) | Fixed (docs only) | #75 | 2026-10-21 |
 | A13 (mixed fuel-flow provenance) | Documented in the user docs; the design choice stays open | #75 | 2026-10-21 |
 | I9 (`segment_duration` not recomputed after the speed filter) | Open; recorded, part of the low-speed filter work | #75 | 2026-10-21 |
-| I10 (a failed attempt leaked columns into the BADA3 retry) | Fixed; no change on the NEATS_FINAL sample | `fix/performance-retry-isolation` | 2026-10-21 |
+| I10 (a failed attempt leaked columns into the BADA3 retry) | Fixed; fuel-burn rejections are now final (maintainer decision); no change on the NEATS_FINAL sample | `fix/performance-retry-isolation` | 2026-10-21 |
 
 ## 1. Outcome
 
@@ -787,24 +787,38 @@ for a separate decision and were not fixed.
   level.
 - **I10. A failed attempt leaked columns into the BADA3 retry.** Found after this audit
   (2026-10-21), while checking the user docs. *Fixed on branch
-  `fix/performance-retry-isolation` (see the follow-up status table).* `run()` passed the same
-  preprocessed DataFrame to the first attempt and to the BADA3 retry (`bada_model.py:350-391`),
-  and `_run_with_altitude_fallback` did the same for its two attempts (`bada_model.py:429-451`).
-  `run_by_bada_version` writes `aircraft_mass`, `thrust`, `fuel_flow`, `phase`,
-  `thrust_segment`, `fuel_burn` and `fuel` into that DataFrame (`_finalize_columns`) before the
-  fuel-burn guardrail (`_build_result`). The copy is shared whenever the low-speed filter removes
-  nothing, which is always the case for BADA4 (I1). After a guardrail rejection on BADA4, the
-  BADA3 retry therefore took the BADA4 columns as AO data:
-  - with AO fuel flow and engine efficiency, it saw fuel flow, efficiency and mass "provided",
-    took the early exit and returned the flight without the guardrail and without
-    `bada_version` (reproduced on golden flight EAF2143 with the AO fuel flow × 15: 55,674 kg
-    accepted against a limit of 45,600 kg);
-  - otherwise it used the BADA4 mass (and BADA4 fuel flow) as AO data and was rejected again,
-    the right outcome for the wrong reason.
+  `fix/performance-retry-isolation` (see the follow-up status table).*
+  - **Defect.** `run()` passed the same preprocessed DataFrame to the first attempt and to the
+    BADA3 retry (`bada_model.py:350-391`), and `_run_with_altitude_fallback` did the same for
+    its two attempts (`bada_model.py:429-451`). `run_by_bada_version` writes into that
+    DataFrame: `fuel_flow` derived from `am` before the BADA calculation, then
+    `aircraft_mass`, `thrust`, `fuel_flow`, `phase`, `thrust_segment`, `fuel_burn` and `fuel`
+    (`_finalize_columns`) before the fuel-burn guardrail (`_build_result`). The DataFrame is
+    shared whenever the low-speed filter removes nothing, which is always the case for BADA4
+    (I1). The BADA3 retry therefore took the columns of the failed BADA4 attempt as AO data.
+  - **Effects before the fix** (reproduced on golden flight EAF2143, BADA4 fuel or AO fuel
+    flow × 15 to trigger the guardrail, limit 45,600 kg):
 
-  Each attempt now works on its own copy (`df = df.copy()` at the start of
-  `run_by_bada_version`). No flight of the NEATS_FINAL sample reaches the guardrail, so its
-  results do not change.
+    | AO data | BADA4 attempt fails | BADA3 retry before the fix |
+    | --- | --- | --- |
+    | fuel flow + η | guardrail | early exit ("all provided"), accepted with 55,674 kg, no guardrail, no `bada_version` |
+    | η only | guardrail | early exit, accepted with the rejected BADA4 fuel (49 t), no `bada_version` |
+    | none | guardrail | reused the BADA4 fuel flow and mass, rejected again |
+    | mass + η | before the BADA result (e.g. first point) | early exit on the fuel flow derived from the mass, BADA skipped |
+
+  - **Fix.** Each attempt works on its own copy (`df = df.copy()` at the start of
+    `run_by_bada_version`).
+  - **Maintainer decision (2026-10-21): fuel-burn rejections are final.** With a clean retry,
+    a flight rejected by the guardrail on BADA4 would be computed again with BADA3 and could
+    be accepted with BADA3 numbers. Before the fix this never happened in practice (the retry
+    reused the rejected BADA4 fuel). An impossible total fuel points to bad trajectory or AO
+    data, not to the BADA version, so a failure raised with `retryable=False` now ends the
+    chain: no BADA3 retry in `run()` and none inside `_run_with_altitude_fallback` (`run()`
+    already skipped the altitude fallback after such failures). Besides the guardrail, only
+    two failures carry that flag on this path: a BADA file without MTOW or OEW, and a missing
+    initial mass; neither occurs with the BADA files and data in use.
+  - **Effect on results.** No flight of the NEATS_FINAL sample reaches the guardrail, so its
+    results do not change (fleet before/after on the 4,959 sample flights).
 
 ## 11. Patch summary and checks performed
 

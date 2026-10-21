@@ -1,12 +1,15 @@
-"""A failed performance attempt must not leak columns into the retry.
+"""Retries in the performance step: clean start, and final guardrail rejections.
 
 ``run()`` passes the same preprocessed DataFrame to the first attempt and to
 the BADA3 retry (the altitude fallback does the same). ``run_by_bada_version``
-writes ``aircraft_mass``, ``thrust``, ``fuel_flow``... before the fuel-burn
-guardrail. Without a copy, a flight with AO fuel flow and engine efficiency
-rejected by the guardrail on BADA4 reached the BADA3 retry with a BADA
-``aircraft_mass`` column, took the "all AO data provided" early exit and was
-accepted without the guardrail.
+writes ``aircraft_mass``, ``thrust``, ``fuel_flow``... into it. Without a copy,
+the BADA3 retry took the columns left by a failed BADA4 attempt as AO data:
+with AO fuel flow and engine efficiency it saw "all AO data provided", took
+the early exit and was accepted without the fuel-burn guardrail.
+
+Each attempt now works on its own copy, and a failure raised with
+``retryable=False`` (the fuel-burn guardrail among them) ends the chain: no
+BADA3 retry and no altitude fallback.
 """
 
 from __future__ import annotations
@@ -29,13 +32,14 @@ N_POINTS = 5
 MTOW = 80_000.0
 OEW = 45_000.0
 FUEL_BURN_THRESHOLD = 1.2  # limit = 1.2 x (MTOW - OEW) = 42,000 kg
-AO_FUEL_FLOW = 200.0  # kg/s x 60 s x 4 segments = 48,000 kg > limit
+IMPOSSIBLE_FUEL_FLOW = 200.0  # kg/s x 60 s x 4 segments = 48,000 kg > limit
+PLAUSIBLE_FUEL_FLOW = 1.0  # kg/s
 
 
-def _make_df() -> pd.DataFrame:
-    """Preprocessed flight with AO fuel flow and engine efficiency, no mass."""
+def _make_df(ao: set[str]) -> pd.DataFrame:
+    """Preprocessed flight; ``ao`` names the AO columns: ff, ee, am."""
     times = pd.date_range("2023-01-01 10:00", periods=N_POINTS, freq="1min")
-    return pd.DataFrame(
+    df = pd.DataFrame(
         {
             "latitude": [51.5 + i * 0.1 for i in range(N_POINTS)],
             "longitude": [-0.1 + i * 0.1 for i in range(N_POINTS)],
@@ -46,14 +50,19 @@ def _make_df() -> pd.DataFrame:
             "acceleration": [0.0] * N_POINTS,
             "delta_tau": [0.0] * N_POINTS,
             "segment_duration": [60.0] * (N_POINTS - 1) + [float("nan")],
-            "fuel_flow": [AO_FUEL_FLOW] * N_POINTS,
-            "engine_efficiency": [0.3] * N_POINTS,
             "u_wind": [0.0] * N_POINTS,
             "v_wind": [0.0] * N_POINTS,
             "air_temperature": [220.0] * N_POINTS,
             "specific_humidity": [1e-4] * N_POINTS,
         }
     )
+    if "ff" in ao:
+        df["fuel_flow"] = IMPOSSIBLE_FUEL_FLOW
+    if "ee" in ao:
+        df["engine_efficiency"] = 0.3
+    if "am" in ao:
+        df["aircraft_mass"] = [70_000.0 - 60.0 * i for i in range(N_POINTS)]
+    return df
 
 
 def _make_flight() -> MagicMock:
@@ -70,9 +79,26 @@ def _make_flight() -> MagicMock:
     return flight
 
 
-def _make_model() -> MagicMock:
-    """Real run / run_by_bada_version / early exit / finalize / guardrail;
-    adapter resolution and the BADA calculation are mocked."""
+def _perf(fuel_flow: float) -> tuple[dict[str, list[Any]], float]:
+    return (
+        {
+            "mass": [70_000.0] * N_POINTS,
+            "fuel_flow": [fuel_flow] * N_POINTS,
+            "thrust": [50_000.0] * N_POINTS,
+            "phase": ["Cruise"] * N_POINTS,
+            "segment": ["TOTAL"] * N_POINTS,
+        },
+        43.13e6,
+    )
+
+
+def _make_model(bada_results: list[Any], ao: set[str]) -> tuple[MagicMock, MagicMock]:
+    """Real run / run_by_bada_version / early exit / finalize / guardrail.
+
+    Adapter resolution and the BADA calculation are mocked: each attempt that
+    reaches the BADA calculation takes the next item of ``bada_results`` (a
+    BADA fuel flow in kg/s, or an exception to raise).
+    """
     model = MagicMock(spec=BADAPerformanceModel)
     model.logger = MagicMock()
     for name in (
@@ -82,6 +108,7 @@ def _make_model() -> MagicMock:
         "_derive_fuel_flow_from_mass_if_needed",
         "_finalize_columns",
         "_build_result",
+        "_attach_output_attrs",
     ):
         setattr(model, name, getattr(BADAPerformanceModel, name).__get__(model))
 
@@ -104,22 +131,15 @@ def _make_model() -> MagicMock:
 
     model._resolve_bada_adapter = MagicMock(side_effect=resolve)
     model._choose_mass_strategy = MagicMock(
-        return_value=(
-            {
-                "mass": [70_000.0] * N_POINTS,
-                "fuel_flow": [1.0] * N_POINTS,
-                "thrust": [50_000.0] * N_POINTS,
-                "phase": ["Cruise"] * N_POINTS,
-                "segment": ["TOTAL"] * N_POINTS,
-            },
-            43.13e6,
-        )
+        side_effect=[r if isinstance(r, Exception) else _perf(r) for r in bada_results]
     )
     model._compute_engine_efficiency_if_missing = MagicMock()
+    model._preprocess = MagicMock(return_value=_make_df(ao))
+    model._extract_aircraft_attrs = MagicMock(return_value=("A320", None, None, None))
     model._run_with_altitude_fallback = MagicMock(
         side_effect=AssertionError("altitude fallback must not run")
     )
-    return model
+    return model, adapter
 
 
 def _speed_filter_fails(*_: Any, **__: Any) -> pd.DataFrame:
@@ -133,32 +153,63 @@ def _speed_filter_fails(*_: Any, **__: Any) -> pd.DataFrame:
     side_effect=_speed_filter_fails,
 )
 def test_attempt_does_not_modify_callers_dataframe(_: MagicMock) -> None:
-    model = _make_model()
-    df = _make_df()
+    model, _adapter = _make_model([PLAUSIBLE_FUEL_FLOW], {"ff", "ee"})
+    df = _make_df({"ff", "ee"})
     before = df.copy()
-    flight = _make_flight()
 
     with pytest.raises(PerformanceStepError, match="fuel burn"):
-        model.run_by_bada_version(flight, df, "A320", None, None, None)
+        model.run_by_bada_version(_make_flight(), df, "A320", None, None, None)
 
     pd.testing.assert_frame_equal(df, before)
+
+
+@pytest.mark.parametrize(
+    ("ao", "bada_fuel_flow"),
+    [
+        # AO fuel flow is impossible: before the fix, the BADA3 retry saw
+        # fuel flow + efficiency + the BADA4 mass and skipped the guardrail.
+        ({"ff", "ee"}, PLAUSIBLE_FUEL_FLOW),
+        # BADA4 fuel flow is impossible, no or partial AO data.
+        (set(), IMPOSSIBLE_FUEL_FLOW),
+        ({"ee"}, IMPOSSIBLE_FUEL_FLOW),
+    ],
+    ids=["ao_ff_ee", "no_ao", "ao_ee"],
+)
+@patch(
+    "pyneats.steps.performance.bada_model.filter_low_speed_points",
+    side_effect=_speed_filter_fails,
+)
+def test_guardrail_rejection_is_final(
+    _: MagicMock, ao: set[str], bada_fuel_flow: float
+) -> None:
+    model, _adapter = _make_model([bada_fuel_flow, PLAUSIBLE_FUEL_FLOW], ao)
+
+    with pytest.raises(PerformanceStepError, match="fuel burn") as exc_info:
+        model.run(_make_flight())
+
+    assert exc_info.value.retryable is False
+    # One BADA4 attempt only: no BADA3 retry, no altitude fallback.
+    forced = [c.args[3] for c in model._resolve_bada_adapter.call_args_list]
+    assert forced == [False]
+    assert model._choose_mass_strategy.call_count == 1
+    model._run_with_altitude_fallback.assert_not_called()
 
 
 @patch(
     "pyneats.steps.performance.bada_model.filter_low_speed_points",
     side_effect=_speed_filter_fails,
 )
-def test_guardrail_rejection_not_bypassed_by_bada3_retry(_: MagicMock) -> None:
-    model = _make_model()
-    model._preprocess = MagicMock(return_value=_make_df())
-    model._extract_aircraft_attrs = MagicMock(return_value=("A320", None, None, None))
-    flight = _make_flight()
+def test_retry_after_bada4_failure_starts_clean(_: MagicMock) -> None:
+    # AO mass and efficiency. BADA4 fails (retryable) after the fuel flow was
+    # derived from the mass. Before the fix, the BADA3 retry saw that derived
+    # fuel flow as AO data, skipped BADA and returned no bada_version.
+    model, _adapter = _make_model(
+        [PerformanceStepError("BADA4 failure"), PLAUSIBLE_FUEL_FLOW], {"am", "ee"}
+    )
 
-    with pytest.raises(PerformanceStepError, match="fuel burn"):
-        model.run(flight)
+    result = model.run(_make_flight())
 
-    # Both attempts ran the BADA calculation: the BADA3 retry did not take
-    # the "all AO data provided" early exit on columns left by BADA4.
-    assert model._choose_mass_strategy.call_count == 2
     forced = [c.args[3] for c in model._resolve_bada_adapter.call_args_list]
     assert forced == [False, True]
+    assert model._choose_mass_strategy.call_count == 2
+    assert result.attrs["bada_version"] == "BADA3"

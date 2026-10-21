@@ -75,7 +75,7 @@ graph TD
     A quantity counts as provided when at least one point has a value. Points left empty are not filled from BADA: they stay empty and are left out of the fuel totals. After the resampling to 60 s, an empty point also empties the resampled points between its two neighbours.
 
 !!! note "Fuel-burn plausibility check"
-    A flight is rejected when its total fuel burn, with the fuel flow actually used (AO, derived from the mass, or BADA), exceeds 1.2 × (MTOW − OEW). The check is not applied when fuel flow, engine efficiency and aircraft mass are all provided. A BADA fuel flow above 100 kg/s at a point counts as a BADA failure at that point; AO fuel flow is not checked point by point.
+    A flight is rejected when its total fuel burn, with the fuel flow actually used (AO, derived from the mass, or BADA), exceeds 1.2 × (MTOW − OEW). A flight rejected by this check is not retried, neither with BADA 3 nor after removing points below FL20: an impossible total fuel points to bad trajectory or AO data, not to the BADA version. The check is not applied when fuel flow, engine efficiency and aircraft mass are all provided. A BADA fuel flow above 100 kg/s at a point counts as a BADA failure at that point; AO fuel flow is not checked point by point.
 
 !!! note "Low-speed points"
     Before any of the cases above, points whose true airspeed is below the BADA stall speed (at MTOW, take-off configuration), or that have no true airspeed, are removed, also when the AO provides fuel flow, engine efficiency and aircraft mass. If more than 80 % of the points would be removed, none are. Currently this applies only to aircraft computed with BADA 3; this filter is under review.
@@ -117,7 +117,9 @@ The correspondence between ICAO aircraft types, aircraft versions, engine identi
 
 1. **BADA 4** type from the mapping tables (preferred — higher fidelity), looked up by ICAO type, aircraft version and engine, then with fewer of these keys
 2. **BADA 3** type when the mapping gives no BADA 4 type, or when the BADA 4 calculation fails
-3. If that also fails and the error allows a retry, points below FL20 are removed and the calculation is tried again (BADA 4, then BADA 3)
+3. If that also fails, points below FL20 are removed and the calculation is tried again (BADA 4, then BADA 3)
+
+Some failures end this chain at once, with no retry: the fuel-burn plausibility check, a BADA file without MTOW or OEW, and a missing initial mass.
 
 The mapping tables were built with fleet statistics, used as frequency-based proxies where no direct correspondence exists. A type absent from the tables makes the flight fail.
 
