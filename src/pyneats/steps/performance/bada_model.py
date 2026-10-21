@@ -168,7 +168,8 @@ class BADAPerformanceModelParams(PerformanceModelParams):
     payload_factor : float
         Payload mass as a fraction of the BADA maximum payload (MPL):
         ZFW = OEW + payload_factor x MPL [kg], with MPL taken as MTOW - OEW
-        when the adapter gives no MPL (always the case with ``BADA3Adapter``).
+        when the adapter gives no MPL (BADA3 and BADA4 adapters both read it
+        from the BADA files).
         The first-pass constant-mass guess is
         OEW + payload_factor x (MTOW - OEW). Not a seat load factor; not
         clipped. Overridden by the ``payload_factor`` flight attribute and
