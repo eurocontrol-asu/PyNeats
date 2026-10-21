@@ -329,6 +329,14 @@ class BADAPerformanceModel(
             2. Retry with BADA3 forced (if first attempt used BADA4)
             3. Altitude fallback — filter points below DEFAULT_MIN_ALTITUDE_FL
                (FL20 = 2000 ft = 609.6 m), retry
+
+        A fuel-burn guardrail rejection goes through the whole chain: BADA3
+        retry, then altitude fallback; the flight fails only if every attempt
+        is rejected. A failure raised with ``retryable=False`` ends the chain
+        where it occurs; only two internal consistency errors carry that flag
+        on this path (a BADA file without MTOW or OEW when the take-off mass
+        is estimated, and a missing initial mass), and neither occurs with the
+        BADA files in use.
         """
 
         # --- Preprocessing + aircraft data extraction ---
@@ -355,6 +363,9 @@ class BADAPerformanceModel(
             )
 
         except PerformanceStepError as exc:
+            if not exc.retryable:
+                raise
+
             self.logger.info(
                 "BADA performance evaluation failed. Retrying BADA performance evaluation with BADA3 enforced",
                 extra={"icao": icao, "series": series, "engine_id": engine_id_attr},
@@ -438,8 +449,10 @@ class BADAPerformanceModel(
                     engine_id_attr,
                     q_fuel_attr,
                 )
-            except PerformanceStepError:
-                # Try BADA3 on filtered data
+            except PerformanceStepError as exc4:
+                # Try BADA3 on filtered data, unless the failure is final
+                if not exc4.retryable:
+                    raise
                 return self.run_by_bada_version(
                     filtered_flight,
                     df_filtered,
@@ -477,6 +490,11 @@ class BADAPerformanceModel(
         (no slow points, too many filtered, missing MTOW), the pipeline
         degrades gracefully and proceeds with the original unfiltered data.
         """
+
+        # Work on a copy: the steps below write columns (aircraft_mass, thrust,
+        # fuel_flow, ...) into df. run() and the altitude fallback pass the same
+        # df to a BADA3 retry, which would otherwise take those columns as AO data.
+        df = df.copy()
 
         try:
             # 1) resolve adapter + core attrs
@@ -552,11 +570,12 @@ class BADAPerformanceModel(
             total_fuel = float(df["fuel_burn"].sum())
             limit = useful_payload * self.params.fuel_burn_threshold
             if total_fuel > limit:
+                # Retryable: the BADA3 retry and the altitude fallback (points
+                # below FL20 removed) may still give a plausible result.
                 raise PerformanceStepError(
                     f"Total fuel burn {total_fuel:.0f} kg exceeds "
                     f"useful payload capacity {useful_payload:.0f} kg x "
                     f"{self.params.fuel_burn_threshold} = {limit:.0f} kg",
-                    retryable=False,
                 )
         else:
             self.logger.warning(
