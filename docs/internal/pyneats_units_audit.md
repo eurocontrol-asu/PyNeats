@@ -729,15 +729,18 @@ for a separate decision and were not fixed.
   heavier than pf × MPL. The comment was corrected; the behaviour was not changed.
   *Fixed on branch `fix/bada3-max-payload` (see the follow-up status table).
   `BADA3Adapter.MPL` now returns the OPF maximum payload, as `BADA4Adapter.MPL` already did.
-  The MTOW − OEW fallback stays for a BADA file without MPL; all 264 BADA 3.16 OPF files
-  have one. Before the fix, with the default payload factor 1.0, ZFW = MTOW, so every BADA3
-  flight took off at MTOW (1,050 of 1,050 BADA3 flights in the NEATS_FINAL sample). Measured
-  on those 1,050 flights with the BADA 3.16 files: BADA3 fuel −4.5 % (7,313 t → 6,983 t),
-  CO2 −4.5 %; per flight median −5.7 %, 5th percentile −10.4 %, minimum −21 % (GLEX, whose
-  OPF payload is 8 % of MTOW − OEW); 42 flights still take off at MTOW; take-off mass
-  median −8.2 t. BADA4 flights are not affected. Only the BADA3 path changes, including
-  BADA4 types that fall back to BADA3. The fuel-burn guardrail still uses MTOW − OEW on
-  purpose (payload and fuel together).*
+  The MTOW − OEW fallback stays for a BADA file without a usable MPL, and now also covers a
+  zero, negative or NaN value: all 264 BADA 3.16 OPF files give one, but `U2____.OPF` (also
+  used by pyBADA for G850, GFLY, M17 and M55) gives 0. None of these types is in the NEATS
+  BADA mapping. In BADA 4.2.1, only SR20 and SR22 have no MPL. Before the fix, with the
+  default payload factor 1.0, ZFW = MTOW, so every BADA3 flight took off at MTOW (1,050 of
+  1,050 BADA3 flights in the NEATS_FINAL sample). Measured on those 1,050 flights with the
+  BADA 3.16 files: BADA3 fuel −4.5 % (7,313 t → 6,983 t), CO2 −4.5 %; per flight median
+  −5.7 %, 5th percentile −10.4 %, minimum −21 % (business jets with a small OPF payload: GLF5
+  15 %, GLEX 8 % of MTOW − OEW); 42 flights still take off at MTOW; take-off mass median
+  −8.2 t. BADA4 flights are not affected. Only the BADA3 path changes, including BADA4 types
+  that fall back to BADA3. The fuel-burn guardrail still uses MTOW − OEW on purpose (payload
+  and fuel together).*
 - **I5. Parser `timezone` parameter has no effect.** pycontrails stores time as naive UTC
   (`vector.py:2162-2167`). The docstrings were corrected.
 - **I6. Outputs not strict JSON.** `scripts/run_json.py` writes no output. Golden JSON

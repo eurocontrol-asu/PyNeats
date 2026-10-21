@@ -133,6 +133,13 @@ class TestInitialMassUsesMPL:
         passes = _run_mass_estimate(None)
         assert passes[1] == MTOW
 
+    @pytest.mark.parametrize("bad_mpl", [0.0, -1.0, float("nan")])
+    def test_unusable_mpl_falls_back(self, bad_mpl: float) -> None:
+        # BADA 3.16 U2____.OPF gives MPL = 0: treated as missing, not as
+        # zero payload (which would give ZFW = OEW).
+        passes = _run_mass_estimate(bad_mpl)
+        assert passes[1] == MTOW
+
     def test_payload_factor_scales_mpl(self) -> None:
         passes = _run_mass_estimate(MPL, payload_factor=0.5)
         assert passes[1] == pytest.approx(OEW + 0.5 * MPL + TRIP_FUEL * (1 + RESERVE))

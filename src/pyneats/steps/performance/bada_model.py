@@ -168,8 +168,8 @@ class BADAPerformanceModelParams(PerformanceModelParams):
     payload_factor : float
         Payload mass as a fraction of the BADA maximum payload (MPL):
         ZFW = OEW + payload_factor x MPL [kg], with MPL taken as MTOW - OEW
-        when the adapter gives no MPL (BADA3 and BADA4 adapters both read it
-        from the BADA files).
+        when the adapter gives no usable MPL (missing, zero, negative or NaN;
+        BADA3 and BADA4 adapters both read it from the BADA files).
         The first-pass constant-mass guess is
         OEW + payload_factor x (MTOW - OEW). Not a seat load factor; not
         clipped. Overridden by the ``payload_factor`` flight attribute and
@@ -1020,7 +1020,7 @@ class BADAPerformanceModel(
 
         All masses in kg. Initial mass = min(MTOW, ZFW + trip fuel x
         (1 + fuel_reserve_fraction)), with ZFW = OEW + payload_factor x MPL
-        (or x (MTOW - OEW) when MPL is None) and trip fuel = sum of BADA fuel
+        (or x (MTOW - OEW) when MPL is missing or not positive) and trip fuel = sum of BADA fuel
         flow [kg/s] x segment_duration [s] (NaN skipped).
         """
 
@@ -1039,14 +1039,18 @@ class BADAPerformanceModel(
                 retryable=False,
             )
 
-        if adapter.MPL is None:
+        # A zero, negative or NaN MPL is treated as missing (BADA 3.16 U2____.OPF
+        # gives 0, which would otherwise mean ZFW = OEW whatever the payload factor).
+        bada_mpl = adapter.MPL
+        if bada_mpl is None or not np.isfinite(bada_mpl) or bada_mpl <= 0:
             self.logger.warning(
-                "BADA adapter for ICAO '%s' does not provide MPL, assuming MPL = MTOW - OEW. Conservative case",
+                "BADA adapter for ICAO '%s' does not provide a usable MPL (%s), assuming MPL = MTOW - OEW. Conservative case",
                 icao,
+                bada_mpl,
             )
             maximum_payload = maximum_takeoff_weight - operating_empty_weight
         else:
-            maximum_payload = adapter.MPL
+            maximum_payload = bada_mpl
 
         zero_fuel_weight: float = (
             operating_empty_weight + payload_factor * maximum_payload
