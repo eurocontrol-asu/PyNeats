@@ -11,6 +11,7 @@ Each case has a {case_name}_input.json and {case_name}_output.json pair.
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 import pytest
@@ -25,6 +26,25 @@ from tests.conftest import assert_climate_payload_equal
 
 # Test cases that require FleetRunner (heterogeneous column/attr handling)
 FLEET_RUNNER_ONLY_CASES = frozenset({"mixed_columns", "mixed_attrs", "aggregated"})
+
+# The golden outputs come from FleetRunner, which runs CoCiP on the whole fleet;
+# FlightRunner runs it on one flight. With identical inputs, a contrail can end a
+# few minutes apart in the two runs (audit I12), so contrail-based values get a
+# looser tolerance here. Everything else keeps 1e-3.
+CONTRAIL_RTOL = 5e-3
+
+
+def _split_contrails(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return (payload without contrail values, contrail values only)."""
+    rest = copy.deepcopy(payload)
+    info = rest.get("flight_information", {})
+    contrails = {"contrails_ef_J": info.pop("contrails_ef_J", None)}
+    metrics = rest.get("climate_metrics", [])
+    contrails["climate_metrics"] = [
+        m for m in metrics if m.get("species") == "Contrails"
+    ]
+    rest["climate_metrics"] = [m for m in metrics if m.get("species") != "Contrails"]
+    return rest, contrails
 
 
 @pytest.mark.integration
@@ -115,8 +135,9 @@ def test_flight_runner_golden(
             "climate_impact", {}
         )
         expected_payload = expected_flight.attrs.get("climate_impact", {})
+        actual_rest, actual_contrails = _split_contrails(actual_payload)
+        expected_rest, expected_contrails = _split_contrails(expected_payload)
+        assert_climate_payload_equal(actual_rest, expected_rest, rtol=rtol)
         assert_climate_payload_equal(
-            actual_payload,
-            expected_payload,
-            rtol=rtol,
+            actual_contrails, expected_contrails, rtol=CONTRAIL_RTOL
         )

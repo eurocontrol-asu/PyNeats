@@ -149,10 +149,10 @@ class BADAPerformanceModelParams(PerformanceModelParams):
         Savitzky-Golay window length (number of points) passed to pycontrails
         ``segment_true_airspeed``; used only when TAS is computed from winds.
     reference_q_fuel : float
-        Reference lower calorific value [J/kg of fuel]. BADA fuel flow is
-        divided by ``q_fuel_used / reference_q_fuel``. The default
-        (``REFERENCE_Q_FUEL`` = 43.13e6 J/kg) is the pycontrails JetA value,
-        not the per-aircraft BADA4 LHV (see docs/internal/pyneats_units_audit.md).
+        Lower calorific value [J/kg of fuel] of the fuel BADA assumes. BADA
+        fuel flow is divided by ``q_fuel_used / reference_q_fuel``. The default
+        (``REFERENCE_Q_FUEL`` = 43.217e6 J/kg) is the BADA4 4.2.1 LHV, used for
+        BADA4 and BADA3 (see docs/internal/pyneats_units_audit.md, A11/A12).
     delta_tau_compute_method : {"point", "zero"}
         Method for delta-tau computation.
     delta_tau_fill_method : {"bffill", "none", "zero"}

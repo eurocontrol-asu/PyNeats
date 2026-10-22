@@ -225,7 +225,7 @@ See [Input Prioritization](input-prioritization.md) for the full decision flowch
 
 #### Additional Parameters
 
-- **Fuel calorific value (`q_fuel`):** if provided by the AO, applies a **linear correction** to the BADA fuel flow rate. If not provided, no correction is applied.
+- **Fuel calorific value (`q_fuel`):** BADA gives the fuel flow of a fuel with a lower calorific value of **43.217 MJ/kg** (the value declared in the BADA 4 aircraft files; the same value is used for BADA 3, which declares none). PyNEATS rescales it to the fuel actually used: `fuel flow = BADA fuel flow × 43.217 / q_fuel`, where `q_fuel` is the AO value, else the airport fuel file value, else the default 42.8 MJ/kg. The correction therefore always applies: with the default, BADA fuel flow is multiplied by 43.217 / 42.8 = 1.0097 (+0.97 %). A provided AO fuel flow is not rescaled.
 - **ICAO ↔ BADA mapping:** the correspondence between ICAO aircraft types, aircraft versions, engine identifiers and BADA types (**BADA 4 in priority**, then **BADA 3**) is achieved following the decision tree in Figure 2.
 
 ![ICAO-BADA Correspondence decision tree](../assets/icao-bada-mapping.png){ width="100%" }

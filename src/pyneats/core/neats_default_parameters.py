@@ -60,7 +60,8 @@ DEFAULT_NAPHTHALEN_CONTENT : float
 DEFAULT_HYDROGEN_CONTENT : float
     Default hydrogen content for fuel, in wt.% (percent by mass).
 REFERENCE_Q_FUEL : float
-    Reference q_fuel value, in J/kg (pycontrails JetA lower calorific value).
+    Fuel lower calorific value assumed by the BADA fuel flow, in J/kg (the
+    BADA4 LHV, 43.217e6; also used for BADA3).
 DEFAULT_Q_FUEL : float
     Default q_fuel value, in J/kg (lower calorific value).
 Q_FUEL_MIN, Q_FUEL_MAX : float
@@ -326,15 +327,18 @@ DEFAULT_HYDROGEN_CONTENT: Final[float] = (
     13.79  # wt.% - Default value from consortium (DLR/TO70) for fuel composition
 )
 
-# Fuel energy content (specific energy), lower calorific value in J/kg of fuel
-# Critical for converting fuel consumption to energy and emissions estimates
-# REFERENCE_Q_FUEL is the pycontrails JetA q_fuel (pycontrails/core/fuel.py); it is
-# not read from BADA files. The BADA fuel flow is divided by q_fuel / REFERENCE_Q_FUEL.
-# Because NEATSFuel always carries a q_fuel (DEFAULT_Q_FUEL when none is supplied),
-# this correction always applies (see docs/internal/pyneats_units_audit.md).
-REFERENCE_Q_FUEL: Final[float] = (
-    43_130_000.0  # J/kg - Baseline value from PyContrails JetA
-)
+# Fuel energy content (specific energy), lower calorific value in J/kg of fuel.
+# BADA gives the fuel flow of a fuel with lower calorific value REFERENCE_Q_FUEL
+# (pyBADA BADA4: fuel flow = energy flow / LHV of the aircraft file). PyNEATS
+# rescales it to the actual fuel: fuel_flow = BADA fuel flow x REFERENCE_Q_FUEL /
+# q_fuel. NEATSFuel always carries a q_fuel (DEFAULT_Q_FUEL when none is
+# supplied), so this always applies: x 43.217/42.8 = 1.0097 by default.
+# REFERENCE_Q_FUEL is the BADA4 4.2.1 LHV: 43.217e6 J/kg in every BADA4 model
+# reachable through the PyNEATS mapping tables (86 jets; checked by
+# tests/test_fuel_energy_reference.py). BADA3 gives no LHV; the same value is
+# used for BADA3 (maintainer decision 2026-10-22, audit A11/A12). Piston models
+# (43.71e6) are not used.
+REFERENCE_Q_FUEL: Final[float] = 43_217_000.0  # J/kg - BADA4 4.2.1 LHV
 # DEFAULT_Q_FUEL is used when neither the AO nor the airport fuel file supplies q_fuel
 DEFAULT_Q_FUEL: Final[float] = (
     42_800_000.0  # J/kg - Default value provided by consortium (DLR/TO70)
