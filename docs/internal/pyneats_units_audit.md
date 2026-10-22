@@ -21,6 +21,7 @@ cite line numbers on `dev` before the fix they describe.
 | A13 (mixed fuel-flow provenance) | Documented in the user docs; the design choice stays open | #75 | 2026-10-21 |
 | I9 (`segment_duration` not recomputed after the speed filter) | Open; recorded, part of the low-speed filter work | #75 | 2026-10-21 |
 | I10 (a failed attempt leaked columns into the BADA3 retry) | Fixed; fuel-burn rejections go through the BADA3 retry and the altitude fallback (maintainer decision); no change on the NEATS_FINAL sample | `fix/performance-retry-isolation` | 2026-10-21 |
+| A10 (airport fuel file units) and the missing `q_fuel` magnitude check | Fixed: a supplied `q_fuel` outside 35–50 MJ/kg is rejected (flight fails; a wrong airport file stops the run); no change on valid inputs | `fix/q-fuel-plausibility` | 2026-10-22 |
 
 ## 1. Outcome
 
@@ -165,7 +166,7 @@ golden data. *Stated* means written in a comment, docstring or document only.
 | Mapping | Convention | PyNEATS boundary unit | Internal or output unit | Existing conversion and layer | Status | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | DataFrame entry (`trajectory_dataframe`, `FlightRunner(source=df)`): `altitude`, `time` | Not defined by AO upload schema | `altitude` in **FL**, not metres. `time` as `datetime64` (naive means UTC; tz-aware is converted) or a string in `date_format` (default `%Y-%m-%d %H:%M:%S`) | as for the JSON path | the same parser conversions | **Ambiguous / unverified** (A9) | `neats_parser.py:141,217-258`; example comment `examples/fleet_computation_from_dataframe.py:172` *(stated)*; snippet: ISO strings become NaT and are dropped *(demonstrated)* |
-| Airport fuel-property file (`airport_fuel_path`) | Not defined by AO upload schema | `float()` only. `q_fuel` assumed J/kg; `h_c_ratio` used as atomic | J/kg, wt.% after `NEATSFuel` | **none**. PyNEATS reads the file directly, so the application's × 1e6 does not apply to it | **Ambiguous / unverified** (A10) | `neats_parser.py:35-41,44-120,284-296`; `tests/test_airport_qfuel.py` (J/kg) |
+| Airport fuel-property file (`airport_fuel_path`) | Not defined by AO upload schema | `float()` only. `q_fuel` assumed J/kg; `h_c_ratio` used as atomic | J/kg, wt.% after `NEATSFuel` | **none**. PyNEATS reads the file directly, so the application's × 1e6 does not apply to it | **Checked**: 35–50 MJ/kg in J/kg enforced at load (A10, fixed) | `neats_parser.py:35-41,44-120,284-296`; `tests/test_airport_qfuel.py` (J/kg) |
 | Default branch: no `calorific_value` | Not defined by AO upload schema | `DEFAULT_Q_FUEL` = 42.8e6 J/kg | the BADA fuel flow is still multiplied by 43.13/42.8 = 1.0077 | correction ratio in `BADAPerformanceModel` | **Ambiguous / unverified** (A11) | `neats_fuel.py:92`; `bada_model.py:565-571,764-772,841,875`; `docs/explanation/mrv-specification.md:220` *(stated)* |
 | `REFERENCE_Q_FUEL` against BADA4 LHV | Not defined by AO upload schema | 43.13e6 J/kg (pycontrails JetA) | — | not read from BADA files, although BADA4 carries a per-aircraft LHV | **Ambiguous / unverified** (A12) | `neats_default_parameters.py:315-317`; pyBADA `bada4.py:1855-1874`; pyBADA dummy BADA4 files: 43.217e6 and 43.71e6 J/kg |
 | Per-point nulls in `tas`, `ff`, `ee`, `am` | schema allows `null` per point | a column survives unless every value is null | NaN spreads through interpolation and is skipped by sums | none | **New discrepancy** (D4) | `neats_io.py:93-94`; `steps/interpolation/pycontrails_interpolation.py:108-112`; `bada_model.py:1071-1076`; snippet *(demonstrated)* |
@@ -215,9 +216,11 @@ JSON path, `scripts/run_json.py` and DataFrame users. Two places get no upstream
 
 - **Airport fuel file.** PyNEATS reads `airport_fuel_path` directly, so a `q_fuel` column in
   MJ/kg would enter unconverted (A10).
-- **No magnitude check.** PyNEATS does not check the size of `q_fuel`. On the BADA path,
-  42.8 (MJ/kg) fails loudly through the 100 kg/s fuel-flow outlier check. When `ff`, `ee` and
-  `am` are all provided, BADA is skipped and the value reaches SAC/CoCiP silently.
+- **No magnitude check.** PyNEATS did not check the size of `q_fuel`. On the BADA path,
+  42.8 (MJ/kg) failed through the 100 kg/s fuel-flow outlier check with a message that does
+  not name the fuel value. When `ff`, `ee` and `am` are all provided, BADA is skipped and the
+  value reached SAC/CoCiP silently. *Fixed (see A10): a supplied `q_fuel` outside 35–50 MJ/kg
+  now fails the flight at parsing, on every path.*
 
 `scripts/schemas/flight_schema.json:106-109` labels `calorific_value` as MJ/kg. The golden
 inputs it validates contain J/kg values, and the code expects J/kg (Section 9).
@@ -404,17 +407,33 @@ Each entry gives:
 4. Not applicable (direct library use).
 5. Documented in the patch. Optionally rename the column or check its range.
 
-**A10. Airport fuel file units.**
-1. `_load_airport_fuel_props` (`neats_parser.py:44-120`) → fallback (`neats_parser.py:284-296`).
+**A10. Airport fuel file units.** *Fixed on branch `fix/q-fuel-plausibility` (see the
+follow-up status table).*
+1. `_load_airport_fuel_props` (`neats_parser.py`) → fallback in the parser (step 5.5).
 2. Values are passed through `float()` only. The tests use `q_fuel` in J/kg. `h_c_ratio` is
-   treated as atomic. There is no `hydrogen_content` column. The file's own units are
-   unverified, and no production file is in the repository.
+   treated as atomic. There is no `hydrogen_content` column.
 3. A `q_fuel` column in MJ/kg would enter 1e6 times too small, because the application's
    conversion does not apply to this file. A mass-based `h_c_ratio` would make `ei_h2o` about
    10 times too low.
 4. No. PyNEATS reads the file itself.
-5. **Confirm units with the file owner.** The patch documents the assumed units in the loader
-   docstring. Optionally add a magnitude guard for `q_fuel`.
+5. **Follow-up (2026-10-22).**
+   - The file used by NEATS (`Airport_Fuel_2025.csv`, 145 airports) was read: `q_fuel` is in
+     J/kg (121 airports, 42.8–43.4 MJ/kg), `h_c_ratio` is empty, and the other columns are
+     stored but not used. On `dev` (53bda5f) the file is applied correctly by all six runner
+     paths (fleet large/small/performance-only from JSON, fleet from a DataFrame, single-flight
+     large/small): operator value first, then the airport file, then 42.8 MJ/kg. End to end,
+     fuel changes by 42.8/q as expected (within 0.04 %, the iterative take-off mass).
+   - Reproduced: with the same file in MJ/kg, every flight using it failed with "BADA fuel
+     flow is unrealistic".
+   - **Fix.** A supplied `q_fuel` must lie within `Q_FUEL_MIN`–`Q_FUEL_MAX` (35e6–50e6 J/kg,
+     `check_q_fuel` in `neats_fuel.py`). The airport file is checked when it is loaded, outside
+     the block that turns a missing or unreadable file into a warning, and again when
+     `FleetRunnerParams` is validated, because fleet steps are built lazily in the workers. A
+     wrong file stops the run, naming the airports. A flight with an out-of-range value fails
+     at parsing, naming the source (AO value or airport file and airport). `NEATSFuel` refuses
+     such a value. A missing or unreadable file is still only a warning (unchanged).
+   - The range only catches unit errors (MJ/kg is 1e6 times off); it does not judge whether a
+     value is realistic for a fuel. Valid inputs give the same results.
 
 **A11. `q_fuel` correction on the default branch.**
 1. `bada_model.py:565-571,764-772,841,875`.

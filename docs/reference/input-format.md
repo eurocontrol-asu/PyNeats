@@ -35,15 +35,49 @@ sample: [`tests/data/golden/fleet_5_flights_input.json`](https://github.com/euro
 
 ### `fuel_properties`
 
-All four fields are nullable. When `null`, airport-level fallback values are
-used if an `airport_fuel_path` is configured on the runner.
+All fields are nullable. When `null`, the value from the airport fuel file
+(below) is used if an `airport_fuel_path` is configured on the runner, otherwise
+the default.
 
-| Field | Type | Unit |
-|---|---|---|
-| `hydrogen_content` | float \| null | mass fraction (0–1) |
-| `hydrogen_per_carbon_ratio` | float \| null | — |
-| `aromatic_content` | float \| null | mass fraction (0–1) |
-| `calorific_value` | float \| null | J/kg |
+| Field | Type | Unit | Use |
+|---|---|---|---|
+| `hydrogen_content` | float \| null | wt.% (percent by mass, e.g. 13.79) | scales `ei_h2o`; default 13.79 |
+| `hydrogen_per_carbon_ratio` | float \| null | atomic (molar) H/C ratio | converted to wt.% when `hydrogen_content` is `null` |
+| `calorific_value` | float \| null | J/kg (lower calorific value), 35e6–50e6 | default 42.8e6; outside the range the flight fails |
+| `aromatic_content` | float \| null | not defined | stored, not used |
+| `sulphur` | float \| null | not defined | stored, not used |
+| `naphthalene` | float \| null | not defined | not used |
+
+The AO upload gives `calorific_value` in MJ/kg; the NEATS application multiplies
+it by 1e6 before calling PyNEATS. A value still in MJ/kg (e.g. `43.05`) is
+outside 35e6–50e6 J/kg, so the flight fails at parsing with a message naming
+the unit.
+
+### Airport fuel file (`airport_fuel_path`)
+
+Optional file passed to the runners (`airport_fuel_path=`). For a flight whose
+`fuel_properties` value is `null`, the value for its `departure_airport` is used.
+AO values always take precedence. PyNEATS reads this file itself, so no unit
+conversion is applied: values must be in the units below.
+
+- **CSV**: separator `;` or `,` (detected), decimal comma accepted, a column
+  `Airport` (ICAO code). Recognised columns: `q_fuel` (J/kg), `h_c_ratio`
+  (atomic), `aromatics_content`, `naphthalene`, `sulphur_content`. Empty cells
+  are ignored.
+- **JSON**: `{"EGLL": 43000000.0}` (q_fuel only) or
+  `{"EGLL": {"q_fuel": 43000000.0, "h_c_ratio": 1.9}}`.
+
+Only `q_fuel` and `h_c_ratio` affect results; the other columns are stored. Every
+`q_fuel` must lie between 35e6 and 50e6 J/kg: otherwise the runner refuses the
+file when it is built, naming the airports. A missing or unreadable file is
+ignored with a warning, and the defaults apply.
+
+Example (the layout of `Airport_Fuel_2025.csv`):
+
+```text
+Airport;aromatics_content;h_c_ratio;naphthalene;sulphur_content;q_fuel
+EKYT;0,2125;;0,0136;0,000035;43050000
+```
 
 ### `trajectory`
 

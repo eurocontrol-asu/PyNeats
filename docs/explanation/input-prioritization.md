@@ -15,7 +15,7 @@ This page describes the decision logic for determining which performance and fue
 | Engine efficiency | Recorded η | From BADA thrust and BADA fuel flow |
 | Aircraft mass | Mass evolution | Take-off weight decreased along the trajectory with the BADA fuel flow |
 | Take-off weight | AO-declared TOW | Iterative estimate: min(MTOW, OEW + load_factor × MPL + 1.15 × trip fuel), see [Mass Estimation](#mass-estimation) |
-| Fuel properties | AO-declared (H/C, q_fuel) | JET-A defaults |
+| Fuel properties | AO-declared (H/C, q_fuel) | Airport fuel file for the departure airport (if configured), then the consortium defaults (q_fuel 42.8 MJ/kg, hydrogen 13.79 wt.%) |
 | Engine UID | AO-declared | MRR conservative value |
 
 ---
