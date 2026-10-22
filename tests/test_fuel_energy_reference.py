@@ -44,8 +44,11 @@ def test_every_mapped_bada4_model_declares_the_reference_lhv(
     if bada_path is None:
         pytest.skip("BADA path not provided")
     root = bada_path / DEFAULT_BADA4_VERSION
-    codes = _mapped_bada4_codes()
-    assert codes
+    # A BADA folder may hold only some models (e.g. the CI data repository):
+    # check every mapped model that is present.
+    codes = {c for c in _mapped_bada4_codes() if (root / c / f"{c}.xml").is_file()}
+    if not codes:
+        pytest.skip(f"no mapped BADA4 model found under {root}")
     lhv = {code: float(BADA4Adapter(str(root), code)._obj.LHV) for code in codes}
     different = {code: v for code, v in lhv.items() if v != REFERENCE_Q_FUEL}
     assert not different, f"BADA4 LHV differs from REFERENCE_Q_FUEL: {different}"
