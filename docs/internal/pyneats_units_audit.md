@@ -585,24 +585,27 @@ is identical.*
    - **Measured on `dev` 8d437f5** (golden flight EAF2143, AO fuel flow thinned to one point
      about every 5 min, one value emptied at 19:12): the 15 one-minute samples between the
      neighbouring AO points (19:03–19:17) had no fuel flow and counted as zero: total fuel
-     3,505 kg instead of 3,988 kg (−12.1 %); an empty mass value: −14.9 %. With dense AO
+     3,505 kg instead of 3,988 kg (−12.1 %); an empty mass value: about −15 %. With dense AO
      data (about 25 s) one empty value usually falls between minute marks and changes nothing.
-     On the DataFrame entry path an AO column empty at every point was kept as all-NaN, so the
-     flight got no fuel at all (the JSON path already dropped it).
+     An AO column empty at every point, in a DataFrame given directly to `FlightRunner` or the
+     parser, was kept as all-NaN, so the flight got no fuel at all (the JSON path and
+     FleetRunner's `split_df_into_flights` already dropped it).
    - **Maintainer decision (Ramon Dalmau, 2026-10-22):** skip empty values,
      as if that point had not been sent. `pycontrails_interpolation.py` interpolates each
      optional column (fuel flow, mass, efficiency, TAS) on its valid points only; before the
      first and after the last valid value the nearest valid value is used; a column with no
-     valid value is dropped, so it is computed as when not provided. Gaps are filled by a
+     valid value is left out, so it is computed as when not provided. Gaps are filled by a
      straight line, not by BADA (no mixing of AO and BADA values within a column). On the
      example above the total becomes 4,051 kg (+1.6 % against the complete data: the line
      cannot know the dip at 19:12).
    - **Effect.** NM sample (4,959 flights, no AO performance columns): bit-identical. Golden
-     test data: 57 flight records change (the inputs carry empty AO values near the end of the
-     flight), regaining their last two minutes of fuel: fuel and CO2 +0.03 % to +0.96 %;
-     `engine_efficiency_col` changes only efficiency-dependent results.
+     test data: 57 flight records change, exactly those whose inputs carry empty AO values
+     (written as JSON `NaN`, near the end of the flight). 47 regain their last minute of fuel
+     (fuel and CO2 +0.0002 % to +0.96 %); 10 change only efficiency- or TAS-dependent results
+     (`engine_efficiency_col`, and cases where fuel flow is not provided).
    - **Limits.** An empty mass value at the start or end is held constant, so the derived fuel
-     flow there is zero (as before). No rule rejects a flight with many empty values.
+     flow there is 0 (before: empty; same total). A mass given at a single waypoint therefore
+     gives a flight with no fuel, as before. No rule rejects a flight with many empty values.
 
 ### Elsewhere in the inspected PyNEATS path (not AO fields)
 

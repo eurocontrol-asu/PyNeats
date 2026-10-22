@@ -76,12 +76,12 @@ class PyContrailsInterpolator(
         ``Flight.resample_and_fill(freq=interpolation_time)`` (default
         ``"1min"`` = 60 s). Optional columns (fuel_flow, aircraft_mass,
         engine_efficiency, true_airspeed) are linearly interpolated in time
-        with ``np.interp``; their units are unchanged. Empty (NaN) values are
-        skipped, as if that point had not been sent: each resampled sample is
-        interpolated between the nearest valid values, and before the first or
-        after the last valid value the nearest valid value is used. A column
-        with no valid value is dropped, so it is treated as not provided
-        (audit D4).
+        with ``np.interp``; their units are unchanged. Empty (NaN) and infinite
+        values are skipped, as if that point had not been sent: each resampled
+        sample is interpolated between the nearest valid values, and before the
+        first or after the last valid value the nearest valid value is used. A
+        column with no valid value is left out (``resample_and_fill`` keeps only
+        time and position), so it is treated as not provided (audit D4).
 
         Parameters
         ----------
@@ -122,13 +122,12 @@ class PyContrailsInterpolator(
                     y_orig = original[col].astype(float).to_numpy()
                     # Skip empty values: a NaN would otherwise blank every
                     # resampled sample between its two neighbours (audit D4).
+                    # A column with no valid value is not added back.
                     valid = np.isfinite(y_orig)
                     if valid.any():
                         interpolated_flight[col] = np.interp(
                             t_new_num, t_orig_num[valid], y_orig[valid]
                         )
-                    elif col in interpolated_flight:
-                        interpolated_flight.data.pop(col)
 
         except Exception as e:
             raise TrajectoryInterpolationStepError(

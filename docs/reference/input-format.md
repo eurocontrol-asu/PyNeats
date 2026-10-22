@@ -99,8 +99,8 @@ Each waypoint:
 | `am` | float \| null | kg | Aircraft mass (optional) |
 
 **Empty values in the optional fields.** A field that is `null` (or absent) at
-every waypoint is treated as not provided: PyNEATS computes it (BADA for fuel
-flow, engine efficiency and mass). A field provided at some waypoints and `null`
+every waypoint is treated as not provided: PyNEATS computes it as when the field
+is absent (BADA, or fuel flow from the mass decrease when `am` is given). A field provided at some waypoints and `null`
 at others is used, and each `null` is skipped as if that waypoint had not been
 sent: PyNEATS resamples the trajectory to one point per minute and interpolates
 the field linearly between the nearest waypoints that have a value. Before the
