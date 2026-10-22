@@ -22,7 +22,8 @@ cite line numbers on `dev` before the fix they describe.
 | I9 (`segment_duration` not recomputed after the speed filter) | Open; recorded, part of the low-speed filter work | #75 | 2026-10-21 |
 | I10 (a failed attempt leaked columns into the BADA3 retry) | Fixed; fuel-burn rejections go through the BADA3 retry and the altitude fallback (maintainer decision); no change on the NEATS_FINAL sample | `fix/performance-retry-isolation` | 2026-10-21 |
 | A10 (airport fuel file units) and the missing `q_fuel` magnitude check | Fixed: a supplied `q_fuel` outside 35–50 MJ/kg is rejected (flight fails; a wrong airport file stops the run); no change on valid inputs | #77 | 2026-10-22 |
-| I11 (fleet step cache shared between runners in one process) | Fixed; no change for a single run | `fix/step-cache-per-runner` | 2026-10-22 |
+| I11 (fleet step cache shared between runners in one process) | Fixed; no change for a single run | #78 | 2026-10-22 |
+| D3 (fuel flow derived from `am` one point late) | Fixed; changes fuel, emissions, contrail and climate results only for flights with `am` and no `ff` | `fix/mass-derived-fuel-flow` | 2026-10-22 |
 
 ## 1. Outcome
 
@@ -523,7 +524,7 @@ is identical.*
    `datetime.fromisoformat(...).astimezone(timezone.utc)`. Also **clarify the AO template**:
    UTC only, whole seconds.
 
-**D3. Fuel flow derived from `am` is misaligned in time.**
+**D3. Fuel flow derived from `am` is misaligned in time.** *Fixed on branch `fix/mass-derived-fuel-flow` (see the follow-up status table).*
 1. `am` → `_derive_fuel_flow_from_mass_if_needed` (`bada_model.py:705-749`). It runs when `am`
    is present and `ff` is absent.
 2. Expected (docstring and comment): ff[i] = −(m[i+1] − m[i]) / Δt[i]. Observed:
@@ -539,6 +540,13 @@ is identical.*
 5. **Convert in PyNEATS**: use `-np.diff(mass, append=np.nan) / segment_duration`, computed
    before the speed filter or with `segment_duration` recomputed after it. Regenerate golden
    files that use `am` without `ff`.
+6. **Fix (2026-10-22).** `ff[i] = (m[i] − m[i+1]) / Δt[i]` (`np.diff(mass, append=nan)`), so
+   each point carries the burn of its own segment and Σ fuel_burn = m[0] − m[−1]. Measured
+   on the 5 golden `aircraft_mass_col` flights (`dev` 6f35319, BADA4, uniform 60 s grid): the
+   old total was 0.03–0.67 % low, and single points were off by up to 107–287 % in the
+   descent (top of descent and descent level changes), which reaches the per-point NOx/CO/HC/nvPM indices and the CoCiP
+   fuel per metre. The uneven-grid case after the speed filter also needs `segment_duration`
+   recomputed (I9, low-speed filter work).
 
 **D4. Partially null optional columns are not filled.**
 1. `tas`, `ff`, `ee`, `am` → `neats_io.py:93-94` → `pycontrails_interpolation.py:108-112` →
@@ -856,8 +864,8 @@ for a separate decision and were not fixed.
     results do not change (fleet before/after on the 4,959 sample flights).
 
 - **I11. The fleet step cache was shared between runners in one process.** Found
-  2026-10-22, while checking the airport fuel file (A10). *Fixed on branch
-  `fix/step-cache-per-runner` (see the follow-up status table).*
+  2026-10-22, while checking the airport fuel file (A10). *Fixed in #78 (see the follow-up
+  status table).*
   - **Defect.** `FleetRunner` builds its steps (parser, performance, emissions, ...) lazily
     and caches them per process (`_STEP_CACHE` in `runners/fleet.py`), keyed by
     (interface, name) only. The first runner's step was reused by any later runner in the
