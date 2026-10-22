@@ -63,6 +63,9 @@ REFERENCE_Q_FUEL : float
     Reference q_fuel value, in J/kg (pycontrails JetA lower calorific value).
 DEFAULT_Q_FUEL : float
     Default q_fuel value, in J/kg (lower calorific value).
+Q_FUEL_MIN, Q_FUEL_MAX : float
+    Plausible range of a supplied q_fuel, in J/kg (35-50 MJ/kg). A value outside
+    it is rejected, which catches a value given in MJ/kg instead of J/kg.
 OPEN_AIRCLIM_LEVELS : tuple of int
     Default pressure levels for Open Air Clim, in hPa.
 OPEN_AIRCLIM_GRID_RES : float
@@ -91,6 +94,8 @@ __all__ = [
     "DEFAULT_INTERPOLATION_TIME",
     "DEFAULT_BADA4_VERSION",
     "DEFAULT_Q_FUEL",
+    "Q_FUEL_MIN",
+    "Q_FUEL_MAX",
     "DEFAULT_DELTA_TAU_COMPUTE_METHOD",
     "DEFAULT_DELTA_TAU_FILL_METHOD",
     "DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW",
@@ -334,6 +339,12 @@ REFERENCE_Q_FUEL: Final[float] = (
 DEFAULT_Q_FUEL: Final[float] = (
     42_800_000.0  # J/kg - Default value provided by consortium (DLR/TO70)
 )
+# Plausible range of a supplied q_fuel (AO calorific_value or airport fuel file).
+# Jet fuels are about 42.8-43.5 MJ/kg; the range is wide on purpose and only
+# catches unit errors: a value in MJ/kg (e.g. 43.05) is 1e6 times too small and
+# would make the BADA fuel flow 1e6 times too large.
+Q_FUEL_MIN: Final[float] = 35_000_000.0  # J/kg
+Q_FUEL_MAX: Final[float] = 50_000_000.0  # J/kg
 
 
 # OpenAirClim Parameters

@@ -245,7 +245,8 @@ To account for fuel properties provided by AOs, a **custom `NEATSFuel` class** h
 
         $$\text{Hydrogen content} = \frac{r \cdot 1.008}{12.011 + r \cdot 1.008}$$
 
-    - If the AO provides the **calorific value**, it overrides the `q_fuel` conservative default of **42 800 000 J/kg**.
+    - If the AO provides the **calorific value**, it overrides the `q_fuel` conservative default of **42 800 000 J/kg**. If it does not, and an airport fuel file is configured, the value for the departure airport is used.
+    - A supplied `q_fuel` must be in J/kg and between **35 and 50 MJ/kg**. Outside this range (typically a value in MJ/kg) the flight fails at parsing; a wrong value in the airport fuel file stops the run when the runner is built.
     - If **neither** hydrogen content **nor** hydrogen-to-carbon ratio is provided, the hydrogen content defaults to the conservative **13.79 %**.
 - The water emission index **`ei_h2o`** (initial default 1.23 in PyContrails/CoCiP) is **adjusted linearly** based on the hydrogen content value, in line with what is done in `SAFBlend`.
 - The **nvPM** is reduced using the `black_carbon` class from PyContrails — as done in `SAFBlend` — taking the hydrogen content as parameter (currently only available for SAF in PyContrails).
