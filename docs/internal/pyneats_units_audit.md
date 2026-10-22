@@ -25,6 +25,7 @@ cite line numbers on `dev` before the fix they describe.
 | I11 (fleet step cache shared between runners in one process) | Fixed; no change for a single run | #78 | 2026-10-22 |
 | D3 (fuel flow derived from `am` one point late) | Fixed; changes fuel, emissions, contrail and climate results only for flights with `am` and no `ff` | `fix/mass-derived-fuel-flow` | 2026-10-22 |
 | A11/A12 (fuel energy reference of the BADA fuel flow) | Fixed: reference = BADA4 LHV 43.217 MJ/kg for BADA4 and BADA3 (maintainer decision); docs corrected; fuel and CO2 +0.21 % on the sample | `fix/fuel-energy-reference` | 2026-10-22 |
+| I12 (FlightRunner and FleetRunner give different contrail results for the same flight) | Open; recorded; contrail-based values get rtol 5e-3 in the FlightRunner golden test | `fix/fuel-energy-reference` | 2026-10-22 |
 
 ## 1. Outcome
 
@@ -148,7 +149,7 @@ golden data. *Stated* means written in a comment, docstring or document only.
 | `fuel_properties.hydrogen_content` | "percentage of hydrogen mass content", 0.01 resolution | wt.% (for example 13.79) | wt.%. Scales `ei_h2o` = 1.23 × (wt.% / 13.8) kg/kg | none | **Consistent** | `neats_io.py:115`; `core/neats_fuel.py:81-82,106`; pycontrails `core/fuel.py:53` (JetA 13.8); golden inputs 13.79 *(demonstrated)*. PyNEATS docs that say "fraction" are in Section 9 |
 | `fuel_properties.hydrogen_per_carbon_ratio` | "unitless"; atomic or mass basis not stated | attr `h_c_ratio`, treated as an **atomic (molar)** H/C ratio | converted to wt.% H = 100 · r·1.008 / (12.011 + r·1.008); used only when `hydrogen_content` is absent | conversion in `NEATSFuel.__init__` | **Consistent**: MRR Annex IIIa §1(36) defines it as the number of H atoms per C atom (A4) | `neats_fuel.py:83-87`; range check: atomic [1.9061, 2.1857] maps exactly to [13.79, 15.50] wt.% (`tests/test_cases_pipeline.py:1492-1516`, mapping recomputed by the auditor) |
 | `fuel_properties.aromatic_content` | "unitless"; scale and basis not stated | attr `aromatic_content`, stored | not used in any calculation | none | **Not consumed**. Volume basis per MRR §5(4) default; JSON scale undefined (A5) | `neats_io.py:117`; `neats_fuel.py:94-96`; default 0.25 commented as 25 % (`neats_default_parameters.py:300-302`) *(stated)* |
-| `fuel_properties.calorific_value` | MJ/kg of fuel | attr `q_fuel`, **J/kg** (lower heating value) | J/kg in pycontrails `Fuel.q_fuel` and in the BADA fuel-flow correction ratio | × 1e6 in the **NEATS application** (owner-confirmed, not inspected). PyNEATS performs no conversion | **Known difference handled upstream** | `neats_io.py:118`; `neats_fuel.py:92`; `neats_default_parameters.py:315-320` (43.13e6, 42.8e6); `bada_model.py:765-771,841,875`; golden inputs 4.1944e7 *(demonstrated)* |
+| `fuel_properties.calorific_value` | MJ/kg of fuel | attr `q_fuel`, **J/kg** (lower heating value) | J/kg in pycontrails `Fuel.q_fuel` and in the BADA fuel-flow correction ratio | × 1e6 in the **NEATS application** (owner-confirmed, not inspected). PyNEATS performs no conversion | **Known difference handled upstream** | `neats_io.py:118`; `neats_fuel.py:92`; `neats_default_parameters.py` (`REFERENCE_Q_FUEL` 43.217e6 since A12, was 43.13e6; `DEFAULT_Q_FUEL` 42.8e6); `bada_model.py:765-771,841,875`; golden inputs 4.1944e7 *(demonstrated)* |
 | `fuel_properties.sulphur` | "unitless"; scale and basis not stated | attr `sulphur_content`, stored | not used. `ei_so2` is always the JetA value of 1.2e-3 kg/kg | none | **Not consumed**. Mass basis per MRR §5(4) default; JSON scale undefined (A5) | `neats_io.py:119`; `neats_fuel.py:97-98,107-108`; pycontrails `emissions.py:770-771` *(demonstrated)* |
 | `fuel_properties.naphthalene` | "unitless"; scale and basis not stated | dropped | — | key `naphthalene` in `neats_io` against `naphtalene` in `Flight4D.ATTRS_OPTIONAL`, so the value never reaches the fuel object (I2) | **Not consumed** | `neats_io.py:120,122`; `views.py:45`; `neats_fuel.py:195`; snippet *(demonstrated)* |
 | `trajectory.trajectory_data[].ts` | UTC, ISO 8601 date-time | column `time`: naive string `%Y-%m-%d %H:%M:%S`, read as UTC | tz-naive UTC `datetime64[ns]`; durations in s (forward differences); resampled to 60 s by default | `strptime(...%z)` then `strftime` **discards the offset without applying it** | **New discrepancy** (D2), conditional on non-UTC offsets; UTC input is correct | `neats_io.py:61-68`; `neats_parser.py:233-242`; pycontrails `core/vector.py:292-304,2162-2167`; snippet *(demonstrated)* |
@@ -752,7 +753,7 @@ discrepancies:
 | `docs/reference/input-format.md:43`; `scripts/schemas/flight_schema.json:94-96` | `hydrogen_content` is a "mass fraction (0–1)" | wt.% (13.79). A caller sending 0.138 gets `ei_h2o` 100 times too low | fix docs |
 | `scripts/schemas/flight_schema.json:106-109` | `calorific_value` in MJ/kg | J/kg (golden inputs validated by this schema hold 4.1944e7) | fix schema text: PyNEATS input is J/kg after the application's × 1e6 |
 | `docs/explanation/mrv-specification.md:233-238` | H/C is a "molecular mass ratio"; formula without × 100 | atomic ratio; × 100 to give wt.% | fix spec |
-| `docs/explanation/mrv-specification.md:220` | no BADA correction when `q_fuel` is not provided | correction always applied (A11) | decide, then align |
+| `docs/explanation/mrv-specification.md:220` | no BADA correction when `q_fuel` is not provided | correction always applied (A11) | **Aligned** (A11/A12): the spec now states the always-applied correction with the BADA4 LHV |
 | `docs/explanation/mrv-specification.md:264,277,302` | EAGWP and AGWP in W m-2 | W m-2 yr | fix spec |
 | `docs/explanation/mrv-specification.md:272` | s_yr = 31,536,000 s | 31,556,952 s (`physics.py:58`); contrail EAGWP differs by 0.066 % | decide which year length, then align |
 | `docs/explanation/mrv-specification.md:284-286` | C(H) = 24.16 / 47.57 / 74.36 e-15 | 24.12 / 47.50 / 74.24 e-15 (commit `bf3aa7b`, newer); CO2eq differs by about 0.15–0.17 % | update spec |
@@ -905,6 +906,25 @@ for a separate decision and were not fixed.
     step, and the builds are cheap. The weather dataset cache is keyed by
     path, time window and chunks, and was not affected.
 
+- **I12. FlightRunner and FleetRunner give different contrail results for the same flight.**
+  Found 2026-10-22 while regenerating the golden files for A11/A12. *Open.*
+  - **Observation.** `test_flight_runner_golden` runs each golden flight through FlightRunner
+    and compares it with golden outputs produced by FleetRunner (CoCiP on the whole fleet).
+    For FDX5067 (`aircraft_mass_col`), fuel flow, engine efficiency, aircraft mass,
+    temperature and humidity are identical at every waypoint in both runs, yet the
+    contrails formed at waypoints 48–49 end at 2 h 45 / 2 h 44 with FlightRunner and at
+    2 h 51 / 2 h 56 with FleetRunner. The flight's `contrails_ef_J` and its contrail
+    EAGWP/CO2eq differ by 1.03e-3 (test rtol 1e-3). On `dev` db7d6e1 the same contrails live
+    equally long in both runs (difference 1.8e-6); the +0.2 % fuel of A12 is enough to tip
+    them.
+  - **Likely cause (not verified).** CoCiP run on a fleet evolves all contrails on one common
+    time grid, while a single-flight run aligns the grid to that flight, and contrail
+    termination depends on the grid.
+  - **Handling.** In `tests/test_pipeline.py::test_flight_runner_golden` only the
+    contrail-based values (`contrails_ef_J` and the `Contrails` climate metrics) are compared
+    at rtol 5e-3; everything else stays at 1e-3, and the FleetRunner golden tests are
+    unchanged. To investigate: whether the two runners should give identical contrails.
+
 ## 11. Patch summary and checks performed
 
 **Files modified.** Comments and docstrings were added or corrected in 27 source files (+826/−178 lines). New
@@ -917,8 +937,8 @@ file: `docs/internal/pyneats_units_audit.md` (this report).
   column and attr), `params.py` (corrected 500 hPa → 550 hPa ≈ FL160).
 - Fuel and constants: `core/neats_fuel.py` (wt.%, atomic H/C, J/kg template, fixed JetA
   EIs), `core/neats_default_parameters.py` (units of every constant; corrected FL15 → FL20
-  and 1.1/10 % → 1.2/20 %; `REFERENCE_Q_FUEL` is the pycontrails JetA value, not a BADA
-  value), `core/physics.py` (year length and C(H) against the spec; conversion-factor
+  and 1.1/10 % → 1.2/20 %; `REFERENCE_Q_FUEL` was then the pycontrails JetA value, not a
+  BADA value; it is the BADA4 LHV since A12), `core/physics.py` (year length and C(H) against the spec; conversion-factor
   direction and unverified absolute units), `core/fleet_utils.py` (fuel rebuilt from attrs),
   `core/views.py` (`to_dict` time and timedelta encodings), `core/compute_parameters.py`.
 - Performance: `steps/performance/bada_model.py` (parameter units and meaning; TAS template;
