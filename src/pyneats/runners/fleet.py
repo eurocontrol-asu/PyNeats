@@ -238,7 +238,9 @@ class FleetRunnerParams(RunnerConfig):
 # token (another runner, possibly with other params) rebuilds the step and
 # replaces the entry, so a runner never uses a step built with another runner's
 # params. This matters when several runners run in the same process: njobs=1,
-# prefer="threads", or shutdown_executor_between_steps=False. Within one runner
+# prefer="threads", shutdown_executor_between_steps=False, or whenever joblib
+# runs the steps in the calling process (e.g. njobs=-1 with one usable CPU, as
+# in a 1-core batch job or container). Within one runner
 # the token is the same in every worker (it is pickled with the step callable),
 # so each process builds each step once. At most one step per (interface, name)
 # is kept.

@@ -22,7 +22,7 @@ cite line numbers on `dev` before the fix they describe.
 | I9 (`segment_duration` not recomputed after the speed filter) | Open; recorded, part of the low-speed filter work | #75 | 2026-10-21 |
 | I10 (a failed attempt leaked columns into the BADA3 retry) | Fixed; fuel-burn rejections go through the BADA3 retry and the altitude fallback (maintainer decision); no change on the NEATS_FINAL sample | `fix/performance-retry-isolation` | 2026-10-21 |
 | A10 (airport fuel file units) and the missing `q_fuel` magnitude check | Fixed: a supplied `q_fuel` outside 35–50 MJ/kg is rejected (flight fails; a wrong airport file stops the run); no change on valid inputs | #77 | 2026-10-22 |
-| I11 (fleet step cache shared between runners in one process) | Fixed; no change for a single run or the default settings | `fix/step-cache-per-runner` | 2026-10-22 |
+| I11 (fleet step cache shared between runners in one process) | Fixed; no change for a single run | `fix/step-cache-per-runner` | 2026-10-22 |
 
 ## 1. Outcome
 
@@ -861,10 +861,13 @@ for a separate decision and were not fixed.
   - **Defect.** `FleetRunner` builds its steps (parser, performance, emissions, ...) lazily
     and caches them per process (`_STEP_CACHE` in `runners/fleet.py`), keyed by
     (interface, name) only. The first runner's step was reused by any later runner in the
-    same process, whatever its parameters. A process runs several runners when `njobs=1`,
-    `prefer="threads"` or `shutdown_executor_between_steps=False` (a notebook, a script
-    running two configurations, the test suite). The default settings (`njobs=-1`, processes,
-    workers shut down between steps) give each step fresh workers and were not affected.
+    same process, whatever its parameters. This happens when one process runs several
+    runners (a notebook, a script running two configurations, the test suite) and the steps
+    run in that process or in reused workers: `njobs=1`, `prefer="threads"`,
+    `shutdown_executor_between_steps=False`, or the default `njobs=-1` when only one CPU is
+    usable (joblib then runs everything in the calling process, e.g. a 1-core batch job or
+    container). With the defaults on several CPUs, each step gets fresh workers and was not
+    affected. A single runner per process was never affected.
   - **Effect before the fix** (reproduced on `dev` 53bda5f, `njobs=1`, real sample
     flights): a runner with the airport fuel file run after one without it ignored the file;
     in the opposite order, the second runner applied a file it was not given. The same holds
@@ -872,7 +875,9 @@ for a separate decision and were not fixed.
   - **Fix.** Each `make_step_func` callable gets a unique token, stored with the cached step.
     Another token rebuilds the step and replaces the entry. Within one runner the token
     travels with the pickled callable, so each worker still builds each step once. At most
-    one step per (interface, name) is kept, as before. The weather dataset cache is keyed by
+    one step per (interface, name) is kept, as before. Two runners used at the same time in
+    one process (threads) rebuild their steps when they alternate; each still gets its own
+    step, and the builds are cheap. The weather dataset cache is keyed by
     path, time window and chunks, and was not affected.
 
 ## 11. Patch summary and checks performed
