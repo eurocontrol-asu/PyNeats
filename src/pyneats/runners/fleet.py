@@ -19,6 +19,7 @@ import json
 import logging
 import threading
 import time
+import uuid
 from collections.abc import Callable
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -232,30 +233,37 @@ class FleetRunnerParams(RunnerConfig):
 
 # Each  worker is a separate Python process => cache is per-process.
 #
-# Cache key is (interface, name) only - params are NOT included.
-# This means the first params used for a given (interface, name) pair are cached,
-# and subsequent calls with different params will return the cached step.
-#
-# This is intentional for FleetRunner's use case where each step type is created
-# once per process with fixed params. If you need different params for the same
-# step type, consider including a params hash in the key.
+# Cache key is (interface, name). Each make_step_func call (one per step of a
+# runner) gets a unique token, stored with the cached step. A call with another
+# token (another runner, possibly with other params) rebuilds the step and
+# replaces the entry, so a runner never uses a step built with another runner's
+# params. This matters when several runners run in the same process: njobs=1,
+# prefer="threads", shutdown_executor_between_steps=False, or whenever joblib
+# runs the steps in the calling process (e.g. njobs=-1 with one usable CPU, as
+# in a 1-core batch job or container). Within one runner
+# the token is the same in every worker (it is pickled with the step callable),
+# so each process builds each step once. At most one step per (interface, name)
+# is kept.
 
-_STEP_CACHE: dict[tuple[type[Any], str], Any] = {}
+_STEP_CACHE: dict[tuple[type[Any], str], tuple[str, Any]] = {}
 _STEP_CACHE_LOCK = threading.Lock()
 
 
 def _get_step_cached(
-    interface: type[Step[InT, OutT]], name: str, params: Mapping[str, Any]
+    interface: type[Step[InT, OutT]],
+    name: str,
+    params: Mapping[str, Any],
+    token: str,
 ) -> Step[InT, OutT]:
     key = (interface, name.lower().strip())
-    step = _STEP_CACHE.get(key)  # fast path — no lock needed for a read in CPython
-    if step is None:
+    entry = _STEP_CACHE.get(key)  # fast path — no lock needed for a read in CPython
+    if entry is None or entry[0] != token:
         with _STEP_CACHE_LOCK:
-            step = _STEP_CACHE.get(key)  # re-check under lock (double-checked locking)
-            if step is None:
-                step = build(interface, name, **dict(params))
-                _STEP_CACHE[key] = step
-    return step
+            entry = _STEP_CACHE.get(key)  # re-check under lock (double-checked locking)
+            if entry is None or entry[0] != token:
+                entry = (token, build(interface, name, **dict(params)))
+                _STEP_CACHE[key] = entry
+    return cast("Step[InT, OutT]", entry[1])
 
 
 def make_step_func(
@@ -265,10 +273,15 @@ def make_step_func(
     *,
     copy_input: bool = False,
 ) -> Callable[[InT], OutT]:
-    """Return a callable (InT -> OutT) using registry build() + per-process cache."""
+    """Return a callable (InT -> OutT) using registry build() + per-process cache.
+
+    The step is built once per process for this callable; another callable for
+    the same step (e.g. from another runner) builds its own (see _STEP_CACHE).
+    """
+    token = uuid.uuid4().hex
 
     def fn(x: InT) -> OutT:
-        step = _get_step_cached(interface, name, params)
+        step = _get_step_cached(interface, name, params, token)
         if copy_input and hasattr(x, "copy"):
             x = cast("Any", x).copy(deep=False)
         return step(x)

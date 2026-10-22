@@ -21,7 +21,8 @@ cite line numbers on `dev` before the fix they describe.
 | A13 (mixed fuel-flow provenance) | Documented in the user docs; the design choice stays open | #75 | 2026-10-21 |
 | I9 (`segment_duration` not recomputed after the speed filter) | Open; recorded, part of the low-speed filter work | #75 | 2026-10-21 |
 | I10 (a failed attempt leaked columns into the BADA3 retry) | Fixed; fuel-burn rejections go through the BADA3 retry and the altitude fallback (maintainer decision); no change on the NEATS_FINAL sample | `fix/performance-retry-isolation` | 2026-10-21 |
-| A10 (airport fuel file units) and the missing `q_fuel` magnitude check | Fixed: a supplied `q_fuel` outside 35–50 MJ/kg is rejected (flight fails; a wrong airport file stops the run); no change on valid inputs | `fix/q-fuel-plausibility` | 2026-10-22 |
+| A10 (airport fuel file units) and the missing `q_fuel` magnitude check | Fixed: a supplied `q_fuel` outside 35–50 MJ/kg is rejected (flight fails; a wrong airport file stops the run); no change on valid inputs | #77 | 2026-10-22 |
+| I11 (fleet step cache shared between runners in one process) | Fixed; no change for a single run | `fix/step-cache-per-runner` | 2026-10-22 |
 
 ## 1. Outcome
 
@@ -407,8 +408,7 @@ Each entry gives:
 4. Not applicable (direct library use).
 5. Documented in the patch. Optionally rename the column or check its range.
 
-**A10. Airport fuel file units.** *Fixed on branch `fix/q-fuel-plausibility` (see the
-follow-up status table).*
+**A10. Airport fuel file units.** *Fixed in #77 (see the follow-up status table).*
 1. `_load_airport_fuel_props` (`neats_parser.py`) → fallback in the parser (step 5.5).
 2. Values are passed through `float()` only. The tests use `q_fuel` in J/kg. `h_c_ratio` is
    treated as atomic. There is no `hydrogen_content` column.
@@ -854,6 +854,31 @@ for a separate decision and were not fixed.
     runner does not record. Candidates for the AO-input / error-reporting work.
   - **Effect on results.** No flight of the NEATS_FINAL sample reaches the guardrail, so its
     results do not change (fleet before/after on the 4,959 sample flights).
+
+- **I11. The fleet step cache was shared between runners in one process.** Found
+  2026-10-22, while checking the airport fuel file (A10). *Fixed on branch
+  `fix/step-cache-per-runner` (see the follow-up status table).*
+  - **Defect.** `FleetRunner` builds its steps (parser, performance, emissions, ...) lazily
+    and caches them per process (`_STEP_CACHE` in `runners/fleet.py`), keyed by
+    (interface, name) only. The first runner's step was reused by any later runner in the
+    same process, whatever its parameters. This happens when one process runs several
+    runners (a notebook, a script running two configurations, the test suite) and the steps
+    run in that process or in reused workers: `njobs=1`, `prefer="threads"`,
+    `shutdown_executor_between_steps=False`, or the default `njobs=-1` when only one CPU is
+    usable (joblib then runs everything in the calling process, e.g. a 1-core batch job or
+    container). With the defaults on several CPUs, each step gets fresh workers and was not
+    affected. A single runner per process was never affected.
+  - **Effect before the fix** (reproduced on `dev` 53bda5f, `njobs=1`, real sample
+    flights): a runner with the airport fuel file run after one without it ignored the file;
+    in the opposite order, the second runner applied a file it was not given. The same holds
+    for every step parameter (`bada_path`, emission or climate parameters).
+  - **Fix.** Each `make_step_func` callable gets a unique token, stored with the cached step.
+    Another token rebuilds the step and replaces the entry. Within one runner the token
+    travels with the pickled callable, so each worker still builds each step once. At most
+    one step per (interface, name) is kept, as before. Two runners used at the same time in
+    one process (threads) rebuild their steps when they alternate; each still gets its own
+    step, and the builds are cheap. The weather dataset cache is keyed by
+    path, time window and chunks, and was not affected.
 
 ## 11. Patch summary and checks performed
 
