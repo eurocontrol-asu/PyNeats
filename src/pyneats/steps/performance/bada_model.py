@@ -784,12 +784,12 @@ class BADAPerformanceModel(
 
         When airlines provide aircraft_mass along the trajectory, we can infer fuel consumption
         from the decrease in mass over time. The code computes:
-            fuel_flow[i] = -(mass[i] - mass[i-1]) / segment_duration[i]
+            fuel_flow[i] = (mass[i] - mass[i+1]) / segment_duration[i]
 
-        i.e. a backward mass difference [kg] divided by the forward
+        i.e. the mass burned over segment i [kg] divided by its duration
         segment_duration[i] = t[i+1] - t[i] [s], giving kg/s for the whole
-        aircraft, clipped at 0. fuel_flow[0] is 0 and fuel_flow[-1] is NaN
-        (segment_duration[-1] is NaN) (see docs/internal/pyneats_units_audit.md).
+        aircraft, clipped at 0. fuel_flow[-1] is NaN (no next mass), so the
+        total fuel burn equals mass[0] - mass[-1] (audit D3).
 
         The derived fuel_flow will be preserved in the output (like airline-provided fuel_flow),
         while engine efficiency will still be computed using BADA thrust and fuel_flow for
@@ -809,11 +809,10 @@ class BADAPerformanceModel(
         mass_vals = df["aircraft_mass"].values
         dt_vals = df["segment_duration"].values
 
-        # mass_diff[i] = mass[i] - mass[i-1] (backward, kg), divided by the
-        # forward segment_duration[i] = t[i+1] - t[i] (s); last value is NaN
-        # (see docs/internal/pyneats_units_audit.md).
-        # Use prepend to handle first waypoint (assumes no mass change at t=0)
-        mass_diff = np.diff(mass_vals, prepend=mass_vals[0])  # First segment: diff=0
+        # mass_diff[i] = mass[i+1] - mass[i] (forward, kg), over the same
+        # segment as segment_duration[i] = t[i+1] - t[i] (s). The last value is
+        # NaN: there is no next mass (audit D3).
+        mass_diff = np.diff(mass_vals, append=np.nan)
         fuel_flow_derived = -mass_diff / dt_vals  # Negative sign because mass decreases
 
         # Ensure non-negative (handle numerical errors or unusual cases)
