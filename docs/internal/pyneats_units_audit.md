@@ -24,6 +24,7 @@ cite line numbers on `dev` before the fix they describe.
 | A10 (airport fuel file units) and the missing `q_fuel` magnitude check | Fixed: a supplied `q_fuel` outside 35–50 MJ/kg is rejected (flight fails; a wrong airport file stops the run); no change on valid inputs | #77 | 2026-10-22 |
 | I11 (fleet step cache shared between runners in one process) | Fixed; no change for a single run | #78 | 2026-10-22 |
 | D3 (fuel flow derived from `am` one point late) | Fixed; changes fuel, emissions, contrail and climate results only for flights with `am` and no `ff` | `fix/mass-derived-fuel-flow` | 2026-10-22 |
+| A11/A12 (fuel energy reference of the BADA fuel flow) | Fixed: reference = BADA4 LHV 43.217 MJ/kg for BADA4 and BADA3 (maintainer decision); docs corrected; fuel and CO2 +0.21 % on the sample | `fix/fuel-energy-reference` | 2026-10-22 |
 
 ## 1. Outcome
 
@@ -169,8 +170,8 @@ golden data. *Stated* means written in a comment, docstring or document only.
 | --- | --- | --- | --- | --- | --- | --- |
 | DataFrame entry (`trajectory_dataframe`, `FlightRunner(source=df)`): `altitude`, `time` | Not defined by AO upload schema | `altitude` in **FL**, not metres. `time` as `datetime64` (naive means UTC; tz-aware is converted) or a string in `date_format` (default `%Y-%m-%d %H:%M:%S`) | as for the JSON path | the same parser conversions | **Ambiguous / unverified** (A9) | `neats_parser.py:141,217-258`; example comment `examples/fleet_computation_from_dataframe.py:172` *(stated)*; snippet: ISO strings become NaT and are dropped *(demonstrated)* |
 | Airport fuel-property file (`airport_fuel_path`) | Not defined by AO upload schema | `float()` only. `q_fuel` assumed J/kg; `h_c_ratio` used as atomic | J/kg, wt.% after `NEATSFuel` | **none**. PyNEATS reads the file directly, so the application's × 1e6 does not apply to it | **Checked**: 35–50 MJ/kg in J/kg enforced at load (A10, fixed) | `neats_parser.py:35-41,44-120,284-296`; `tests/test_airport_qfuel.py` (J/kg) |
-| Default branch: no `calorific_value` | Not defined by AO upload schema | `DEFAULT_Q_FUEL` = 42.8e6 J/kg | the BADA fuel flow is still multiplied by 43.13/42.8 = 1.0077 | correction ratio in `BADAPerformanceModel` | **Ambiguous / unverified** (A11) | `neats_fuel.py:92`; `bada_model.py:565-571,764-772,841,875`; `docs/explanation/mrv-specification.md:220` *(stated)* |
-| `REFERENCE_Q_FUEL` against BADA4 LHV | Not defined by AO upload schema | 43.13e6 J/kg (pycontrails JetA) | — | not read from BADA files, although BADA4 carries a per-aircraft LHV | **Ambiguous / unverified** (A12) | `neats_default_parameters.py:315-317`; pyBADA `bada4.py:1855-1874`; pyBADA dummy BADA4 files: 43.217e6 and 43.71e6 J/kg |
+| Default branch: no `calorific_value` | Not defined by AO upload schema | `DEFAULT_Q_FUEL` = 42.8e6 J/kg | the BADA fuel flow is multiplied by 43.217/42.8 = 1.0097 (43.13/42.8 = 1.0077 before A12) | correction ratio in `BADAPerformanceModel` | **Resolved**: the correction always applies and the spec now says so (A11) | `neats_fuel.py:92`; `bada_model.py:565-571,764-772,841,875`; `docs/explanation/mrv-specification.md:220` *(stated)* |
+| `REFERENCE_Q_FUEL` against BADA4 LHV | Not defined by AO upload schema | 43.217e6 J/kg, the BADA4 4.2.1 LHV (was 43.13e6, pycontrails JetA) | — | checked against every mapped BADA4 file by a test | **Resolved** (A12) | `neats_default_parameters.py:315-317`; pyBADA `bada4.py:1855-1874`; pyBADA dummy BADA4 files: 43.217e6 and 43.71e6 J/kg |
 | Per-point nulls in `tas`, `ff`, `ee`, `am` | schema allows `null` per point | a column survives unless every value is null | NaN spreads through interpolation and is skipped by sums | none | **New discrepancy** (D4) | `neats_io.py:93-94`; `steps/interpolation/pycontrails_interpolation.py:108-112`; `bada_model.py:1071-1076`; snippet *(demonstrated)* |
 
 ## 4. Audit table: public outputs
@@ -441,7 +442,7 @@ Each entry gives:
      test stays a known DLR failure (strict xfail). The same applies to the hydrogen
      ([13.79, 15.5] wt.%) and H/C ([1.9061, 2.1857]) range cases.
 
-**A11. `q_fuel` correction on the default branch.**
+**A11. `q_fuel` correction on the default branch.** *Resolved on branch `fix/fuel-energy-reference` (see A12 and the follow-up status table).*
 1. `bada_model.py:565-571,764-772,841,875`.
 2. `mrv-specification.md:220` says no correction is applied when the AO gives no `q_fuel`. The
    code always applies the ratio 43.13/42.8, because `NEATSFuel` always carries a `q_fuel`
@@ -460,6 +461,22 @@ Each entry gives:
    Licensed files were not checked.
 4. No.
 5. **Check against BADA4 files**. Consider reading the adapter's LHV for BADA4.
+6. **Resolution (2026-10-22), A11 and A12.**
+   - **Verification.** pyBADA 0.1.12 computes BADA4 fuel flow as energy flow / `AC.LHV`
+     (`bada4.py:1855-1873`). All 86 BADA4 models reachable through the PyNEATS mapping
+     tables declare LHV = 43.217e6 J/kg (all jets, BADA 4.2), in both BADA folders used
+     (`NEATS_TEST/mbg3P31p/4.2.1` and `NEATS_CLEAN/.../pyBADA/4.2.1`). The two pistons in
+     BADA 4.2.1 (SR20, SR22: 43.71e6) are not mapped and not used.
+   - **Maintainer decision (Philippe Very and Ramon Dalmau).** Keep the rescaling of the BADA
+     fuel flow to the actual fuel, `ff = ff_BADA × REFERENCE_Q_FUEL / q_fuel`, always applied
+     (default q_fuel 42.8e6, so ×1.0097). `REFERENCE_Q_FUEL` = 43.217e6 J/kg, the BADA4 LHV,
+     for BADA4 and for BADA3 (which declares no LHV). `mrv-specification.md` now states this
+     instead of "no correction if not provided". A test checks that every mapped BADA4 model
+     declares this LHV (`tests/test_fuel_energy_reference.py`).
+   - **Effect** (fleet before/after on the 4,959 NEATS_FINAL sample flights, `dev` db7d6e1):
+     fuel and CO2 +0.21 % (BADA4 +0.21 %, BADA3 +0.21 %), NOx +0.41 %; per flight −0.6 % to
+     +1.3 % (median +0.21 %; the iterative take-off mass stops within 1 %). Same failing
+     flights, no change of BADA family.
 
 **A13. Mixed fuel-flow provenance (documented in part).**
 - When `ff` is provided without `am`:
