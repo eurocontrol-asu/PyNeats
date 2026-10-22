@@ -19,11 +19,36 @@ from pyneats.core.neats_default_parameters import DEFAULT_HYDROGEN_CONTENT
 from pyneats.core.neats_default_parameters import DEFAULT_NAPHTHALEN_CONTENT
 from pyneats.core.neats_default_parameters import DEFAULT_Q_FUEL
 from pyneats.core.neats_default_parameters import DEFAULT_SULPHUR_CONTENT
+from pyneats.core.neats_default_parameters import Q_FUEL_MAX
+from pyneats.core.neats_default_parameters import Q_FUEL_MIN
 
 
 __all__ = [
     "NEATSFuel",
 ]
+
+
+def check_q_fuel(value: Any, source: str) -> float:
+    """Return ``value`` as a float in J/kg, or raise if it is not plausible.
+
+    A supplied q_fuel must lie within ``Q_FUEL_MIN``-``Q_FUEL_MAX`` (35-50 MJ/kg,
+    in J/kg). The check exists to catch unit errors: a value in MJ/kg (e.g.
+    43.05) is 1e6 times too small and would make the BADA fuel flow 1e6 times
+    too large. ``source`` names where the value came from, for the message.
+
+    Raises
+    ------
+    ValueError
+        If ``value`` is not a number, or is NaN or outside the range.
+    """
+    q = float(value)
+    if not Q_FUEL_MIN <= q <= Q_FUEL_MAX:
+        raise ValueError(
+            f"q_fuel = {q:g} J/kg from {source} is outside the plausible range "
+            f"{Q_FUEL_MIN / 1e6:g}-{Q_FUEL_MAX / 1e6:g} MJ/kg. q_fuel must be in "
+            f"J/kg: multiply a value in MJ/kg by 1e6."
+        )
+    return q
 
 
 class NEATSFuel(SAFBlend):
@@ -47,7 +72,9 @@ class NEATSFuel(SAFBlend):
         The AO JSON field ``calorific_value`` is in MJ/kg of fuel.
         The NEATS application multiplies by 1e6 before calling PyNEATS.
         Values received here must already be in J/kg; do not convert again.
-        Defaults to ``DEFAULT_Q_FUEL`` (42.8e6 J/kg).
+        Defaults to ``DEFAULT_Q_FUEL`` (42.8e6 J/kg). A supplied value outside
+        ``Q_FUEL_MIN``-``Q_FUEL_MAX`` (35-50 MJ/kg) raises ``ValueError``
+        (see ``check_q_fuel``).
     pct_blend_gate : float, optional
         Blend gate for SAFBlend compatibility.
     sulphur_content : float, optional
@@ -118,7 +145,7 @@ class NEATSFuel(SAFBlend):
             h_wt_pct = DEFAULT_HYDROGEN_CONTENT
 
         # --- Resolve q_fuel [J/kg, LHV]; already in J/kg on entry (see docstring)
-        qf = float(q_fuel) if q_fuel is not None else DEFAULT_Q_FUEL
+        qf = check_q_fuel(q_fuel, "q_fuel") if q_fuel is not None else DEFAULT_Q_FUEL
 
         # --- Storing Optional Fuel Attributes from AOs, not used at this stage
         if aromatics_content is not None:

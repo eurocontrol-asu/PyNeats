@@ -63,6 +63,7 @@ from pyneats.steps.interpolation.protocol import TrajectoryInterpolator
 from pyneats.steps.parsing.neats_io import FlightConversionFailure
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
 from pyneats.steps.parsing.neats_io import split_df_into_flights
+from pyneats.steps.parsing.neats_parser import _load_airport_fuel_props
 from pyneats.steps.parsing.protocol import TrajectoryParser
 from pyneats.steps.parsing.views import Flight4D
 from pyneats.steps.performance import PerformanceModel
@@ -213,6 +214,12 @@ class FleetRunnerParams(RunnerConfig):
             raise ValueError(
                 "Must provide either trajectory_json_filepath or trajectory_dataframe"
             )
+
+        # Check the airport fuel file here, at construction: the parser is built
+        # lazily in each worker, so a wrong file would otherwise fail every
+        # flight that uses it instead of stopping the run.
+        if self.airport_fuel_path is not None:
+            _load_airport_fuel_props(self.airport_fuel_path)
 
 
 # -----------------------------------------------------------------------------

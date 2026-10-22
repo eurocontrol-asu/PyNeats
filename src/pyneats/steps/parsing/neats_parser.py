@@ -15,6 +15,7 @@ from pycontrails import Flight
 from pycontrails.physics.units import ft_to_m
 
 from pyneats.core.neats_fuel import NEATSFuel
+from pyneats.core.neats_fuel import check_q_fuel
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.core.views import ValidationError
@@ -50,7 +51,36 @@ _FUEL_COL_MAP: dict[str, str] = {
 def _load_airport_fuel_props(
     path: str | None,
 ) -> dict[str, dict[str, float]]:
-    """Load airport → {attr_name: value} mapping from a CSV or JSON file.
+    """Load the airport fuel file (see ``_read_airport_fuel_props``) and check it.
+
+    Every ``q_fuel`` must lie within 35-50 MJ/kg, given in J/kg (``check_q_fuel``).
+    A value outside the range, typically a value in MJ/kg, raises ``ValueError``
+    naming the airports, so a wrong file stops the run instead of failing every
+    flight that departs from those airports. A missing or unreadable file still
+    gives ``{}`` with a warning.
+    """
+    props = _read_airport_fuel_props(path)
+    bad: list[str] = []
+    for airport, values in props.items():
+        if "q_fuel" in values:
+            try:
+                check_q_fuel(values["q_fuel"], f"airport {airport}")
+            except ValueError:
+                bad.append(f"{airport}={values['q_fuel']:g}")
+    if bad:
+        raise ValueError(
+            f"Airport fuel file {path}: q_fuel outside the plausible range 35-50 MJ/kg "
+            f"for {len(bad)} airport(s) ({', '.join(bad[:5])}"
+            f"{', ...' if len(bad) > 5 else ''}). q_fuel must be in J/kg: multiply "
+            f"a value in MJ/kg by 1e6."
+        )
+    return props
+
+
+def _read_airport_fuel_props(
+    path: str | None,
+) -> dict[str, dict[str, float]]:
+    """Read airport → {attr_name: value} mapping from a CSV or JSON file.
 
     Supports:
     - Semicolon-delimited CSV with European decimal commas (Aviation_Fuel_Reports format)
@@ -306,12 +336,17 @@ class NeatsTrajectoryParser(
 
             # 5.5) Airport-based fuel-property fallback (operator values always win)
             #      Values are used as-is (no unit conversion; q_fuel in J/kg).
+            q_fuel_source = "the flight attrs (AO calorific_value)"
             if self._airport_fuel_props:
                 airport = str(attrs.get("departure_airport", "")).upper()
                 if airport in self._airport_fuel_props:
                     for attr_key, val in self._airport_fuel_props[airport].items():
                         if attrs.get(attr_key) is None:
                             attrs[attr_key] = val
+                            if attr_key == "q_fuel":
+                                q_fuel_source = (
+                                    f"the airport fuel file (airport {airport})"
+                                )
                             self.logger.debug(
                                 "Airport fuel prop %s for %s: %s",
                                 attr_key,
@@ -326,7 +361,15 @@ class NeatsTrajectoryParser(
                     "processed with FleetRunner, not FlightRunner."
                 )
 
-            # 7) Construct Custom Fuel Object based on available attributes
+            # 7) Construct Custom Fuel Object based on available attributes.
+            #    A supplied q_fuel outside 35-50 MJ/kg fails the flight here,
+            #    with its source named (usually a value in MJ/kg, not J/kg).
+            q_fuel = NEATSFuel._to_scalar(attrs.get("q_fuel"))
+            if q_fuel is not None:
+                try:
+                    check_q_fuel(q_fuel, q_fuel_source)
+                except ValueError as e:
+                    raise TrajectoryParserStepError(str(e)) from e
             fuel_obj: NEATSFuel = NEATSFuel.from_attrs(attrs)
 
             # 8) Construct base Flight with required + optional columns only
