@@ -9,7 +9,7 @@
       "arrival_airport": "LBBG",
       "aircraft_properties": {
         "aircraft_type": "A320",
-        "takeoff_mass": 68678.49894043905
+        "takeoff_mass": 68688.44049870054
       },
       "fuel_properties": {},
       "trajectory": {
@@ -785,7 +785,7 @@
       "arrival_airport": "EBLG",
       "aircraft_properties": {
         "aircraft_type": "B77L",
-        "takeoff_mass": 281413.4971563686
+        "takeoff_mass": 281589.8886757601
       },
       "fuel_properties": {},
       "trajectory": {
@@ -1975,7 +1975,7 @@
       "arrival_airport": "LEZL",
       "aircraft_properties": {
         "aircraft_type": "B738",
-        "takeoff_mass": 71195.66320320904
+        "takeoff_mass": 71210.88564593696
       },
       "fuel_properties": {},
       "trajectory": {
@@ -2817,7 +2817,7 @@
       "arrival_airport": "LPPT",
       "aircraft_properties": {
         "aircraft_type": "A333",
-        "takeoff_mass": 208658.8734571135
+        "takeoff_mass": 208754.883438194
       },
       "fuel_properties": {},
       "trajectory": {
