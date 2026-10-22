@@ -218,8 +218,12 @@ class FleetRunnerParams(RunnerConfig):
         # Check the airport fuel file here, at construction: the parser is built
         # lazily in each worker, so a wrong file would otherwise fail every
         # flight that uses it instead of stopping the run.
-        if self.airport_fuel_path is not None:
-            _load_airport_fuel_props(self.airport_fuel_path)
+        for path in (
+            self.airport_fuel_path,
+            self.params.get("trajectory_parser", {}).get("airport_fuel_path"),
+        ):
+            if path is not None:
+                _load_airport_fuel_props(path)
 
 
 # -----------------------------------------------------------------------------

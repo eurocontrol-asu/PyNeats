@@ -434,6 +434,11 @@ follow-up status table).*
      such a value. A missing or unreadable file is still only a warning (unchanged).
    - The range only catches unit errors (MJ/kg is 1e6 times off); it does not judge whether a
      value is realistic for a fuel. Valid inputs give the same results.
+   - **Maintainer decision (2026-10-22): keep 35–50 MJ/kg.** The DLR test cases define a
+     narrower valid range, [42.6397, 44.5] MJ/kg (`TC_QFUEL_OUT_OF_RANGE`,
+     `tests/test_cases_pipeline.py`, 45.5 MJ/kg expected to fail). It was not adopted, so that
+     test stays a known DLR failure (strict xfail). The same applies to the hydrogen
+     ([13.79, 15.5] wt.%) and H/C ([1.9061, 2.1857]) range cases.
 
 **A11. `q_fuel` correction on the default branch.**
 1. `bada_model.py:565-571,764-772,841,875`.

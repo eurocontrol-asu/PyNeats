@@ -14,6 +14,7 @@ Now:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -71,7 +72,12 @@ def test_plausible_q_fuel_accepted(q: float) -> None:
     assert NEATSFuel(q_fuel=q).q_fuel == q
 
 
-@pytest.mark.parametrize("q", [43.05, 43_050.0, 34.9e6, 50.1e6, float("nan")])
+def test_nan_q_fuel_rejected_as_empty() -> None:
+    with pytest.raises(ValueError, match="is NaN"):
+        check_q_fuel(float("nan"), "test")
+
+
+@pytest.mark.parametrize("q", [43.05, 43_050.0, 34.9e6, 50.1e6])
 def test_implausible_q_fuel_rejected(q: float) -> None:
     with pytest.raises(ValueError, match="must be in J/kg"):
         check_q_fuel(q, "test")
@@ -113,8 +119,30 @@ def test_fleet_runner_params_check_airport_file(tmp_path: Path) -> None:
         params.validate()
 
 
-def test_missing_airport_file_still_only_warns(tmp_path: Path) -> None:
-    assert _load_airport_fuel_props(str(tmp_path / "missing.csv")) == {}
+def test_fleet_runner_params_check_airport_file_given_as_parser_param(
+    tmp_path: Path,
+) -> None:
+    params = FleetRunnerParams(
+        zarr_paths=ZarrPaths(str(tmp_path / "met"), str(tmp_path / "rad")),
+        trajectory_json_filepath=str(tmp_path / "flights.json"),
+        params={
+            "trajectory_parser": {
+                "airport_fuel_path": _airport_csv(tmp_path, {"EGLL": "43,0"})
+            }
+        },
+    )
+    with pytest.raises(ValueError, match="EGLL"):
+        params.validate()
+
+
+def test_missing_airport_file_still_only_warns(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING, logger="pyneats.steps.parsing.neats_parser"):
+        assert _load_airport_fuel_props(str(tmp_path / "missing.csv")) == {}
+    assert any(
+        "Failed to load airport fuel properties" in r.message for r in caplog.records
+    )
 
 
 def test_flight_with_ao_q_fuel_in_mj_per_kg_fails_parsing() -> None:

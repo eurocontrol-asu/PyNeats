@@ -41,7 +41,7 @@ the default.
 
 | Field | Type | Unit | Use |
 |---|---|---|---|
-| `hydrogen_content` | float \| null | wt.% (percent by mass, e.g. 13.79) | scales `ei_h2o`; default 13.79 |
+| `hydrogen_content` | float \| null | wt.% (percent by mass, e.g. 13.79) | scales `ei_h2o` and sets the SAF nvPM reduction; default 13.79 |
 | `hydrogen_per_carbon_ratio` | float \| null | atomic (molar) H/C ratio | converted to wt.% when `hydrogen_content` is `null` |
 | `calorific_value` | float \| null | J/kg (lower calorific value), 35e6–50e6 | default 42.8e6; outside the range the flight fails |
 | `aromatic_content` | float \| null | not defined | stored, not used |

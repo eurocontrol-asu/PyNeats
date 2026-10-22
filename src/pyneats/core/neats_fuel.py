@@ -42,6 +42,11 @@ def check_q_fuel(value: Any, source: str) -> float:
         If ``value`` is not a number, or is NaN or outside the range.
     """
     q = float(value)
+    if q != q:  # NaN
+        raise ValueError(
+            f"q_fuel from {source} is NaN; give a value in J/kg or leave it out "
+            f"(None) to use the default."
+        )
     if not Q_FUEL_MIN <= q <= Q_FUEL_MAX:
         raise ValueError(
             f"q_fuel = {q:g} J/kg from {source} is outside the plausible range "
