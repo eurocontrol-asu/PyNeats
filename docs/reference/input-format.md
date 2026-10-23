@@ -94,9 +94,18 @@ Each waypoint:
 | `lat` | float | degrees | Latitude (WGS84) |
 | `lon` | float | degrees | Longitude (WGS84) |
 | `fl` | float | flight level | Altitude (FL = altitude in hundreds of feet) |
-| `ff` | float \| null | kg/s | Fuel flow (optional; derived if `null`) |
+| `ff` | float \| null | kg/s | Fuel flow, whole aircraft (optional) |
 | `ee` | float \| null | — | Engine efficiency (optional) |
 | `am` | float \| null | kg | Aircraft mass (optional) |
+
+**Empty values in the optional fields.** A field that is `null` (or absent) at
+every waypoint is treated as not provided: PyNEATS computes it as when the field
+is absent (BADA, or fuel flow from the mass decrease when `am` is given). A field provided at some waypoints and `null`
+at others is used, and each `null` is skipped as if that waypoint had not been
+sent: PyNEATS resamples the trajectory to one point per minute and interpolates
+the field linearly between the nearest waypoints that have a value. Before the
+first and after the last waypoint with a value, that nearest value is used. A
+gap is therefore filled by a straight line, not by BADA.
 
 ## Validation rules
 

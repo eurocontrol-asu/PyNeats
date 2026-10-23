@@ -26,6 +26,7 @@ cite line numbers on `dev` before the fix they describe.
 | D3 (fuel flow derived from `am` one point late) | Fixed; changes fuel, emissions, contrail and climate results only for flights with `am` and no `ff` | `fix/mass-derived-fuel-flow` | 2026-10-22 |
 | A11/A12 (fuel energy reference of the BADA fuel flow) | Fixed: reference = BADA4 LHV 43.217 MJ/kg for BADA4 and BADA3 (maintainer decision); docs corrected; fuel and CO2 +0.21 % on the sample | `fix/fuel-energy-reference` | 2026-10-22 |
 | I12 (FlightRunner and FleetRunner give different contrail results for the same flight) | Open; recorded; contrail-based values get rtol 5e-3 in the FlightRunner golden test | `fix/fuel-energy-reference` | 2026-10-22 |
+| D4 (partially empty AO columns) | Fixed: empty values skipped when resampling (straight line between valid neighbours; maintainer decision); no change on the NM sample | `fix/partial-null-columns` | 2026-10-22 |
 
 ## 1. Outcome
 
@@ -566,7 +567,7 @@ is identical.*
    fuel per metre. The uneven-grid case after the speed filter also needs `segment_duration`
    recomputed (I9, low-speed filter work).
 
-**D4. Partially null optional columns are not filled.**
+**D4. Partially null optional columns are not filled.** *Fixed on branch `fix/partial-null-columns` (see the follow-up status table).*
 1. `tas`, `ff`, `ee`, `am` → `neats_io.py:93-94` → `pycontrails_interpolation.py:108-112` →
    `bada_model.py:1046,1071-1076`.
 2. Expected: the schema allows `null` per point, and such points should be filled with values
@@ -580,6 +581,31 @@ is identical.*
 4. Possibly, if the application never sends partial nulls.
 5. **Convert in PyNEATS**: fill NaN points of provided columns from the BADA result, or reject
    partial columns.
+6. **Resolution (2026-10-22).**
+   - **Measured on `dev` 8d437f5** (golden flight EAF2143, AO fuel flow thinned to one point
+     about every 5 min, one value emptied at 19:12): the 15 one-minute samples between the
+     neighbouring AO points (19:03–19:17) had no fuel flow and counted as zero: total fuel
+     3,505 kg instead of 3,988 kg (−12.1 %); an empty mass value: about −15 %. With dense AO
+     data (about 25 s) one empty value usually falls between minute marks and changes nothing.
+     An AO column empty at every point, in a DataFrame given directly to `FlightRunner` or the
+     parser, was kept as all-NaN, so the flight got no fuel at all (the JSON path and
+     FleetRunner's `split_df_into_flights` already dropped it).
+   - **Maintainer decision (Ramon Dalmau, 2026-10-22):** skip empty values,
+     as if that point had not been sent. `pycontrails_interpolation.py` interpolates each
+     optional column (fuel flow, mass, efficiency, TAS) on its valid points only; before the
+     first and after the last valid value the nearest valid value is used; a column with no
+     valid value is left out, so it is computed as when not provided. Gaps are filled by a
+     straight line, not by BADA (no mixing of AO and BADA values within a column). On the
+     example above the total becomes 4,051 kg (+1.6 % against the complete data: the line
+     cannot know the dip at 19:12).
+   - **Effect.** NM sample (4,959 flights, no AO performance columns): bit-identical. Golden
+     test data: 57 flight records change, exactly those whose inputs carry empty AO values
+     (written as JSON `NaN`, near the end of the flight). 47 regain their last minute of fuel
+     (fuel and CO2 +0.0002 % to +0.96 %); 10 change only efficiency- or TAS-dependent results
+     (`engine_efficiency_col`, and cases where fuel flow is not provided).
+   - **Limits.** An empty mass value at the start or end is held constant, so the derived fuel
+     flow there is 0 (before: empty; same total). A mass given at a single waypoint therefore
+     gives a flight with no fuel, as before. No rule rejects a flight with many empty values.
 
 ### Elsewhere in the inspected PyNEATS path (not AO fields)
 
