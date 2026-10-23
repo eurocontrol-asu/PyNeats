@@ -61,7 +61,14 @@ Per-segment columns (all `list[float]` of equal length):
 
 - **Trajectory**: `waypoint`, `latitude`, `longitude`, `altitude`,
   `time`, `segment_duration`, `segment_length`, `ground_speed`,
-  `true_airspeed`, `rocd`, `acceleration`, `phase`, `thrust_segment`
+  `true_airspeed`, `rocd`, `acceleration`, `phase`, `thrust_segment`.
+  `true_airspeed` (m/s) is the value used by the performance, emission and
+  contrail calculations: an untrusted true airspeed, provided or computed, is
+  replaced before BADA is run (see
+  [Input Prioritization](../explanation/input-prioritization.md)). Its last
+  point is the value of the point before it, no longer `null`; so are the
+  BADA `fuel_flow` and `engine_efficiency` there, except when the fuel flow
+  is derived from the aircraft mass.
 - **Weather**: `u_wind`, `v_wind`, `air_temperature`, `specific_humidity`,
   `geopotential`, `potential_vorticity`, `air_pressure`, `level`
 - **Performance**: `thrust`, `aircraft_mass`, `fuel_flow`, `fuel_burn`,

@@ -15,6 +15,7 @@ Features
 - Flexible engine efficiency computation
 - Multiple delta-tau computation methods
 - True airspeed smoothing
+- Untrusted true airspeeds replaced (no row removed)
 - Comprehensive error handling
 
 Classes
@@ -43,6 +44,7 @@ from pycontrails.physics.jet import overall_propulsion_efficiency
 from pycontrails.physics.units import ft_to_m
 from pycontrails.physics.units import m_to_T_isa
 
+from pyneats.core.neats_default_parameters import DEFAULT_AIRSPEED_STALL_CONFIG
 from pyneats.core.neats_default_parameters import DEFAULT_BADA3_VERSION
 from pyneats.core.neats_default_parameters import DEFAULT_BADA4_VERSION
 from pyneats.core.neats_default_parameters import DEFAULT_BADA_MAX_CONSECUTIVE_FAILURES
@@ -57,11 +59,15 @@ from pyneats.core.neats_default_parameters import DEFAULT_MIN_ALTITUDE_FL
 from pyneats.core.neats_default_parameters import DEFAULT_PAYLOAD_FACTOR
 from pyneats.core.neats_default_parameters import DEFAULT_ROCD_PHASE_THRESHOLD
 from pyneats.core.neats_default_parameters import (
+    DEFAULT_TRUE_AIR_SPEED_SMOOTHING_POLYORDER,
+)
+from pyneats.core.neats_default_parameters import (
     DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW,
 )
 from pyneats.core.neats_default_parameters import REFERENCE_Q_FUEL
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
+from pyneats.steps.performance.airspeed_trust import apply_airspeed_trust
 from pyneats.steps.performance.altitude_filter import filter_low_altitude_points
 from pyneats.steps.performance.bada_adapters import BADA3Adapter
 from pyneats.steps.performance.bada_adapters import BADA4Adapter
@@ -72,7 +78,6 @@ from pyneats.steps.performance.bada_mapper import BadaMappingPaths
 from pyneats.steps.performance.params import PerformanceModelParams
 from pyneats.steps.performance.protocol import PerformanceModel
 from pyneats.steps.performance.protocol import PerformanceStepError
-from pyneats.steps.performance.speed_filter import filter_low_speed_points
 from pyneats.steps.performance.views import FlightWithPerformance
 from pyneats.steps.weather.weather_provider import FlightWithWeather
 
@@ -133,6 +138,22 @@ def _normalize_code_or_none(code: str | None) -> str | None:
     return s
 
 
+def _has_ao_fuel_and_efficiency(df: pd.DataFrame) -> bool:
+    """True when ``df`` has ``fuel_flow``, ``engine_efficiency`` and ``aircraft_mass``.
+
+    The condition of ``BADAPerformanceModel._early_exit_if_fuel_and_efficiency``:
+    the AO provides the three (columns left entirely empty are dropped at
+    parsing), and the BADA fuel flow is not computed. It is evaluated before
+    the airspeed trust step, which adds no column, and before
+    ``_derive_fuel_flow_from_mass_if_needed`` adds a ``fuel_flow`` column.
+    """
+    return (
+        "fuel_flow" in df.columns
+        and "engine_efficiency" in df.columns
+        and "aircraft_mass" in df.columns
+    )
+
+
 # -----------------------------
 # Params
 # -----------------------------
@@ -148,6 +169,18 @@ class BADAPerformanceModelParams(PerformanceModelParams):
     true_air_speed_smoothing_window : int
         Savitzky-Golay window length (number of points) passed to pycontrails
         ``segment_true_airspeed``; used only when TAS is computed from winds.
+        The same smoothing is applied to the TAS of a flight whose untrusted
+        airspeeds were replaced (see ``airspeed_stall_config``).
+    airspeed_stall_config : {"TO", "LD"}
+        BADA configuration of the stall speed used to trust a true airspeed:
+        a row whose CAS [m/s] is below the BADA stall CAS at MTOW in this
+        configuration ("TO" take-off, "LD" landing) is untrusted, as is a row
+        whose TAS is not finite, whose CAS is above the BADA maximum operating
+        speed VMO (400 kt when the BADA model has none) or whose Mach number
+        is 1 or more.
+        Untrusted TAS values are replaced by linear interpolation in time
+        between trusted rows; no row is removed (see
+        ``pyneats.steps.performance.airspeed_trust``).
     reference_q_fuel : float
         Lower calorific value [J/kg of fuel] of the fuel BADA assumes. BADA
         fuel flow is divided by ``q_fuel_used / reference_q_fuel``. The default
@@ -198,6 +231,7 @@ class BADAPerformanceModelParams(PerformanceModelParams):
     """
 
     true_air_speed_smoothing_window: int = DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW
+    airspeed_stall_config: Literal["TO", "LD"] = DEFAULT_AIRSPEED_STALL_CONFIG
     reference_q_fuel: float = REFERENCE_Q_FUEL
 
     delta_tau_compute_method: Literal["point", "zero"] = (
@@ -325,7 +359,7 @@ class BADAPerformanceModel(
         """Run BADA performance model on the given flight data.
 
         Fallback chain:
-            1. Normal BADA (4 or 3) execution (with speed filter applied)
+            1. Normal BADA (4 or 3) execution (after the airspeed trust step)
             2. Retry with BADA3 forced (if first attempt used BADA4)
             3. Altitude fallback — filter points below DEFAULT_MIN_ALTITUDE_FL
                (FL20 = 2000 ft = 609.6 m), retry
@@ -333,10 +367,13 @@ class BADAPerformanceModel(
         A fuel-burn guardrail rejection goes through the whole chain: BADA3
         retry, then altitude fallback; the flight fails only if every attempt
         is rejected. A failure raised with ``retryable=False`` ends the chain
-        where it occurs; only two internal consistency errors carry that flag
-        on this path (a BADA file without MTOW or OEW when the take-off mass
-        is estimated, and a missing initial mass), and neither occurs with the
-        BADA files in use.
+        where it occurs. On this path that flag is carried by the airspeed
+        trust step (more than 80 % of the flight time untrusted or no trusted
+        row, except when the AO provides fuel flow, engine efficiency and
+        aircraft mass; or any error in the step) and by two internal
+        consistency errors (a BADA file without MTOW or OEW when the take-off
+        mass is estimated, and a missing initial mass), which do not occur
+        with the BADA files in use.
         """
 
         # --- Preprocessing + aircraft data extraction ---
@@ -485,10 +522,17 @@ class BADAPerformanceModel(
     ) -> FlightWithPerformance:
         """Run BADA performance model on the given flight data, with optional BADA3 enforcement.
 
-        After resolving the BADA adapter, a speed filter removes trajectory
-        points with TAS below VStall.  If the filter fails for any reason
-        (no slow points, too many filtered, missing MTOW), the pipeline
-        degrades gracefully and proceeds with the original unfiltered data.
+        After resolving the BADA adapter, the airspeed trust step replaces
+        untrusted true airspeeds (not finite, CAS below the stall CAS of the
+        adapter at MTOW, CAS above its VMO, or Mach >= 1) by linear
+        interpolation in time; no row is removed (``apply_airspeed_trust``).
+        It runs before every path, including the early exit when the AO
+        provides fuel flow, engine efficiency and aircraft mass. The flight
+        fails without retry (``retryable=False``) when the step raises, and
+        when more than 80 % of its time is untrusted or no row is trusted,
+        except on that early-exit path (``_has_ao_fuel_and_efficiency``),
+        where the BADA fuel flow is not used: there the flight is kept, with
+        its TAS replaced (kept as is when no row is trusted).
         """
 
         # Work on a copy: the steps below write columns (aircraft_mass, thrust,
@@ -502,16 +546,26 @@ class BADAPerformanceModel(
                 icao, series, engine_id_attr, force_bada3
             )
 
-            # 1b) speed filter — remove low-TAS points before perf computation
-            # segment_duration [s], rocd and acceleration are not recomputed
-            # after rows are removed (see docs/internal/pyneats_units_audit.md).
+            # 1b) airspeed trust: untrusted TAS replaced by interpolation in
+            # time; no row is removed, so segment_duration [s] and rocd stay
+            # valid and acceleration is recomputed. Any failure here ends the
+            # flight: no BADA3 retry, no altitude fallback. The 80 % rule does
+            # not fail the early-exit path (AO fuel flow, efficiency and mass).
             try:
-                df = filter_low_speed_points(df, adapter)
-            except Exception:
-                self.logger.warning(
-                    "Speed filter failed — proceeding with unfiltered data",
-                    extra={"icao": icao},
+                df, _ = apply_airspeed_trust(
+                    df,
+                    adapter,
+                    self._unsmoothed_true_airspeed(flight),
+                    stall_config=self.params.airspeed_stall_config,
+                    smoothing_window=self.params.true_air_speed_smoothing_window,
+                    fail_when_mostly_untrusted=not _has_ao_fuel_and_efficiency(df),
                 )
+            except Exception as e:
+                if isinstance(e, PerformanceStepError) and not e.retryable:
+                    raise
+                raise PerformanceStepError(
+                    f"Airspeed trust step failed: {e}", retryable=False
+                ) from e
 
             # 2) early exit if AO provided fuel_flow & engine_efficiency
             early = self._early_exit_if_fuel_and_efficiency(
@@ -684,7 +738,7 @@ class BADAPerformanceModel(
                 v_wind=v,
                 smooth=True,
                 window_length=window,
-                polyorder=1,
+                polyorder=DEFAULT_TRUE_AIR_SPEED_SMOOTHING_POLYORDER,
             )
         else:
             # PyNEATS input unit: m/s. The AO JSON field `tas` is in knots.
@@ -695,6 +749,20 @@ class BADAPerformanceModel(
         # ensure numeric dtype early
         df["true_airspeed"] = pd.to_numeric(df["true_airspeed"], errors="coerce")
         return df
+
+    def _unsmoothed_true_airspeed(self, flight: Flight) -> NDArray[np.floating] | None:
+        """TAS [m/s] from the unsmoothed ground speed, or ``None`` if TAS is provided.
+
+        pycontrails ``segment_true_airspeed`` with ``smooth=False`` and the same
+        ``u_wind``/``v_wind`` columns [m/s] as ``_compute_ground_and_true_airspeed``
+        (NaN at the last point, forward segment). The airspeed trust step
+        decides trust and fills gaps on it.
+        """
+        if "true_airspeed" in flight:
+            return None
+        u: NDArray[np.floating] = np.asarray(flight["u_wind"], dtype=float)
+        v: NDArray[np.floating] = np.asarray(flight["v_wind"], dtype=float)
+        return flight.segment_true_airspeed(u_wind=u, v_wind=v, smooth=False)
 
     def _compute_kinematics(self, flight: Flight, df: pd.DataFrame) -> None:
         """Compute kinematic columns: rocd, acceleration, segment_duration.
@@ -756,12 +824,9 @@ class BADAPerformanceModel(
         ``fuel_burn`` = fuel_flow [kg/s, treated as whole aircraft] x
         segment_duration [s], i.e. kg per forward segment. No fuel-burn
         guardrail and no fuel-flow outlier check are applied on this path.
+        Taken when ``_has_ao_fuel_and_efficiency(df)`` is True.
         """
-        if (
-            "fuel_flow" in df.columns
-            and "engine_efficiency" in df.columns
-            and "aircraft_mass" in df.columns
-        ):
+        if _has_ao_fuel_and_efficiency(df):
             self.logger.debug(
                 "Flight already has 'fuel_flow', 'engine_efficiency', and 'aircraft_mass', skipping BADA model",
                 extra={"rows": len(df)},

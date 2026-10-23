@@ -39,12 +39,25 @@ DEFAULT_MAX_REL_MASS_DIFF : float
     Default max relative mass difference (dimensionless fraction).
 DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW : int
     Default smoothing window for true air speed, in number of points.
+DEFAULT_TRUE_AIR_SPEED_SMOOTHING_POLYORDER : int
+    Polynomial order of the Savitzky-Golay smoothing of the true air speed.
 DEFAULT_DELTA_TAU_COMPUTE_METHOD : Literal
     Default delta tau compute method.
 DEFAULT_DELTA_TAU_FILL_METHOD : Literal
     Default delta tau fill method.
 DEFAULT_ROCD_PHASE_THRESHOLD : float
     Default rate of climb/descent phase threshold, in ft/min.
+DEFAULT_AIRSPEED_STALL_CONFIG : Literal
+    Default BADA configuration of the stall speed (at MTOW) below which a
+    true airspeed is untrusted.
+DEFAULT_MAX_TRUSTED_CAS : float
+    Calibrated airspeed above which a true airspeed is untrusted when the BADA
+    model has no maximum operating speed VMO (fallback), in m/s.
+DEFAULT_MAX_TRUSTED_MACH : float
+    Mach number from which a true airspeed is untrusted (dimensionless).
+DEFAULT_MAX_UNTRUSTED_AIRSPEED_FRACTION : float
+    Maximum fraction of the flight time with an untrusted true airspeed
+    (dimensionless fraction [0, 1]); above it the flight fails.
 DEFAULT_EMISSIONS_KWARGS : Mapping[str, Any]
     Default emissions model keyword arguments.
 DEFAULT_COCIP_KWARGS : Mapping[str, Any]
@@ -100,10 +113,15 @@ __all__ = [
     "DEFAULT_DELTA_TAU_COMPUTE_METHOD",
     "DEFAULT_DELTA_TAU_FILL_METHOD",
     "DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW",
+    "DEFAULT_TRUE_AIR_SPEED_SMOOTHING_POLYORDER",
     "DEFAULT_EMISSIONS_KWARGS",
     "DEFAULT_COCIP_KWARGS",
     "DEFAULT_CLIMACCF_KWARGS",
     "DEFAULT_ROCD_PHASE_THRESHOLD",
+    "DEFAULT_AIRSPEED_STALL_CONFIG",
+    "DEFAULT_MAX_TRUSTED_CAS",
+    "DEFAULT_MAX_TRUSTED_MACH",
+    "DEFAULT_MAX_UNTRUSTED_AIRSPEED_FRACTION",
     "DEFAULT_MIN_ALTITUDE_FL",
     "DEFAULT_MAX_ALTITUDE_FILTER_RATIO",
     "DEFAULT_FUEL_BURN_THRESHOLD",
@@ -166,6 +184,9 @@ DEFAULT_MAX_REL_MASS_DIFF: Final[float] = (
 DEFAULT_TRUE_AIR_SPEED_SMOOTHING_WINDOW: Final[int] = (
     7  # 7-point rolling window for smoothing
 )
+# Savitzky-Golay polynomial order (pycontrails segment_true_airspeed and the
+# airspeed trust step must use the same value)
+DEFAULT_TRUE_AIR_SPEED_SMOOTHING_POLYORDER: Final[int] = 1
 
 # Max pressure level to filter out flights that don't reach the limit altitude to compute climate impact
 DEFAULT_MAX_PRESSURE_LEVEL: Final[float] = 550  # hPa
@@ -184,6 +205,27 @@ DEFAULT_DELTA_TAU_FILL_METHOD: Final[Literal["bffill", "none", "zero"]] = (
 DEFAULT_ROCD_PHASE_THRESHOLD: Final[float] = (
     250  # feet per minute threshold for phase detection
 )
+
+# Airspeed trust (performance step, before the BADA calculation)
+# A row's true airspeed (TAS) is untrusted when it is not finite, when its
+# calibrated airspeed (CAS) is below the BADA stall CAS at MTOW in the
+# configuration below, or above the aircraft's maximum operating speed VMO
+# (BADA, no margin), or when its Mach number is DEFAULT_MAX_TRUSTED_MACH or
+# more. No row is removed: an untrusted TAS is replaced by linear interpolation
+# in time between the trusted rows.
+# Stall configuration: "TO" (take-off) or "LD" (landing).
+DEFAULT_AIRSPEED_STALL_CONFIG: Final[Literal["TO", "LD"]] = "TO"
+# CAS limit used only when the BADA model has no VMO (fallback); every BADA3
+# 3.16 and BADA4 4.2.1 model of the NM sample of 2025-07-09 has one (250 to
+# 370 kt).
+DEFAULT_MAX_TRUSTED_CAS: Final[float] = 400.0 * 1852.0 / 3600.0  # m/s (400 kt)
+# The Mach limit is not the BADA MMO: the computed TAS comes from the ground
+# speed and modelled winds (a 10 kt wind error at FL370 is about Mach 0.017),
+# so a normal cruise can show a few hundredths above MMO (see the audit, I9).
+DEFAULT_MAX_TRUSTED_MACH: Final[float] = 1.0  # dimensionless
+# The flight fails when more than this fraction of its time (sum of the
+# segment durations, s) has an untrusted TAS, or when no row is trusted.
+DEFAULT_MAX_UNTRUSTED_AIRSPEED_FRACTION: Final[float] = 0.8
 
 # Fuel burn guardrail: reject if total fuel > (MTOW - OEW) * threshold
 # (masses in kg). A ratio of 1.2 allows a 20% margin above MTOW - OEW.

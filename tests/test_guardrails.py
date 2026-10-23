@@ -185,6 +185,8 @@ class TestPerformanceGuardrailFuelBurn:
             model
         )
         model._build_result = BADAPerformanceModel._build_result.__get__(model)
+        # The df carries a provided TAS: trust is decided on it (no unsmoothed TAS).
+        model._unsmoothed_true_airspeed = MagicMock(return_value=None)
         return model
 
     def _make_adapter(
@@ -196,6 +198,8 @@ class TestPerformanceGuardrailFuelBurn:
         adapter = MagicMock()
         adapter.MTOW = mtow
         adapter.OEW = oew
+        adapter.v_stall_cas.return_value = 60.0  # m/s CAS; every TAS is trusted
+        adapter.vmo_cas.return_value = 180.06  # m/s CAS (A320 VMO, 350 kt)
         adapter.span = 35.8
         adapter.nb_eng = 2
         adapter.bada_code = "A320"
@@ -221,6 +225,7 @@ class TestPerformanceGuardrailFuelBurn:
                 "phase": ["Cruise"] * n_points,
                 "thrust_segment": ["TOTAL"] * n_points,
                 "true_airspeed": [230.0] * n_points,
+                "delta_tau": [0.0] * n_points,
             }
         )
 

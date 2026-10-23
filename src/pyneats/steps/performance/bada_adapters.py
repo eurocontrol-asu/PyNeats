@@ -9,6 +9,7 @@ Features
 - Unified interface for BADA3 and BADA4 models
 - Thrust and fuel flow calculations
 - Stall speed queries (v_stall_cas)
+- Maximum operating speed queries (vmo_cas)
 - Flight phase detection
 - Configuration management
 - Unit conversions
@@ -32,6 +33,7 @@ BADA4Adapter
 
 from __future__ import annotations
 
+import math
 from abc import abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,6 +45,7 @@ from typing import cast
 
 from packaging import version
 from pycontrails.physics.units import ft_to_m
+from pycontrails.physics.units import knots_to_m_per_s
 from pycontrails.physics.units import m_per_s_to_knots
 
 
@@ -136,9 +139,10 @@ class BaseBADAAdapter(AircraftProtocol, Protocol):
 
     ``thrust_fuel_segment`` returns (fuel flow [kg/s, whole aircraft],
     thrust [N], phase, thrust segment label "LIDL"/"MCMB"/"TOTAL").
-    ``v_stall_cas`` returns a CAS stall speed [m/s]. Metadata: MTOW, OEW and
-    MPL in kg. The ROCD phase threshold is given in ft/min and converted to
-    m/s at construction.
+    ``v_stall_cas`` returns a CAS stall speed [m/s]; ``vmo_cas`` the maximum
+    operating speed VMO [m/s, CAS], or ``None`` when the BADA file has none.
+    Metadata: MTOW, OEW and MPL in kg. The ROCD phase threshold is given in
+    ft/min and converted to m/s at construction.
     """
 
     def thrust_fuel_segment(
@@ -153,10 +157,26 @@ class BaseBADAAdapter(AircraftProtocol, Protocol):
 
     def v_stall_cas(self, mass: float, config: str) -> float | None: ...
 
+    def vmo_cas(self) -> float | None: ...
+
 
 # -----------------------------------------------------------------------------
 # Internal utilities (shared behavior)
 # -----------------------------------------------------------------------------
+
+
+def _positive_or_none(value: object) -> float | None:
+    """``value`` as a float when it is a finite number above 0, else ``None``."""
+    if value is None:
+        return None
+    try:
+        number = float(cast("float", value))
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number) or number <= 0.0:
+        return None
+    return number
+
 
 TObj = TypeVar("TObj", Bada3Aircraft, Bada4Aircraft)
 
@@ -177,23 +197,6 @@ class _PyBADAAdapterBase(Generic[TObj]):
         if rocd_mps < -self._rocd_phase_threshold_mps:
             return "Descent"
         return "Cruise"
-
-    def v_stall_cas(self, mass: float, config: str) -> float | None:
-        """Return CAS stall speed (m/s) or ``None`` when data is unavailable.
-
-        ``mass`` in kg. BADA3: pyBADA returns kt2ms(Vstall) x
-        sqrt(mass / reference mass). BADA4: pyBADA 0.1.12
-        ``FlightEnvelope.VStall`` has the signature
-        ``(mass, HLid, LG, nz=1.0, **kwargs)`` (BADA3: ``(mass, config)``), so
-        this call with ``config`` and no ``HLid``/``LG`` raises ``TypeError``
-        for ``BADA4Adapter``; the caller in ``run_by_bada_version`` catches it
-        and continues without the speed filter
-        (see docs/internal/pyneats_units_audit.md).
-        """
-        result = self._obj.flightEnvelope.VStall(mass=mass, config=config)
-        if result is None:
-            return None
-        return float(result)
 
     def thrust_fuel_segment(
         self,
@@ -407,6 +410,44 @@ class BADA4Adapter(_PyBADAAdapterBase[Bada4Aircraft], BaseBADAAdapter):
     def bada_code(self) -> str:
         return self._bada_code
 
+    def v_stall_cas(self, mass: float, config: str) -> float | None:
+        """Return the stall CAS [m/s] at ISA sea level, or ``None``.
+
+        ``mass`` in kg; ``config`` is a BADA configuration ("TO", "IC", "CR",
+        "AP", "LD"). pyBADA 0.1.12 BADA4 ``FlightEnvelope.VStall`` takes
+        ``(mass, HLid, LG, nz=1.0, theta=, delta=)``, with the high-lift
+        position ``HLid`` and the landing gear ``LG`` of ``config`` from
+        ``getAeroConfig``. It returns the CAS at the minimum buffet Mach
+        number; theta = delta = 1 (ISA sea level) gives a single value per
+        mass, like the BADA3 stall speed. ``None`` when the BADA4 file has no
+        such configuration (pyBADA ``getAeroConfig`` would raise ``TypeError``)
+        or no buffet data for it.
+        """
+        envelope = self._obj.flightEnvelope
+        if envelope.AC.aeroConfig.get(config) is None:
+            return None
+        hlid, lg = envelope.getAeroConfig(config=config)
+        result = envelope.VStall(
+            mass=mass, HLid=hlid, LG=lg, nz=1.0, theta=1.0, delta=1.0
+        )
+        if result is None:
+            return None
+        return float(result)
+
+    def vmo_cas(self) -> float | None:
+        """Return the maximum operating speed VMO [m/s, CAS], or ``None``.
+
+        pyBADA 0.1.12 ``Bada4Aircraft.VMO`` is the ``KLM/vmo`` element of the
+        BADA4 XML file, in kt (CAS, clean configuration, gear up), converted
+        with 0.514444 m/s per kt as pyBADA ``kt2ms`` does in ``maxCAS``.
+        ``None`` when the file has no such element or its value is not a
+        positive number.
+        """
+        vmo_kt = _positive_or_none(getattr(self._obj, "VMO", None))
+        if vmo_kt is None:
+            return None
+        return float(knots_to_m_per_s(vmo_kt))
+
     def drag(self, state: State, atmosphere: Atmosphere) -> float:
         cfg = state.config
         delta = atmosphere.delta
@@ -552,6 +593,32 @@ class BADA3Adapter(_PyBADAAdapterBase[Bada3Aircraft], BaseBADAAdapter):
     @property
     def bada_code(self) -> str:
         return self._bada_code
+
+    def v_stall_cas(self, mass: float, config: str) -> float | None:
+        """Return the stall CAS [m/s], or ``None``.
+
+        ``mass`` in kg; ``config`` is a BADA configuration ("TO", "IC", "CR",
+        "AP", "LD"). pyBADA 0.1.12 BADA3 ``FlightEnvelope.VStall(mass,
+        config)`` returns the OPF stall speed of ``config`` (kt, converted to
+        m/s) x sqrt(mass / reference mass).
+        """
+        result = self._obj.flightEnvelope.VStall(mass=mass, config=config)
+        if result is None:
+            return None
+        return float(result)
+
+    def vmo_cas(self) -> float | None:
+        """Return the maximum operating speed VMO [m/s, CAS], or ``None``.
+
+        pyBADA 0.1.12 ``Bada3Aircraft.VMO`` is the first value of the OPF
+        "Flight envelope" block, in kt (CAS), converted with 0.514444 m/s per
+        kt as pyBADA ``kt2ms`` does in ``VMax``. ``None`` when it is missing
+        or not a positive number.
+        """
+        vmo_kt = _positive_or_none(getattr(self._obj, "VMO", None))
+        if vmo_kt is None:
+            return None
+        return float(knots_to_m_per_s(vmo_kt))
 
     def drag(self, state: State, atmosphere: Atmosphere) -> float:
         v = state.v

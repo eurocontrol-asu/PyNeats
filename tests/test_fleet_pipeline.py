@@ -11,6 +11,7 @@ Each case has a {case_name}_input.json and {case_name}_output.json pair.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,7 @@ from tests.conftest import assert_climate_payload_equal
 def test_fleet_runner_golden(
     golden_case: str,
     golden_input_path: Path,
+    golden_output_path: Path,
     golden_output: list[FlightView],
     weather,
     weather_path,
@@ -38,7 +40,9 @@ def test_fleet_runner_golden(
     """Test FleetRunner produces golden outputs for each case.
 
     Runs all flights in the golden case through FleetRunner and compares
-    the outputs with expected results.
+    the outputs with expected results. The output keys (data columns and
+    attrs, as serialised by ``FlightView.to_dict``) must be those of the
+    golden output: the output schema does not change.
     """
     # Import here to avoid collection errors when pyBADA not installed
     from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
@@ -88,6 +92,17 @@ def test_fleet_runner_golden(
         f"Case '{golden_case}': FleetRunner produced {len(output_flights)} flights, "
         f"expected {len(golden_output)}. Errors: {runner.error_records}"
     )
+
+    # Output schema: the same keys as the golden output, flight by flight
+    with open(golden_output_path, encoding="utf-8") as fh:
+        golden_keys = [set(d) for d in json.load(fh)]
+    for i, output_flight in enumerate(output_flights):
+        output_keys = set(output_flight.to_dict())
+        assert output_keys == golden_keys[i], (
+            f"Case '{golden_case}', flight {i}: output keys differ from the golden "
+            f"output (extra {sorted(output_keys - golden_keys[i])}, missing "
+            f"{sorted(golden_keys[i] - output_keys)})"
+        )
 
     # Compare each output flight with expected
     for i, (output_flight, expected_flight) in enumerate(
