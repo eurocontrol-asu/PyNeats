@@ -27,6 +27,7 @@ cite line numbers on `dev` before the fix they describe.
 | A11/A12 (fuel energy reference of the BADA fuel flow) | Fixed: reference = BADA4 LHV 43.217 MJ/kg for BADA4 and BADA3 (maintainer decision); docs corrected; fuel and CO2 +0.21 % on the sample | `fix/fuel-energy-reference` | 2026-10-22 |
 | I12 (FlightRunner and FleetRunner give different contrail results for the same flight) | Open; recorded; contrail-based values get rtol 5e-3 in the FlightRunner golden test | `fix/fuel-energy-reference` | 2026-10-22 |
 | D4 (partially empty AO columns) | Fixed: empty values skipped when resampling (straight line between valid neighbours; maintainer decision); no change on the NM sample | `fix/partial-null-columns` | 2026-10-22 |
+| I13 (a non-finite BADA fuel flow made the mass NaN for the rest of the flight) | Fixed: treated as a BADA failure at that point (previous point's values; maintainer decision); fleet fuel +0.005 %, 5 flights change | `fix/bada-nonfinite-fuel-flow` | 2026-10-23 |
 
 ## 1. Outcome
 
@@ -950,6 +951,36 @@ for a separate decision and were not fixed.
     contrail-based values (`contrails_ef_J` and the `Contrails` climate metrics) are compared
     at rtol 5e-3; everything else stays at 1e-3, and the FleetRunner golden tests are
     unchanged. To investigate: whether the two runners should give identical contrails.
+
+- **I13. A non-finite BADA fuel flow made the mass NaN for the rest of the flight.** Found
+  2026-10-23 during the low-speed filter work. *Fixed on branch `fix/bada-nonfinite-fuel-flow`
+  (see the follow-up status table).*
+  - **Defect.** `_single_pass_performance` (`bada_model.py:895-1026` on `dev` 5aba2f9)
+    treats a point as a BADA failure when BADA raises or when the fuel flow is above
+    `ff_outlier_threshold` or negative (`:971`); the point then takes the previous point's
+    values, and more than `max_consecutive_failures` (5) failures in a row, or a failure at
+    the first point, fail the attempt. A NaN fuel flow passes both comparisons, so it was
+    accepted: it became the "previous" value (`:976`), and with a take-off mass the
+    integrated mass (`:1018`) was NaN from that point on. The fuel of every later point was
+    then NaN and dropped out of the sums (trip fuel, guardrail and totals skip NaN). BADA4
+    gives a NaN fuel flow, without raising, wherever the TAS is NaN: at a frozen raw position
+    (zero-length segment) and at the last point of the computed-TAS path. BADA3 runs did not
+    reach it on `dev`, because the speed filter drops NaN-TAS rows.
+  - **Effect before the fix** (NM sample 2025-07-09, 4,959 flights, `dev` 5aba2f9): 3 BADA4
+    flights (VLG1254, IBE09LA, IBS15XJ) had NaN fuel on their last 21 rows each (63 rows);
+    4 flights (RYR4WR, RYR6EF, EZY87KM, VLG90AB) fell back to BADA3 through exceptions on the
+    NaN mass.
+  - **Fix.** A fuel flow that is not finite is a BADA failure at that point, like an
+    outlier, so the existing rule applies (previous point's values; the attempt fails after
+    more than 5 in a row or at the first point).
+  - **Effect** (fleet before/after on the same 4,959 flights, measured with this rule):
+    same 4,303 flights computed, no NaN fuel row left; fleet fuel +0.005 % (+2.5 t), CO2
+    +0.005 %; 5 flights change: VLG1254 +36.8 %, IBE09LA +10.1 %, RYR4WR +16.5 % and VLG90AB
+    +7.5 % (both now BADA4), IBS15XJ −2.1 % (now BADA3: its 8 NaN-TAS rows at a frozen
+    raw position exceed the 5-failure limit). RYR6EF and EZY87KM stay BADA3 (other BADA4
+    failures). The last point of a BADA4 flight now carries the previous point's fuel flow
+    instead of NaN; its fuel burn stays empty (no next point), so totals do not change
+    there.
 
 ## 11. Patch summary and checks performed
 

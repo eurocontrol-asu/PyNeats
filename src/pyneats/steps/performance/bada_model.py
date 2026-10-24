@@ -909,6 +909,11 @@ class BADAPerformanceModel(
         ``fuel_flow`` column is provided. Without it, the ``aircraft_mass``
         column [kg] is used point by point. Returned fuel flow is kg/s for the
         whole aircraft and thrust is N.
+
+        A point where BADA raises, or gives a fuel flow that is not finite,
+        negative or above ``ff_outlier_threshold`` [kg/s], takes the values of
+        the previous point; more than ``max_consecutive_failures`` such points
+        in a row, or such a first point, fail the attempt (retryable).
         """
 
         if initial_mass is None and "aircraft_mass" not in df.columns:
@@ -968,7 +973,15 @@ class BADAPerformanceModel(
                 phase_val = phase
                 segment_val = str(thrust_seg)
 
-                if (ff_corrected > ff_outlier_threshold) or (ff_corrected < 0.0):
+                # A non-finite fuel flow (e.g. BADA at a NaN TAS) is handled like
+                # an outlier. NaN fails both comparisons, so without the
+                # isfinite test it became the "previous" value and made the
+                # integrated mass NaN for the rest of the flight (audit I13).
+                if (
+                    not np.isfinite(ff_corrected)
+                    or (ff_corrected > ff_outlier_threshold)
+                    or (ff_corrected < 0.0)
+                ):
                     raise Exception("BADA fuel flow is unrealistic")
 
                 # If successful, reset the failure counter and update our "last known good" values
