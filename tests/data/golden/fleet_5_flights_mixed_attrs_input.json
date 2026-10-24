@@ -1168,7 +1168,7 @@
       "arrival_airport": "EBLG",
       "aircraft_properties": {
         "aircraft_type": "B77L",
-        "takeoff_mass": 276068.51830956875
+        "takeoff_mass": 275664.4497058993
       },
       "fuel_properties": {
         "hydrogen_content": null,

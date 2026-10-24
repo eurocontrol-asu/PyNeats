@@ -178,7 +178,7 @@ The performance model is used to estimate these values when the AO does not prov
 
 #### Basic Parameterisation
 
-- If TAS is not provided by the AO, it is computed from the (smoothed) ground speed and the wind fields, available **above 840 hPa (FL050)**; where no wind is available (below that level) the wind is set to 0, so TAS equals the smoothed ground speed.
+- If TAS is not provided by the AO, it is computed from the (smoothed) ground speed and the wind fields, available **above 840 hPa (FL050)**; where no wind is available (below that level) the wind is set to 0, so TAS equals the smoothed ground speed. Implausible TAS values (provided or computed) are replaced before BADA is run (see rule 4 of the Input Decision Logic).
 - The International Standard Atmosphere is corrected with actual air above 550 hPa, backfilling and forward-filling the correction for lower altitudes.
 - BADA flight phases are determined from **vertical speed** using simple decision thresholds.
 
@@ -196,7 +196,7 @@ Each performance quantity has its own source, so the cases below are not exclusi
 
     A quantity counts as provided when at least one point has a value; points left empty are not filled from BADA and are left out of the fuel totals.
 
-    Before any of these rules, points whose true airspeed is below the BADA stall speed (at MTOW, take-off configuration), or that have no true airspeed, are removed, also on the path of rule 2; if more than 80 % of the points would be removed, none are. Currently this applies only to aircraft computed with BADA 3; this filter is under review.
+    Before any of these rules, also on the path of rule 2, a true airspeed is untrusted when it is missing, when its calibrated airspeed is below the BADA stall speed (at MTOW, take-off configuration by default) or above the BADA maximum operating speed (VMO, no margin; 400 kt when the BADA model gives none), or when its Mach number is 1 or more. No point is removed: an untrusted true airspeed is replaced by linear interpolation in time between the nearest trusted points; before the first and after the last trusted point it takes the calibrated airspeed of that point, converted to true airspeed at its own altitude. The acceleration is recomputed. A computed true airspeed is checked and replaced on the 1-minute speed before smoothing, then smoothed with the same 7-point filter; the smoothed value is used at the replaced points (not before the first or after the last trusted point, which keep the calibrated airspeed of that point) and at the points within the smoothing window of a replaced point (up to 3 points away), which can change too. All other points, and every point of a flight without an untrusted point, keep their true airspeed (the last point, which has no next point, takes the value of the point before it). The output `true_airspeed` is the value after this step. A flight fails, with no retry, when more than 80 % of its time is untrusted, except on the path of rule 2 (BADA fuel flow not used), where the flight is kept with its true airspeed replaced.
 
 5. **Neither mass nor TOW provided:** the load factor is used (AO-provided or conservative default of 1). The following approach (similar to PyContrails) is applied:
 

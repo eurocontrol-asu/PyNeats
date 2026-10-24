@@ -19,7 +19,7 @@ cite line numbers on `dev` before the fix they describe.
 | Fuel reserve and number of mass iterations misstated in the user docs (Section 9) | Fixed (docs only) | #74 | 2026-10-21 |
 | Performance input decision tree and data-sources table in the user docs (Section 9) | Fixed (docs only) | #75 | 2026-10-21 |
 | A13 (mixed fuel-flow provenance) | Documented in the user docs; the design choice stays open | #75 | 2026-10-21 |
-| I9 (`segment_duration` not recomputed after the speed filter) | Open; recorded, part of the low-speed filter work | #75 | 2026-10-21 |
+| I9 (`segment_duration` not recomputed after the speed filter) | Recorded in #75; fixed on `fix/airspeed-trust` (see the I1, I9 and I14 row below) | #75 | 2026-10-21 |
 | I10 (a failed attempt leaked columns into the BADA3 retry) | Fixed; fuel-burn rejections go through the BADA3 retry and the altitude fallback (maintainer decision); no change on the NEATS_FINAL sample | `fix/performance-retry-isolation` | 2026-10-21 |
 | A10 (airport fuel file units) and the missing `q_fuel` magnitude check | Fixed: a supplied `q_fuel` outside 35–50 MJ/kg is rejected (flight fails; a wrong airport file stops the run); no change on valid inputs | #77 | 2026-10-22 |
 | I11 (fleet step cache shared between runners in one process) | Fixed; no change for a single run | #78 | 2026-10-22 |
@@ -28,6 +28,7 @@ cite line numbers on `dev` before the fix they describe.
 | I12 (FlightRunner and FleetRunner give different contrail results for the same flight) | Open; recorded; contrail-based values get rtol 5e-3 in the FlightRunner golden test | `fix/fuel-energy-reference` | 2026-10-22 |
 | D4 (partially empty AO columns) | Fixed: empty values skipped when resampling (straight line between valid neighbours; maintainer decision); no change on the NM sample | `fix/partial-null-columns` | 2026-10-22 |
 | I13 (a non-finite BADA fuel flow made the mass NaN for the rest of the flight) | Fixed: treated as a BADA failure at that point (previous point's values; maintainer decision); fleet fuel +0.005 %, 5 flights change | `fix/bada-nonfinite-fuel-flow` | 2026-10-23 |
+| I1 (BADA4 speed filter never runs), I9 (`segment_duration` not recomputed after the speed filter) and I14 (TAS compared with a CAS stall speed) | Fixed by replacing the low-speed filter with an airspeed trust step: no row removed and no output column added; untrusted TAS (not finite, CAS below the stall CAS at MTOW, take-off configuration, CAS above the BADA VMO (400 kt without one), Mach ≥ 1) interpolated in time, and before the first and after the last trusted row given the CAS of that row; decided and filled on the unsmoothed TAS, re-smoothed only within the smoothing window of an untrusted row; BADA4 stall call fixed; flight fails (no retry) above 80 % untrusted time, except when the AO provides fuel flow, engine efficiency and aircraft mass (maintainer decisions). NM sample 2025-07-09, with I13 and the VMO limit: fleet fuel −0.77 % against `dev` (BADA4 −1.10 %, BADA3 +1.26 %), CO2 = 3.159 × fuel on all 4,303 flights, no new failure; golden outputs regenerated | `fix/airspeed-trust` | 2026-10-23 |
 
 ## 1. Outcome
 
@@ -369,7 +370,8 @@ Each entry gives:
    (`bada_model.py:786-808,849`).
 2. The unit is kg and consistent. It is applied at the first **retained** trajectory point:
    - after resampling to 1 min;
-   - for BADA3 aircraft, after the speed filter;
+   - for BADA3 aircraft, after the speed filter (`dev`; no row is removed on
+     `fix/airspeed-trust`);
    - on the altitude-fallback path, at the first point at or above FL20.
    It is ignored, with only a debug log, when an `am` column exists, and nothing checks it
    against `am[0]`. It is not clipped to MTOW.
@@ -812,6 +814,16 @@ for a separate decision and were not fixed.
   `VStall(mass, HLid, LG, nz=1.0, **kwargs)` (`bada_adapters.py:175-180`; pyBADA
   `bada4.py:2349`). The `TypeError` is swallowed (`bada_model.py:463-469`), so taxi and
   low-speed points stay in for BADA4 aircraft. The unit tests mock `VStall`.
+  *Fixed on branch `fix/airspeed-trust` (see the follow-up status table).* On `dev`
+  5aba2f9 the call is `bada_adapters.py:193` and the swallow `bada_model.py:508-514`;
+  measured on the NM sample 2025-07-09, the `TypeError` was raised on every BADA4 call
+  (3,263 of 3,263) and 3,253 of 3,253 BADA4 flights ran unfiltered. `BADA4Adapter` now has
+  its own `v_stall_cas`: (HLid, LG) = `getAeroConfig(config)`, then
+  `VStall(mass, HLid, LG, nz=1, theta=1, delta=1)`, the CAS at ISA sea level (B738 at MTOW
+  in TO: 146.8 kt, against 128.1 kt in BADA3). The low-speed filter itself is replaced by
+  the airspeed trust step (I9, I14), and an error in that step now fails the flight with no
+  retry instead of being swallowed (maintainer decision). The unit tests check the call
+  signature, and the stall speeds of three BADA4 models with the real files.
 - **I2. Naphthalene key mismatch.** `neats_io` emits `naphthalene`, `Flight4D` allows
   `naphtalene`, and `NEATSFuel.from_attrs` reads `naphthalene`. The AO value and the airport
   value both fail to reach the fuel object.
@@ -844,7 +856,7 @@ for a separate decision and were not fixed.
 - **I8. Humidity-scaling adapter fallbacks.** The fallback branches rebuild `Flight` without
   its fuel (`weather_provider.py:139-147`). They are unreachable with stock pycontrails.
 - **I9. `segment_duration` not recomputed after the speed filter.** Recorded after this audit
-  (2026-10-21); open, part of the low-speed filter work. `segment_duration`, `rocd` and
+  (2026-10-21); fixed on `fix/airspeed-trust` (see below). `segment_duration`, `rocd` and
   `acceleration` are forward differences computed in `_compute_kinematics`
   (`bada_model.py:680-700`) before `filter_low_speed_points` (`bada_model.py:488-495`), and
   are not recomputed on the rows kept:
@@ -862,6 +874,138 @@ for a separate decision and were not fixed.
   removed (639 leading, 1,947 trailing, 587 interior), carrying 1.36 % of flight time;
   CO2 / (3.159 × fuel) from 0.961 to 1.360 (median 0.995) per flight, 0.17 % below at fleet
   level.
+
+  *Fixed on branch `fix/airspeed-trust` (see the follow-up status table).* On `dev`
+  5aba2f9 (NM sample 2025-07-09) the BADA3 filter deleted 34.7 h of flight from the fuel and
+  43.0 h from CO2, and 998 of the 1,050 BADA3 flights had CO2 / (3.159 × fuel) more than
+  0.1 % from 1 (0.9635 to 1.3857). The filter is replaced by an airspeed trust step
+  (`steps/performance/airspeed_trust.py`, maintainer decisions of 2026-10-23):
+  - **no row is removed**, so `segment_duration` and `rocd` stay valid, PyNEATS and
+    pycontrails `Emissions` use the same durations, and the take-off weight applies at the
+    first row;
+  - a row is untrusted when its TAS is not finite, its CAS is below the BADA stall CAS at
+    MTOW (configuration `airspeed_stall_config`, default "TO") or above the aircraft's
+    maximum operating speed VMO, or its Mach number is 1 or more (I14 for the CAS
+    comparison). VMO is read from the BADA model of the attempt (pyBADA `VMO`, kt CAS, in
+    the BADA4 XML and the BADA3 OPF), with no margin; 400 kt applies when the model has
+    none. Every one of the 132 BADA codes of the NM sample (43 BADA4, 89 BADA3) has a VMO,
+    from 250 to 370 kt (maintainer decision of 2026-10-23, replacing a fixed 400 kt; see
+    "Too-fast limits" below);
+  - an untrusted TAS is replaced by linear interpolation in time between the nearest trusted
+    rows, and `acceleration` is recomputed from the TAS used;
+  - before the first and after the last trusted row, an untrusted row takes the CAS of that
+    trusted row, converted back to TAS with its own pressure altitude and temperature
+    deviation (pyBADA, as in the trust test; maintainer decision D2). A descent after the
+    last cruise row therefore keeps a constant CAS and its TAS falls with the altitude.
+    Holding the TAS instead (first version of the branch) kept THY6RA at its cruise TAS of
+    455 kt from FL370 down to FL28, a CAS of up to 429 kt;
+  - when PyNEATS computes the TAS, trust is decided and the gaps are filled on the
+    unsmoothed 1-min TAS (pycontrails `segment_true_airspeed(smooth=False)`, same winds).
+    Reason: the smoothed TAS spreads slow minutes over their trusted neighbours (STW1125 at
+    FL310: about 500 kt before a raw gap and 457 kt after it, but smoothed anchors of about
+    250 kt, so a fill from them gave about 240 kt);
+  - the filled series is smoothed with the Savitzky-Golay filter pycontrails applies to the
+    ground speed (window 7, polyorder 1), and only the rows whose smoothing window holds an
+    untrusted row take that value: the untrusted rows, the rows up to 3 points from them,
+    and the first or last 3 rows when one of the first or last 7 is untrusted. Every other
+    row keeps the TAS from the smoothed ground speed bit for bit, so a flight whose only
+    untrusted row is its last one is unchanged on every other row. Next to a slow stretch
+    the re-smoothed trusted neighbours move by more than 100 kt (the smoothed ground speed
+    had pulled them towards it).
+    Smoothing the whole flight in TAS instead (first version of the branch) also moved
+    trusted rows far from any gap, by up to 56 kt at turns in 50-65 kt winds, on 81 % of
+    the flights (fleet fuel effect on 265 sample flights: 0.014 %);
+  - untrusted rows before the first and after the last trusted row keep the held CAS of the
+    end rule also after the smoothing: the Savitzky-Golay edge fit would otherwise
+    extrapolate the climb or descent across them, back below the stall CAS or above VMO
+    (TVS25M: a 162 kt fill at FL1 smoothed to 93 kt);
+  - the last row of a computed TAS (NaN, no forward segment) takes the TAS of the row
+    before it; its duration is NaN, so it adds no fuel;
+  - no column is added: the output schema is unchanged, and `true_airspeed` in the
+    outputs is the TAS used (maintainer decision: no schema change);
+  - the step runs before every path, including the early exit with AO fuel flow, efficiency
+    and mass, and with the stall speed and VMO of the adapter of each attempt (BADA4, then
+    BADA3 on a retry);
+  - the flight fails (non-retryable: no BADA3 retry, no altitude fallback) when more than
+    80 % of its time is untrusted, when no row is trusted, or when the step raises. The
+    80 % and no-trusted-row rules do not fail a flight whose AO data has fuel flow, engine
+    efficiency and aircraft mass (the early exit, where the BADA fuel flow is not used;
+    maintainer decision D4): its TAS is still replaced, or kept as is when no row is
+    trusted.
+
+  Measured on the NM sample 2025-07-09 (4,959 flights; the 4,303 computed on `dev` 5aba2f9
+  are computed on the branch, which includes I13; default TO threshold):
+  - fleet fuel −0.62 % against `dev` (49,591.5 t → 49,283.7 t; BADA4 −0.94 %, BADA3
+    +1.34 %, mostly deleted time coming back), CO2 −0.60 %; CO2 = 3.159 × fuel on all 4,303
+    flights (`dev`: 3,305 within 0.1 %); no flight fails or recovers; 10 flights move from
+    BADA3 to BADA4 (the 6 with Mach ≥ 1 and 4 of the I13 flights);
+  - 16,527 rows untrusted on 3,710 flights, last row excluded (275 h, 2.1 % of the time on
+    the median flight, at most 62 % on NACHO20, so the 80 % rule fails no flight); 4,016
+    rows in end runs and 4,040 in start runs;
+  - the 397 `dev`-BADA4 flights whose only untrusted row is the last one keep TAS, fuel burn
+    and mass bit for bit on every other row;
+  - CAS end rule against the earlier TAS hold: fleet fuel +0.016 %, 51 flights change by
+    more than 1 %. THY6RA (end run from FL370 to FL28) keeps a CAS of 248 kt, its TAS falls
+    from 455 kt to 264 kt, and its fuel goes from 5,267 kg to 4,151 kg (`dev`: 5,221 kg);
+    TOM902P −4.0 %. End-run rows below FL100 with a CAS above 250 kt: 130 on 21 flights,
+    against 254 on 45; rows with a CAS above 400 kt or Mach ≥ 1 after the step: 3 on 1
+    flight (CKK216, interpolated cruise rows at Mach 1.0004-1.0007), against 19 on 7;
+  - the CAS end rule copies a wrong anchor too: SWR177 row 0 (FL0) now gets a TAS of
+    342 kt (CAS 334 kt), from its first trusted row at FL320 (unsmoothed 545 kt, itself a
+    timestamp artefact after raw rows at 2,234-8,369 kt). Three flights still start above
+    400 kt TAS at FL1-18 (PGT156P, THY093, TKJ2AJ; CAS 390-399 kt, within the limits);
+  - 513 rows on 488 flights are still below the stall CAS after the step, 501 of them
+    trusted on the unsmoothed TAS and pulled below by the smoothing.
+
+  These measurements are for the first version of the branch, with a fixed 400 kt CAS
+  limit. With the VMO limit (final version, measured the same way):
+  - fleet fuel −0.77 % against `dev` (49,591.5 t → 49,212.1 t; BADA4 −1.10 %, BADA3
+    +1.26 %), CO2 −0.74 %; CO2 = 3.159 × fuel on all 4,303 flights; no flight fails or
+    recovers; the same 10 flights move from BADA3 to BADA4;
+  - VMO makes 3,773 more rows untrusted on 1,489 flights, a median of 11 kt above VMO,
+    mostly one-minute spikes; it only lowers speeds (air distance −0.28 % on 360 of the
+    flights concerned that were checked);
+  - flights with a take-off point (first 5 min, below FL10) above 300 kt CAS: 21, against
+    46 with the 400 kt limit and 43 on `dev`; TOM902P −19 % against the 400 kt version;
+  - after the step, 26 rows on 10 flights are slightly above VMO (at most 14 kt): the
+    interpolation is done in TAS while the altitude changes, and the last row copies the
+    TAS of the row before it. No row has Mach ≥ 1.
+
+  *Too-fast limits (maintainer decision of 2026-10-23).* With 400 kt, "catch-up" minutes
+  after a frozen position (the aircraft "jumps" to catch up with the time) passed the
+  limit and became the first or last trusted row, and the end rule copied their CAS onto
+  the take-off or landing rows: 86 flights took off with more than 250 kt CAS below FL10
+  (26 above 300 kt; ETD75F 374 kt, QTR75N 372 kt, EZY68GP 369 kt, RYR6RJ 369 kt at
+  FL0-30), and 10 flights held more than 300 kt CAS in their end run; TOM902P held 372 kt
+  CAS down to FL13 (+17.9 % fuel against `dev`). A typical VMO is 330-350 kt, so the CAS
+  limit is now the BADA VMO. Estimated on the rows of the 400 kt run (unsmoothed TAS, the
+  basis of the trust test, last row excluded), VMO untrusts 3,773 more rows on 1,489
+  flights (63 h; median 11 kt above VMO); no flight goes above 80 % untrusted time (at
+  most 62 %, NACHO20). Each of the four take-off cases above loses its catch-up anchor:
+  the first trusted row is now at FL80 (ETD75F, 269 kt), FL34 (QTR75N, 202 kt), FL52
+  (EZY68GP, 240 kt) and FL44 (RYR6RJ, 242 kt). TOM902P's 372 kt row at FL89 is
+  untrusted, so its end run starts at FL117 with 157 kt CAS. SWR177's first trusted row
+  moves from row 4 (334 kt CAS at FL320, above its VMO of 330 kt) to row 5 (208 kt at
+  FL320), so row 0 (FL0) gets 208 kt CAS instead of 334 kt; that anchor is still part of
+  the timestamp artefact. VMO also untrusts 784 level rows at FL245 and above on 150
+  flights (median Mach 0.907, mostly B777 and A350 models), which are probably real
+  cruise with a wind error.
+
+  The Mach limit stays at 1 and is not the BADA MMO: the TAS is the ground speed minus a
+  modelled wind (a 10 kt wind error at FL370 is about Mach 0.017), and some BADA models
+  stand for a faster type (business jets mapped to a GLEX model). MMO with no margin
+  would untrust 15,628 level cruise rows at FL245 and above on about 2,000 flights
+  (median 0.018 above MMO) and fail one flight on the 80 % rule; with a 0.08 margin,
+  1,205 rows, but the margin is a tuned number.
+
+  Known limits, not changed: a catch-up minute between 250 kt and VMO stays trusted and an
+  end run copies its CAS. The anchor row of an end run can be re-smoothed while the end
+  run keeps its unsmoothed CAS, so the CAS can step at the boundary (median 22 kt at
+  flight starts, 7 kt at flight ends, up to about 100 kt) and `acceleration` has a one-row spike there.
+
+  A measurement-only prototype (trust and fill on the smoothed TAS, no too-fast rule, TO
+  threshold) gave fleet fuel −0.37 %. The golden outputs are regenerated with the final
+  code.
 - **I10. A failed attempt leaked columns into the BADA3 retry.** Found after this audit
   (2026-10-21), while checking the user docs. *Fixed on branch
   `fix/performance-retry-isolation` (see the follow-up status table).*
@@ -981,6 +1125,24 @@ for a separate decision and were not fixed.
     failures). The last point of a BADA4 flight now carries the previous point's fuel flow
     instead of NaN; its fuel burn stays empty (no next point), so totals do not change
     there.
+
+- **I14. The low-speed filter compared a TAS with a CAS stall speed.** Found 2026-10-23
+  during the low-speed filter work. *Fixed on branch `fix/airspeed-trust` (see the
+  follow-up status table).*
+  - **Defect.** `filter_low_speed_points` (`speed_filter.py:61` on `dev` 5aba2f9) kept a row
+    when `true_airspeed >= v_stall`, where `v_stall` is the BADA stall speed in CAS (pyBADA
+    `VStall`). TAS and CAS coincide only near sea level: at the stall speed of a jet
+    (about 66 m/s), TAS / CAS is 1.16 at 10,000 ft and 1.62 at 30,000 ft. A row slower than
+    the stall speed in CAS was kept at altitude.
+  - **Effect before the fix** (NM sample 2025-07-09, `dev` 5aba2f9; BADA3 only, because of
+    I1): comparing CAS with CAS would have marked 572 more rows on 338 of the 1,050 BADA3
+    flights as slow, and none fewer. Example: PGT023 (A21N) at FL362-390 with a derived TAS
+    of 98-124 m/s, a CAS of 49.5-65.8 m/s, below the stall CAS of 66.3 m/s.
+  - **Fix.** The airspeed trust step (I9) converts each TAS to CAS (and Mach) with pyBADA at
+    the pressure altitude and the temperature deviation of the row, as the BADA adapters do,
+    and compares CAS with the stall CAS. The upper limit is also a CAS: the BADA maximum
+    operating speed VMO of the aircraft (400 kt when the BADA model has none). The Mach
+    limit is 1, not the BADA MMO (see I9).
 
 ## 11. Patch summary and checks performed
 

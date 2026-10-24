@@ -246,6 +246,49 @@ def _extract_error_flight_ids(error_records: list[dict[str, Any]]) -> set[str]:
     return ids
 
 
+def _untrusted_tas(
+    flight: Any,
+    tas: np.ndarray,
+    altitude: np.ndarray,
+    delta_tau: np.ndarray,
+    bada_path: Path,
+) -> np.ndarray:
+    """Mask of the TAS [m/s] the airspeed trust step replaces for ``flight``.
+
+    Same test, stall CAS (BADA model of the output, MTOW, default
+    configuration) and VMO as the performance step; ``altitude`` [m],
+    ``delta_tau`` [K].
+    """
+    from pyneats.steps.performance.airspeed_trust import max_trusted_cas
+    from pyneats.steps.performance.airspeed_trust import stall_cas
+    from pyneats.steps.performance.airspeed_trust import untrusted_airspeed
+    from pyneats.steps.performance.bada_adapters import BADA3Adapter
+    from pyneats.steps.performance.bada_adapters import BADA4Adapter
+    from pyneats.steps.performance.bada_model import BADAPerformanceModel
+    from pyneats.steps.performance.bada_model import BADAPerformanceModelParams
+
+    params = BADAPerformanceModelParams(
+        bada4_root_path=str(bada_path), bada3_root_path=str(bada_path)
+    )
+    model = BADAPerformanceModel(params=params)
+    if flight.attrs["bada_version"] == "BADA4":
+        adapter: Any = BADA4Adapter(
+            str(model.bada4_path),
+            flight.attrs["bada_code"],
+            rocd_phase_threshold_fpm=params.rocd_phase_threshold,
+        )
+    else:
+        adapter = BADA3Adapter(
+            str(model.bada3_path),
+            flight.attrs["bada_code"],
+            rocd_phase_threshold_fpm=params.rocd_phase_threshold,
+        )
+    v_stall = stall_cas(adapter, params.airspeed_stall_config)
+    return untrusted_airspeed(
+        tas, altitude, delta_tau, v_stall, max_cas=max_trusted_cas(adapter)
+    )
+
+
 def _skip_if_missing(weather_path: Path | None, bada_path: Path | None) -> None:
     """Skip test if weather or BADA data is not available."""
     if weather_path is None or not weather_path.is_dir():
@@ -1299,10 +1342,12 @@ class TestBehavioralAssertions:
         provided: list[str],
         aggregated_fleet_run: FleetRunnerLargeEmitter,
         aggregated_input_by_id: dict[str, dict[str, Any]],
+        bada_path: Path,
     ) -> None:
         """Performance data gap: missing cols (all-null in input) must be derived
         (non-null in output); provided cols must be preserved from input
-        (interpolated to output time grid).
+        (interpolated to output time grid), except an untrusted provided true
+        airspeed, which is replaced before BADA is run.
         """
         runner = aggregated_fleet_run
 
@@ -1376,9 +1421,21 @@ class TestBehavioralAssertions:
             if not in_range.any():
                 continue
             inp_interp = np.interp(out_ts_f[in_range], inp_ts_valid, inp_vals_valid)
+            kept = np.ones(inp_interp.size, dtype=bool)
+            if col == "true_airspeed":
+                # An untrusted provided TAS (e.g. below the stall speed) is
+                # replaced; the other provided values are kept.
+                kept = ~_untrusted_tas(
+                    actual,
+                    inp_interp,
+                    out_df["altitude"].to_numpy(dtype=float)[in_range],
+                    out_df["delta_tau"].to_numpy(dtype=float)[in_range],
+                    bada_path,
+                )
+                assert kept.mean() >= 0.8, f"{tc_id}: most provided TAS kept"
             np.testing.assert_allclose(
-                out_vals[in_range],
-                inp_interp,
+                out_vals[in_range][kept],
+                inp_interp[kept],
                 rtol=1e-3,
                 err_msg=(
                     f"{tc_id}: output column '{col}' must preserve "

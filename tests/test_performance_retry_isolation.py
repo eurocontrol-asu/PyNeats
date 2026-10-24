@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from typing import Any
 from unittest.mock import MagicMock
-from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -115,6 +114,8 @@ def _make_model(bada_results: list[Any], ao: set[str]) -> tuple[MagicMock, Magic
     model.params.fuel_burn_threshold = FUEL_BURN_THRESHOLD
     model.params.reference_q_fuel = 43.13e6
     model.params.bada_type = MagicMock(return_value=(2, "A320", "A320-214", "ENG"))
+    model.params.airspeed_stall_config = "TO"
+    model.params.true_air_speed_smoothing_window = 7
 
     adapter = MagicMock()
     adapter.MTOW = MTOW
@@ -122,6 +123,11 @@ def _make_model(bada_results: list[Any], ao: set[str]) -> tuple[MagicMock, Magic
     adapter.nb_eng = 2
     adapter.span = 34.1
     adapter.bada_code = "A320"
+    # The real airspeed trust step runs; every point of _make_df is trusted
+    # (TAS 230 m/s at 10,000 m: CAS about 135 m/s, Mach 0.77), so the
+    # attempt keeps the TAS it was given.
+    adapter.v_stall_cas = MagicMock(return_value=60.0)
+    adapter.vmo_cas = MagicMock(return_value=180.06)  # m/s CAS (A320, 350 kt)
 
     def resolve(
         icao: str, series: Any, engine_id: Any, force_bada3: bool = False
@@ -140,6 +146,8 @@ def _make_model(bada_results: list[Any], ao: set[str]) -> tuple[MagicMock, Magic
 
     model._compute_engine_efficiency_if_missing = MagicMock(side_effect=efficiency)
     model._preprocess = MagicMock(return_value=_make_df(ao))
+    # The fixture provides true_airspeed, as an AO TAS: no unsmoothed TAS.
+    model._unsmoothed_true_airspeed = MagicMock(return_value=None)
     model._extract_aircraft_attrs = MagicMock(return_value=("A320", None, None, None))
     model._run_with_altitude_fallback = MagicMock(
         side_effect=AssertionError("altitude fallback must not run")
@@ -147,17 +155,7 @@ def _make_model(bada_results: list[Any], ao: set[str]) -> tuple[MagicMock, Magic
     return model, adapter
 
 
-def _speed_filter_fails(*_: Any, **__: Any) -> pd.DataFrame:
-    # As for BADA4 today: the filter raises and the step goes on unfiltered,
-    # so the attempt works on the DataFrame it was given.
-    raise TypeError("VStall signature")
-
-
-@patch(
-    "pyneats.steps.performance.bada_model.filter_low_speed_points",
-    side_effect=_speed_filter_fails,
-)
-def test_attempt_does_not_modify_callers_dataframe(_: MagicMock) -> None:
+def test_attempt_does_not_modify_callers_dataframe() -> None:
     model, _adapter = _make_model([PLAUSIBLE_FUEL_FLOW], {"ff", "ee"})
     df = _make_df({"ff", "ee"})
     before = df.copy()
@@ -169,11 +167,7 @@ def test_attempt_does_not_modify_callers_dataframe(_: MagicMock) -> None:
 
 
 @pytest.mark.parametrize("ao", [set(), {"ee"}], ids=["no_ao", "ao_ee"])
-@patch(
-    "pyneats.steps.performance.bada_model.filter_low_speed_points",
-    side_effect=_speed_filter_fails,
-)
-def test_guardrail_rejection_retried_with_bada3(_: MagicMock, ao: set[str]) -> None:
+def test_guardrail_rejection_retried_with_bada3(ao: set[str]) -> None:
     # BADA4 fuel is impossible, BADA3 fuel is plausible: the flight is
     # accepted with BADA3. Before the fix, the BADA3 retry reused the rejected
     # BADA4 columns (rejected again, or accepted via the early exit with "ee").
@@ -188,11 +182,7 @@ def test_guardrail_rejection_retried_with_bada3(_: MagicMock, ao: set[str]) -> N
     model._run_with_altitude_fallback.assert_not_called()
 
 
-@patch(
-    "pyneats.steps.performance.bada_model.filter_low_speed_points",
-    side_effect=_speed_filter_fails,
-)
-def test_guardrail_rejection_reaches_altitude_fallback(_: MagicMock) -> None:
+def test_guardrail_rejection_reaches_altitude_fallback() -> None:
     # AO fuel flow is impossible: BADA4 and BADA3 are both rejected, then the
     # altitude fallback runs. Before the fix, the BADA3 retry saw fuel flow +
     # efficiency + the BADA4 mass, skipped the guardrail and accepted the flight.
@@ -212,11 +202,7 @@ def test_guardrail_rejection_reaches_altitude_fallback(_: MagicMock) -> None:
     assert "fuel burn" in str(call.args[-1])
 
 
-@patch(
-    "pyneats.steps.performance.bada_model.filter_low_speed_points",
-    side_effect=_speed_filter_fails,
-)
-def test_retry_after_bada4_failure_starts_clean(_: MagicMock) -> None:
+def test_retry_after_bada4_failure_starts_clean() -> None:
     # AO mass and efficiency. BADA4 fails (retryable) after the fuel flow was
     # derived from the mass. Before the fix, the BADA3 retry saw that derived
     # fuel flow as AO data, skipped BADA and returned no bada_version.
