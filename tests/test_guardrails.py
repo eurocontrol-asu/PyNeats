@@ -185,6 +185,9 @@ class TestPerformanceGuardrailFuelBurn:
             model
         )
         model._build_result = BADAPerformanceModel._build_result.__get__(model)
+        model._check_total_fuel_burn = (
+            BADAPerformanceModel._check_total_fuel_burn.__get__(model)
+        )
         # The df carries a provided TAS: trust is decided on it (no unsmoothed TAS).
         model._unsmoothed_true_airspeed = MagicMock(return_value=None)
         return model
