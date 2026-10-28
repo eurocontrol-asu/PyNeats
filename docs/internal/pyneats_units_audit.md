@@ -32,6 +32,7 @@ cite line numbers on `dev` before the fix they describe.
 | Golden test totals (`assert_climate_payload_equal`): a NaN actual value passed, because every comparison with NaN is False | Fixed: NaN and inf must match exactly; no golden file changed. Still open: per-point columns are compared with `atol=inf`, and CI runs no golden test (`requires_weather`) | `test/golden-nan-check` | 2026-10-28 |
 | OpenAirClim temp folder (`tmp_base_dir_path`) never created: with a missing folder every small-emitter flight failed at the last step | Fixed: the small-emitter runners create the folder at start-up and stop there, naming the path, if it cannot be written to; the model also creates it before each run. No change in results | `fix/openairclim-tmp-dir` | 2026-10-28 |
 | O4 (OpenAirClim metric window pinned to 2025; every flight dated 2026 failed) | Fixed: every flight is emitted in one reference year, `OPEN_AIRCLIM_REFERENCE_YEAR` = 2025 in `neats_default_parameters.py` (inventory year, `metrics.t_0`, `time.range`, result key); the same flight gives the same result whatever its date (maintainer and method-owner decision). Flights dated 2025: results bit-identical | `fix/openairclim-reference-year` | 2026-10-28 |
+| A1 (no fuel check when the AO provides fuel flow, engine efficiency and aircraft mass; a fuel flow in kg/h was accepted) | Fixed: the fuel-burn guardrail (total fuel <= 1.2 x (MTOW - OEW)) also runs on that path; its rejection is final (no BADA3 retry, no altitude fallback) and its message says the AO fuel flow must be in kg/s (maintainer decision). Valid inputs unchanged | `fix/ao-fuel-flow-check` | 2026-10-28 |
 
 ## 1. Outcome
 
@@ -305,11 +306,18 @@ Each entry gives:
    would be looked up at 1/n_engine of the real flow. No guard catches this:
    - the guardrail rejects only overestimates;
    - the 100 kg/s outlier check never inspects a provided `ff`;
-   - when `ff`, `ee` and `am` are all present, every check is skipped (`bada_model.py:471-477`).
+   - when `ff`, `ee` and `am` are all present, every check was skipped (`bada_model.py:471-477`;
+     the guardrail runs there since the A1 fix, see point 6).
 4. Possibly. The application might normalise `ff`, but nothing confirms it.
 5. **Clarify the AO template**: "total fuel flow of the aircraft, all engines, kg·s⁻¹". No
    conversion is needed if AOs send the total. Optionally, apply the existing fuel-burn
    guardrail on the early-exit path as well, so a kg/h value fails loudly.
+6. **Resolution (2026-10-28).** The fuel-burn guardrail now runs on the early-exit path too
+   (`_check_total_fuel_burn`), and its rejection there is final. Golden flight EAF2143 (A320)
+   with its AO fuel flow x3600: before, accepted with 13,531,792 kg of fuel; now rejected
+   ("... exceeds useful payload capacity 38000 kg x 1.2 = 45600 kg (fuel flow provided by the
+   aircraft operator: it must be in kg/s ...)"). As given: unchanged (3,759 kg). A per-engine
+   fuel flow (x0.5) or g/s (x0.001) is still not caught: both are underestimates.
 
 **A2. `ee`: which efficiency.** *Resolved (§6.0): overall propulsion efficiency, MRR §1(34) and Commission guidance §3.3. PyNEATS matches. Open: "percentage" in law against [0, 1] in the schema.*
 1. `trajectory_data[].ee` → `neats_io.py:80` → `bada_model.py:1046-1048` (kept) → pycontrails

@@ -106,6 +106,7 @@ def _make_model(bada_results: list[Any], ao: set[str]) -> tuple[MagicMock, Magic
         "_derive_fuel_flow_from_mass_if_needed",
         "_finalize_columns",
         "_build_result",
+        "_check_total_fuel_burn",
         "_attach_output_attrs",
     ):
         setattr(model, name, getattr(BADAPerformanceModel, name).__get__(model))

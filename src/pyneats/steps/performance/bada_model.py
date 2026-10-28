@@ -366,7 +366,9 @@ class BADAPerformanceModel(
 
         A fuel-burn guardrail rejection goes through the whole chain: BADA3
         retry, then altitude fallback; the flight fails only if every attempt
-        is rejected. A failure raised with ``retryable=False`` ends the chain
+        is rejected. The exception is the AO path (fuel flow, engine
+        efficiency and aircraft mass all provided), where the rejection is
+        final: every retry would reuse the same operator fuel flow. A failure raised with ``retryable=False`` ends the chain
         where it occurs. On this path that flag is carried by the airspeed
         trust step (more than 80 % of the flight time untrusted or no trusted
         row, except when the AO provides fuel flow, engine efficiency and
@@ -617,24 +619,9 @@ class BADAPerformanceModel(
         q_fuel_used: float,
     ) -> FlightWithPerformance:
         """Apply guardrails, compute efficiency, and build the output flight."""
-        # Fuel burn guardrail: reject if total fuel > (MTOW - OEW) * threshold
-        # Total fuel burn in kg (pandas sum skips NaN); MTOW - OEW in kg.
-        if adapter.MTOW is not None and adapter.OEW is not None:
-            useful_payload = adapter.MTOW - adapter.OEW
-            total_fuel = float(df["fuel_burn"].sum())
-            limit = useful_payload * self.params.fuel_burn_threshold
-            if total_fuel > limit:
-                # Retryable: the BADA3 retry and the altitude fallback (points
-                # below FL20 removed) may still give a plausible result.
-                raise PerformanceStepError(
-                    f"Total fuel burn {total_fuel:.0f} kg exceeds "
-                    f"useful payload capacity {useful_payload:.0f} kg x "
-                    f"{self.params.fuel_burn_threshold} = {limit:.0f} kg",
-                )
-        else:
-            self.logger.warning(
-                "MTOW or OEW unavailable — skipping fuel burn guardrail"
-            )
+        # Retryable: the BADA3 retry and the altitude fallback (points below
+        # FL20 removed) may still give a plausible result.
+        self._check_total_fuel_burn(df, adapter)
 
         self._compute_engine_efficiency_if_missing(df, perf, q_fuel_used)
 
@@ -648,6 +635,35 @@ class BADAPerformanceModel(
             extra={"rows": len(df), "icao": icao, "bada": bada_version},
         )
         return out_view
+
+    def _check_total_fuel_burn(
+        self,
+        df: pd.DataFrame,
+        adapter: BaseBADAAdapter,
+        *,
+        retryable: bool = True,
+        hint: str = "",
+    ) -> None:
+        """Fuel burn guardrail: reject if total fuel > (MTOW - OEW) x threshold.
+
+        Total fuel burn in kg (pandas sum skips NaN); MTOW - OEW in kg. Skipped
+        with a warning when MTOW or OEW is unavailable.
+        """
+        if adapter.MTOW is None or adapter.OEW is None:
+            self.logger.warning(
+                "MTOW or OEW unavailable — skipping fuel burn guardrail"
+            )
+            return
+        useful_payload = adapter.MTOW - adapter.OEW
+        total_fuel = float(df["fuel_burn"].sum())
+        limit = useful_payload * self.params.fuel_burn_threshold
+        if total_fuel > limit:
+            raise PerformanceStepError(
+                f"Total fuel burn {total_fuel:.0f} kg exceeds "
+                f"useful payload capacity {useful_payload:.0f} kg x "
+                f"{self.params.fuel_burn_threshold} = {limit:.0f} kg{hint}",
+                retryable=retryable,
+            )
 
     # ---------- adapter & attrs ----------
     def _extract_aircraft_attrs(
@@ -822,9 +838,13 @@ class BADAPerformanceModel(
         """If AO provided fuel_flow, engine_efficiency, and aircraft_mass, skip BADA model.
 
         ``fuel_burn`` = fuel_flow [kg/s, treated as whole aircraft] x
-        segment_duration [s], i.e. kg per forward segment. No fuel-burn
-        guardrail and no fuel-flow outlier check are applied on this path.
-        Taken when ``_has_ao_fuel_and_efficiency(df)`` is True.
+        segment_duration [s], i.e. kg per forward segment. The fuel-burn
+        guardrail applies (``_check_total_fuel_burn``); its rejection is not
+        retryable, since a BADA3 retry or the altitude fallback would take
+        this path again with the same operator fuel flow. A fuel flow sent in
+        kg/h (3600 times too high) is caught this way. The point-by-point
+        fuel-flow outlier check does not apply. Taken when
+        ``_has_ao_fuel_and_efficiency(df)`` is True.
         """
         if _has_ao_fuel_and_efficiency(df):
             self.logger.debug(
@@ -832,6 +852,16 @@ class BADAPerformanceModel(
                 extra={"rows": len(df)},
             )
             df["fuel_burn"] = df["fuel_flow"] * df["segment_duration"]
+            self._check_total_fuel_burn(
+                df,
+                adapter,
+                retryable=False,
+                hint=(
+                    " (fuel flow provided by the aircraft operator: it must be"
+                    " in kg/s for the whole aircraft; kg/h gives 3600 times"
+                    " too much)"
+                ),
+            )
 
             if "fuel" not in df.columns and "fuel_burn" in df.columns:
                 df["fuel"] = df["fuel_burn"]
