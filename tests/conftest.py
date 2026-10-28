@@ -284,9 +284,12 @@ def assert_climate_payload_equal(
             assert_climate_payload_equal(a, e, rtol, path=f"{path}[{i}]")
 
     elif isinstance(expected, float):
-        if math.isnan(expected):
-            if not math.isnan(actual):
-                raise AssertionError(f"{path}: expected NaN, got {actual}")
+        # NaN and inf must match exactly: any comparison with NaN is False, so the
+        # tolerance checks below would let a NaN actual value pass.
+        if not math.isfinite(expected) or not math.isfinite(actual):
+            same = actual == expected or (math.isnan(actual) and math.isnan(expected))
+            if not same:
+                raise AssertionError(f"{path}: expected {expected}, got {actual}")
         elif expected == 0:
             if abs(actual) > rtol:
                 raise AssertionError(f"{path}: {actual} != 0 (atol={rtol})")
