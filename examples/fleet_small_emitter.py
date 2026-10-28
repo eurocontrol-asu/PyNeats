@@ -39,7 +39,7 @@ def main():
     parser.add_argument(
         "--tmp-dir",
         required=True,
-        help="Path to a temporary directory for OpenAirClim file I/O",
+        help="Path to a temporary directory for OpenAirClim file I/O (created if missing)",
     )
     parser.add_argument(
         "--airport-fuel-path",
@@ -69,9 +69,6 @@ def main():
             f"ERROR: Airport fuel file does not exist: {args.airport_fuel_path}",
             file=sys.stderr,
         )
-        sys.exit(1)
-    if not os.path.isdir(args.tmp_dir):
-        print(f"ERROR: Temp directory does not exist: {args.tmp_dir}", file=sys.stderr)
         sys.exit(1)
 
     # Set up meteorological data paths

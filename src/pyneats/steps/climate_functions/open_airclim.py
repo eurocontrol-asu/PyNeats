@@ -54,6 +54,30 @@ class OpenAirClimParams(ClimateParams):
     horizons: tuple[int, ...] = METRICS_HORIZONS  # [years]
 
 
+def prepare_tmp_base_dir(path: str) -> None:
+    """Create the OpenAirClim temp folder and check that it can be used.
+
+    Every small-emitter flight opens a temporary folder inside ``path``. The
+    runners call this once at start-up, so a missing parent is created and an
+    unusable path fails before any flight is computed instead of failing every
+    flight at the last step. ``""`` means the current working directory.
+
+    Raises:
+        ValueError: The folder cannot be created or written to. The message
+            names the path.
+    """
+    try:
+        if path:
+            os.makedirs(path, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=path):
+            pass
+    except OSError as e:
+        raise ValueError(
+            f"OpenAirClim temp folder tmp_base_dir_path={path!r} cannot be "
+            f"created or written to: {e}"
+        ) from e
+
+
 def _create_worker_toml(
     base_toml_path,
     input_dir_name,
@@ -220,6 +244,10 @@ class OpenAirClimModel(
         ``metrics.t_0``; see ``_create_worker_toml``). ``AGWP_{H}_CH4``
         includes PMO.
         """
+        # The runners create the folder at start-up; direct users of the model
+        # (and worker processes) get it created here.
+        if self.params.tmp_base_dir_path:
+            os.makedirs(self.params.tmp_base_dir_path, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=self.params.tmp_base_dir_path) as temp_dir:
             # 1. SETUP SYMLINK FOR REPOSITORY (Must be done before chdir if using absolute source paths)
             local_repo_link = os.path.join(temp_dir, "repository")

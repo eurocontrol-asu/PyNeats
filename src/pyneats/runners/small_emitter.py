@@ -22,6 +22,7 @@ from pyneats.runners.flight import FlightRunner
 from pyneats.runners.flight import RunnerConfig
 from pyneats.steps.climate_functions import FlightWithNonCO2Impact
 from pyneats.steps.climate_functions import NonCO2Model
+from pyneats.steps.climate_functions.open_airclim import prepare_tmp_base_dir
 from pyneats.steps.climate_functions.protocol import OpenAirClimStepError
 from pyneats.steps.emissions import FlightWithEmissions
 from pyneats.steps.weather import WeatherProviderProtocol
@@ -58,7 +59,9 @@ class SmallFleetRunnerParams(FleetRunnerParams):
     non_co2_model : str
         Name of the non-CO2 model to use (default: open_airclim).
     tmp_base_dir_path : str
-        Path for temporary file I/O required by OpenAirClim.
+        Path for temporary file I/O required by OpenAirClim. Created at
+        start-up if missing; the runner fails at start-up if it is not
+        writable.
     """
 
     non_co2_model: str = DEFAULT_NON_CO2_MODEL_SMALL_EMITTERS
@@ -90,6 +93,8 @@ class FlightRunnerSmallEmitter(FlightRunner):
         bada_path: str | None = None,
         airport_fuel_path: str | None = None,
     ) -> None:
+        prepare_tmp_base_dir(tmp_base_dir_path)
+
         # Run Shared Init
         super().__init__(weather, source, cfg, bada_path, airport_fuel_path)
 
@@ -138,6 +143,8 @@ class FleetRunnerSmallEmitter(FleetRunner):
     """
 
     def __init__(self, cfg: SmallFleetRunnerParams) -> None:
+        prepare_tmp_base_dir(cfg.tmp_base_dir_path)
+
         # ---------------------------------------------------------------
         # Parameter Injection
         # ---------------------------------------------------------------
