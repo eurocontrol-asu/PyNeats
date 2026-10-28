@@ -30,6 +30,7 @@ from pycontrails import Flight
 from pyneats.core.neats_default_parameters import OPEN_AIRCLIM_COMPUTATION_HORIZON
 from pyneats.core.neats_default_parameters import OPEN_AIRCLIM_GRID_RES
 from pyneats.core.neats_default_parameters import OPEN_AIRCLIM_LEVELS
+from pyneats.core.neats_default_parameters import OPEN_AIRCLIM_REFERENCE_YEAR
 from pyneats.core.physics import METRICS_HORIZONS
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
@@ -51,6 +52,7 @@ class OpenAirClimParams(ClimateParams):
     grid_res: float = OPEN_AIRCLIM_GRID_RES  # [degrees] lat/lon bin size
     oac_levels: tuple[int, ...] = OPEN_AIRCLIM_LEVELS  # [hPa]
     computation_horizon: int = OPEN_AIRCLIM_COMPUTATION_HORIZON  # [years]
+    reference_year: int = OPEN_AIRCLIM_REFERENCE_YEAR  # emission year of every flight
     horizons: tuple[int, ...] = METRICS_HORIZONS  # [years]
 
 
@@ -90,14 +92,10 @@ def _create_worker_toml(
     """
     Generate OpenAirClim configuration file for a computation worker.
 
-    ``time.range`` covers every year from ``year`` (the inventory year, i.e.
-    the year of the first waypoint) to ``year + horizon`` [years].
-    ``metrics.t_0`` is kept from the base TOML (2025 in the bundled
-    ``openairclim.toml``), and ``OpenAirClimModel.run`` reads
-    ``AGWP_{H}_2025``. openairclim raises when a metric window
-    [t_0, t_0 + H) falls outside ``time.range``, so the shipped
-    configuration matches the emission year only for flights dated 2025
-    (see docs/internal/pyneats_units_audit.md).
+    ``year`` is the reference year (``OpenAirClimParams.reference_year``),
+    which is also the inventory year. ``time.range`` covers every year from
+    ``year`` to ``year + horizon`` [years] and ``metrics.t_0`` is ``[year]``,
+    so every metric window [t_0, t_0 + H) starts with the emission.
     """
     with open(base_toml_path) as f:
         config = toml.load(f)
@@ -125,6 +123,7 @@ def _create_worker_toml(
     config["responses"]["dir"] = "repository/"
 
     config["time"]["range"] = [year, year + horizon + 1, 1]
+    config["metrics"]["t_0"] = [year]
 
     # Cleanup time settings
     if "file" in config["time"]:
@@ -165,9 +164,9 @@ class OpenAirClimModel(
         ``co2``/``h2o``/``nox``) in kg, from per-segment masses; ``distance``
         in km (``segment_length`` m / 1000). ``plev`` is the nearest
         ``oac_levels`` entry to ``air_pressure`` (Pa / 100, i.e. hPa);
-        ``lat``/``lon`` are bin centres in degrees. ``Inventory_Year`` is the
-        year of the first waypoint; openairclim treats the inventory as that
-        year's emissions (no time-evolution file).
+        ``lat``/``lon`` are bin centres in degrees. ``Inventory_Year`` is
+        ``reference_year``, whatever the flight date; openairclim treats the
+        inventory as that year's emissions (no time-evolution file).
 
         NaN NOx, CO2 and H2O (e.g. NOx outside the met domain) are filled
         with 0. NOx is the pycontrails NOx mass (expressed as NO2 by ICAO
@@ -222,7 +221,14 @@ class OpenAirClimModel(
         )
 
         ds = xr.Dataset.from_dataframe(grouped)
-        year = df.iloc[0].time.year
+        year = self.params.reference_year
+        flight_year = df.iloc[0].time.year
+        if flight_year != year:
+            self.logger.debug(
+                "Flight dated %s emitted in the OpenAirClim reference year %s",
+                flight_year,
+                year,
+            )
         ds.attrs["Inventory_Year"] = year
         ds["plev"].attrs["units"] = "hPa"
         ds["lat"].attrs["units"] = "degrees_north"
@@ -240,8 +246,8 @@ class OpenAirClimModel(
 
         Sets ``flight.attrs["AGWP_{H}_{O3,CH4,H2O,CONT}"]`` for H = 20, 50 and
         100 years, in W m-2 yr (openairclim "W m-2 year"), without efficacy,
-        read from openairclim's ``AGWP_{H}_2025`` (window starting at
-        ``metrics.t_0``; see ``_create_worker_toml``). ``AGWP_{H}_CH4``
+        read from openairclim's ``AGWP_{H}_{reference_year}`` (window
+        starting in the reference year; see ``_create_worker_toml``). ``AGWP_{H}_CH4``
         includes PMO.
         """
         # The runners create the folder at start-up; direct users of the model
@@ -310,7 +316,7 @@ class OpenAirClimModel(
                 with xr.load_dataset(result_nc) as metrics_ds:
                     results = {}
                     for h in self.params.horizons:
-                        var_name = f"AGWP_{h}_2025"
+                        var_name = f"AGWP_{h}_{year}"
                         if var_name in metrics_ds:
                             raw_results = metrics_ds[var_name]
                             results[f"AGWP_{h}"] = {

@@ -31,6 +31,7 @@ cite line numbers on `dev` before the fix they describe.
 | I1 (BADA4 speed filter never runs), I9 (`segment_duration` not recomputed after the speed filter) and I14 (TAS compared with a CAS stall speed) | Fixed by replacing the low-speed filter with an airspeed trust step: no row removed and no output column added; untrusted TAS (not finite, CAS below the stall CAS at MTOW, take-off configuration, CAS above the BADA VMO (400 kt without one), Mach ≥ 1) interpolated in time, and before the first and after the last trusted row given the CAS of that row; decided and filled on the unsmoothed TAS, re-smoothed only within the smoothing window of an untrusted row; BADA4 stall call fixed; flight fails (no retry) above 80 % untrusted time, except when the AO provides fuel flow, engine efficiency and aircraft mass (maintainer decisions). NM sample 2025-07-09, with I13 and the VMO limit: fleet fuel −0.77 % against `dev` (BADA4 −1.10 %, BADA3 +1.26 %), CO2 = 3.159 × fuel on all 4,303 flights, no new failure; golden outputs regenerated | `fix/airspeed-trust` | 2026-10-23 |
 | Golden test totals (`assert_climate_payload_equal`): a NaN actual value passed, because every comparison with NaN is False | Fixed: NaN and inf must match exactly; no golden file changed. Still open: per-point columns are compared with `atol=inf`, and CI runs no golden test (`requires_weather`) | `test/golden-nan-check` | 2026-10-28 |
 | OpenAirClim temp folder (`tmp_base_dir_path`) never created: with a missing folder every small-emitter flight failed at the last step | Fixed: the small-emitter runners create the folder at start-up and stop there, naming the path, if it cannot be written to; the model also creates it before each run. No change in results | `fix/openairclim-tmp-dir` | 2026-10-28 |
+| O4 (OpenAirClim metric window pinned to 2025; every flight dated 2026 failed) | Fixed: every flight is emitted in one reference year, `OPEN_AIRCLIM_REFERENCE_YEAR` = 2025 in `neats_default_parameters.py` (inventory year, `metrics.t_0`, `time.range`, result key); the same flight gives the same result whatever its date (maintainer and method-owner decision). Flights dated 2025: results bit-identical | `fix/openairclim-reference-year` | 2026-10-28 |
 
 ## 1. Outcome
 
@@ -683,6 +684,12 @@ consequential finding.
 5. **Decide in PyNEATS** (method owner): anchor every flight to the 2025 pulse convention
    consistently (inventory year, base inventory, CO2 coefficients), or set `t_0` and the
    inventory year per flight.
+6. **Resolution (2026-10-28, Ramon and Philippe).** One reference year for every flight,
+   `OPEN_AIRCLIM_REFERENCE_YEAR` = 2025 in `neats_default_parameters.py`
+   (`OpenAirClimParams.reference_year`). The inventory year, `metrics.t_0`, `time.range` and the
+   result key `AGWP_{H}_{year}` all use it. The base inventory covers 2025, so it fits unchanged.
+   A flight dated 2026 now runs and gives the same values as the same flight dated 2025; flights
+   dated 2025 are bit-identical to before.
 
 **O5. DWD `sdr` is TOA, and is scaled by 3600 twice on the ClimAccf path.**
 1. `weather_factory.py:247` maps DWD `sdr` to `surface_solar_downward_radiation`. `build_cache`

@@ -359,7 +359,9 @@ While **OpenAirClim** is designed to compute climate trajectories associated wit
 
 For contrails, a **base inventory** must be provided so that the marginal contrail contribution can be estimated in addition to it. In PyNeats, the base inventory currently used is:
 
-- **`OpenAirClim_Base_Inventory_2019`**
+- **`ELK_aviation_2025_res5deg_flat.nc`** (DLR ELK aviation inventory v2.1, regridded to 5°; its `Inventory_Year` attribute is 2025)
+
+**Reference year.** Every flight is computed as a pulse emitted in one reference year, `OPEN_AIRCLIM_REFERENCE_YEAR` in `neats_default_parameters.py` (2025), whatever the flight date. The emission inventory year, the start of the metric window ($t_0$) and the simulated period (reference year to reference year + 100) all use it, so the same flight gives the same result in any calendar year. The reference year must be covered by the base inventory. Changing it changes the background concentrations OpenAirClim uses, and therefore the results.
 
 The OpenAirClim library directly outputs the global warming potential for each species ($AGWP_{Spec}(H)$) **without including the efficacy term**. Including the efficacy term provides:
 
