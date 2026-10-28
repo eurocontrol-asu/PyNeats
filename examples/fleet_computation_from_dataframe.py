@@ -174,7 +174,8 @@ def main():
     #   departure_airport  str               ICAO departure airport code
     #   arrival_airport    str               ICAO arrival airport code
     #   model_type         str               Source of trajectory data
-    #   aobt               datetime64[ns]    Actual off-block time
+    #   aobt               datetime64[ns]    Departure time as supplied (flight-plan EOBT);
+    #                                        identifies the flight, not used in calculations
     #   aircraft_type      str               ICAO aircraft type code
 
     print(

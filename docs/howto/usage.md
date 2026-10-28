@@ -75,7 +75,7 @@ uv run python examples/weather_cache.py \
   --hour 0
 ```
 
-This converts DWD ICON data into an optimised Zarr store that PyNeats can load directly.
+This converts DWD ICON data into Zarr stores in `--zarr-path`: `icon_met.zarr` and `icon_rad.zarr`, plus `icon_wind.zarr` with `--include-wind`.
 
 To load the cache programmatically, use `get_weather_from_zarr`:
 
@@ -83,7 +83,11 @@ To load the cache programmatically, use `get_weather_from_zarr`:
 from pyneats.steps.weather.weather_store import get_weather_from_zarr, ZarrPaths
 
 weather = get_weather_from_zarr(
-    zp=ZarrPaths(met_path="/path/to/met.zarr", wind_path="/path/to/wind.zarr"),
+    zp=ZarrPaths(
+        met_store="/path/to/output/zarr/icon_met.zarr",
+        rad_store="/path/to/output/zarr/icon_rad.zarr",
+        wind_store=None,  # "/path/to/output/zarr/icon_wind.zarr" if built with --include-wind; None uses the met store
+    ),
     t0="2025-07-09T00:00:00",
     t1="2025-07-09T23:59:59",
     chunks=None,
@@ -109,7 +113,7 @@ PyNeats provides different runners depending on the flight type:
 | `FleetRunnerLargeEmitter` | Fleet of large emitters with parallelisation |
 | `FlightRunnerSmallEmitter` | Single small-emitter flight (Method D) |
 | `FleetRunnerSmallEmitter` | Fleet of small emitters |
-| `FleetRunnerPerformanceOnly` | Fleet performance (fuel flow, thrust) — skips climate metrics |
+| `FleetRunnerPerformanceOnly` | Fleet performance (fuel flow, aircraft mass, true airspeed, engine efficiency) — skips emissions and climate metrics |
 
 ### Large emitters (Method C — fleet)
 
@@ -162,11 +166,14 @@ provider and a trajectory DataFrame directly, with an optional `RunnerConfig`
 to override default step names:
 
 ```python
+from datetime import datetime
+
 from pyneats.runners.flight import RunnerConfig
 from pyneats.runners.large_emitter import FlightRunnerLargeEmitter
-from pyneats.steps.weather.weather_factory import DWDFactory
+from pyneats.steps.weather.weather_factory import DWDFactory, WeatherFactoryParams
 
-weather = DWDFactory(...).build()
+factory = DWDFactory(WeatherFactoryParams(data_dir="/path/to/dwd/icon/data"))
+weather = factory(datetime(2025, 7, 9), hour=0)   # DWD ICON run of 2025-07-09 00 UTC
 cfg = RunnerConfig(trajectory_parser="adsb")   # swap to OpenSky parser
 
 runner = FlightRunnerLargeEmitter(
@@ -180,20 +187,34 @@ runner.eval()
 
 ## Read the Output
 
-After `eval()`, results are available on `runner.results` as a dict with two keys:
+After `eval()`, `FleetRunnerLargeEmitter` and `FleetRunnerSmallEmitter` put
+their results on `runner.results`, a dict with two keys:
 
 ```python
-runner.results["fleet_meta_data"]    # dict: tool versions, config summary
-runner.results["flight_results"]     # list[dict]: one entry per flight
+runner.results["fleet_meta_data"]    # dict: tool versions
+runner.results["flight_results"]     # list[dict]: one entry per input flight (a multi-engine flight can give more)
 
 for flight_result in runner.results["flight_results"]:
     print(flight_result)
 ```
 
-Each entry in `flight_results` is either a successful `climate_impact` payload
-(from `Flight.attrs["climate_impact"]`) or an error record for flights that
-failed at some step. The pipeline does not crash on per-flight failures — it
-collects them so partial results remain usable.
+Each entry in `flight_results` is a successful result (the
+`Flight.attrs["climate_impact"]` payload), a zero result for a low-altitude
+flight, or an error record for a flight that failed at some step. The pipeline
+does not crash on per-flight failures — it collects them so partial results
+remain usable. Successful results come first, then low-altitude zero results,
+then error records, so the list is not in input order.
+
+`FleetRunnerPerformanceOnly` uses the same two keys, but each successful entry
+holds `flight_information` and `performance` (trajectory vectors) instead of
+climate metrics, and a low-altitude flight is an ordinary error record.
+Each engine copy of a multi-engine flight gives its own entry (`flight_id`
+`"<flight_id>__eng<i>"`). Successful entries come first, then error records.
+
+The single-flight runners (`FlightRunnerLargeEmitter`,
+`FlightRunnerSmallEmitter`) have no `results` attribute. After `eval()`, the
+same payload as a successful fleet entry is in
+`runner.flight_with_climate_impact.attrs["climate_impact"]`.
 
 See [reference/output-format.md](../reference/output-format.md) for the full
 output schema.
