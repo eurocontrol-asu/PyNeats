@@ -86,6 +86,9 @@ OPEN_AIRCLIM_GRID_RES : float
     Default grid resolution for Open Air Clim, in degrees.
 OPEN_AIRCLIM_COMPUTATION_HORIZON : int
     Default computation horizon for Open Air Clim, in years.
+OPEN_AIRCLIM_REFERENCE_YEAR : int
+    Year in which OpenAirClim (Method D) emits every flight, whatever the
+    flight date. The metric window starts in this year.
 """
 
 from collections.abc import Mapping
@@ -416,3 +419,10 @@ OPEN_AIRCLIM_GRID_RES: Final[float] = (
 OPEN_AIRCLIM_COMPUTATION_HORIZON: Final[int] = (
     100  # Time horizon (years) for AGWP computation
 )
+# Method D treats every flight as a pulse emitted in this year, whatever the
+# flight date, so the same flight gives the same result in any calendar year.
+# The inventory year, the metric start year (t_0), the simulated time range and
+# the result read back (AGWP_{H}_{year}) all use it. It must be a year covered
+# by the base inventory (ELK_aviation_2025, i.e. 2025). Changing it changes the
+# background concentrations and therefore the results.
+OPEN_AIRCLIM_REFERENCE_YEAR: Final[int] = 2025
