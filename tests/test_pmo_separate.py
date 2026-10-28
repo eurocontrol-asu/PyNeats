@@ -339,3 +339,64 @@ def test_missing_ch4_rf_backward_raises() -> None:
     gwp = _gwp(rf_backward_factor={"O3": 0.508, "H2O": 0.52, "PMO": 0.492})
     with pytest.raises(ClimateImpactStepError, match="CH4"):
         gwp._eagwp_spec_Wm2yr("CH4", ATR_CH4_K)
+
+
+# ---------------------------------------------------------------------------
+# CLIMaCCF backend (climaccf.py): the library never merges PMO into CH4
+# ---------------------------------------------------------------------------
+
+
+def _climaccf_model(pmo: bool) -> Any:
+    from pyneats.steps.climate_functions.climaccf import ACCFModel
+
+    m = ACCFModel.__new__(ACCFModel)
+    params = ACCFModel.default_params()
+    kwargs = {**params.accf_kwargs, "PMO": pmo}
+    m.params = dataclasses.replace(
+        params, accf_kwargs=kwargs, met=MagicMock(), surface=MagicMock()
+    )
+    m.logger = MagicMock()
+    return m
+
+
+@pytest.mark.parametrize("pmo", [True, False])
+def test_climaccf_library_called_without_pmo(pmo: bool) -> None:
+    m = _climaccf_model(pmo)
+    target = "pyneats.steps.climate_functions.climaccf"
+    with (
+        patch(f"{target}.make_accf_surface_view", return_value=MagicMock()),
+        patch(f"{target}.ACCF") as accf_cls,
+    ):
+        m._post_init()
+    assert accf_cls.call_args.kwargs["PMO"] is False
+
+
+@pytest.mark.parametrize("pmo", [True, False])
+def test_climaccf_run_writes_pmo_apart(pmo: bool) -> None:
+    m = _climaccf_model(pmo)
+    df = _accf_flight()
+    df["aCCF_CH4"] = [-1.0e-12, -2.0e-12, -3.0e-12]
+    df["aCCF_O3"] = [1.0e-12, 1.0e-12, 1.0e-12]
+    df["aCCF_H2O"] = [1.0e-15, 1.0e-15, 1.0e-15]
+    out = MagicMock()
+    out.to_dataframe = MagicMock(return_value=df)
+    m._impl = MagicMock()
+    m._impl.eval = MagicMock(return_value=out)
+    written: dict[str, Any] = {}
+    flight = MagicMock()
+    flight.__setitem__ = MagicMock(side_effect=written.__setitem__)
+    flight.__getitem__ = MagicMock(side_effect=written.__getitem__)
+    # default unit_K_per_kg_fuel=False: aCCF_CH4 is per kg NOx, times nox_ei
+    expected_ch4 = (df["fuel_burn"] * df["aCCF_CH4"] * df["nox_ei"]).to_numpy()
+    with patch(
+        "pyneats.steps.climate_functions.climaccf.FlightWithSegmentATR.from_flight",
+        return_value=flight,
+    ):
+        m.run(flight)
+    np.testing.assert_allclose(written["ATR_20_CH4"], expected_ch4, rtol=1e-15)
+    if pmo:
+        np.testing.assert_allclose(
+            written["ATR_20_PMO"], 0.29 * expected_ch4, rtol=1e-15
+        )
+    else:
+        assert "ATR_20_PMO" not in written

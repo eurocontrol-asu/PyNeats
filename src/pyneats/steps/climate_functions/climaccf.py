@@ -27,6 +27,7 @@ from pycontrails.datalib.ecmwf import TopNetThermalRadiation
 from pycontrails.models.accf import ACCF  # pycontrails’ wrapper for ClimAccf
 
 from pyneats.core.neats_default_parameters import DEFAULT_CLIMACCF_KWARGS
+from pyneats.core.physics import PMO_CH4_RF_RATIO
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.steps.climate_functions.params import ClimateParams
@@ -153,10 +154,13 @@ class ACCFModel(
 
         # Defaults you used in your snippet
         try:
+            # PMO is never merged into aCCF_CH4 by the library (it would carry
+            # the CH4 efficacy and factors, audit O14). ``run`` writes it as a
+            # separate ATR_20_PMO column when accf_kwargs["PMO"] is True.
             self._impl = ACCF(
                 met=self.params.met,
                 surface=accf_surface,
-                **self.params.accf_kwargs,
+                **{**self.params.accf_kwargs, "PMO": False},
             )
         except Exception as e:
             self.logger.exception("Failed to initialize ACCF model")
@@ -187,7 +191,10 @@ class ACCFModel(
         Returns:
             ``FlightWithNonCO2Impact`` — flight with ``ATR_20_CH4``,
             ``ATR_20_O3``, ``ATR_20_H2O`` columns (K per segment) consumed by
-            ``GWPMetrics`` downstream.
+            ``GWPMetrics`` downstream. The library is always called with
+            ``PMO=False``, so ``ATR_20_CH4`` excludes PMO. With
+            ``accf_kwargs["PMO"]`` True (default) it also writes
+            ``ATR_20_PMO`` = ``PMO_CH4_RF_RATIO`` (0.29) x ``ATR_20_CH4``.
 
         Raises:
             ACCFStepError: If the CLIMaCCF output is missing required columns.
@@ -208,6 +215,9 @@ class ACCFModel(
             flight["ATR_20_CH4"] = fuel_burn * df["aCCF_CH4"]  # K per segment
             flight["ATR_20_O3"] = fuel_burn * df["aCCF_O3"]  # K per segment
             flight["ATR_20_H2O"] = fuel_burn * df["aCCF_H2O"]  # K per segment
+            if self.params.accf_kwargs.get("PMO", False):
+                # PMO apart from CH4 (O14): own efficacy and factors in gwp.py
+                flight["ATR_20_PMO"] = PMO_CH4_RF_RATIO * flight["ATR_20_CH4"]
 
         except KeyError as e:
             self.logger.error("ACCFbackend: %s", e)

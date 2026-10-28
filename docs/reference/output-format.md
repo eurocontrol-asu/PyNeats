@@ -328,4 +328,6 @@ efficiency and aircraft mass:
   `contrail_age`, `sdr_mean`, `rsr_mean`, `olr_mean`, `rf_sw_mean`,
   `rf_lw_mean`, `rf_net_mean`, `cocip`
 - **Climate functions (aCCF v1.0A)**: `ATR_20_O3`, `ATR_20_CH4`,
-  `ATR_20_H2O`
+  `ATR_20_H2O`, and `ATR_20_PMO` when PMO is on (default). `ATR_20_CH4`
+  excludes PMO; `ATR_20_PMO` = 0.29 x `ATR_20_CH4`. Both are added into the
+  `CH4` climate-metrics entry.
