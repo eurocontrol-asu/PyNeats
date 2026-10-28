@@ -133,11 +133,11 @@ uv run examples/fleet_performance_only.py \
 ```
 
 **Output** includes per-flight performance trajectory vectors:
-- `timestamps` — waypoint timestamps
-- `fuel_flow` — fuel flow rate
-- `aircraft_mass` — aircraft mass along the trajectory
-- `true_airspeed` — true airspeed
-- `engine_efficiency` — engine thermal efficiency
+- `timestamps` — times of the resampled trajectory points (1 min apart by default), ISO 8601, UTC, no offset printed
+- `fuel_flow` — fuel flow rate (kg/s, whole aircraft)
+- `aircraft_mass` — aircraft mass along the trajectory (kg)
+- `true_airspeed` — true airspeed (m/s)
+- `engine_efficiency` — overall propulsion efficiency (dimensionless fraction)
 
 ## Output (full pipeline examples)
 
@@ -145,7 +145,7 @@ The `fleet_computation_*` and `fleet_small_emitter` examples produce detailed cl
 - **Flight Information**: Flight ID, airports, aircraft type, fuel burn
 - **Climate Metrics**: CO₂, contrails, CH₄, O₃, H₂O impacts
 - **Horizons**: 20, 50, and 100-year impact assessments
-- **EAGWP**: Energy-adjusted global warming potential (J/m²)
+- **EAGWP**: Efficacy-adjusted absolute global warming potential (W m⁻² yr)
 - **CO₂ Equivalent**: Climate impact in CO₂-equivalent kilograms
 
 ### weather_cache.py
@@ -197,7 +197,7 @@ uv run examples/fleet_computation_from_json.py \
 |---|---|---|---|
 | **Large emitter** | `FleetRunnerLargeEmitter` | Climate metrics | Full climate impact (CoCiP contrails + non-CO₂) |
 | **Small emitter** | `FleetRunnerSmallEmitter` | Climate metrics | OpenAirClim pipeline (no CoCiP) |
-| **Performance only** | `FleetRunnerPerformanceOnly` | Performance | Fuel flow, mass, TAS only |
+| **Performance only** | `FleetRunnerPerformanceOnly` | Performance | Fuel flow, aircraft mass, TAS and engine efficiency only |
 
 Key features shared by all runners:
 - Per-flight error handling (continues processing even if individual flights fail)

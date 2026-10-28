@@ -35,12 +35,12 @@
         "departure_date_time": {
           "type": "string",
           "format": "date-time",
-          "description": "Actual off-block time (AOBT) in ISO-8601 format."
+          "description": "Departure time in ISO-8601 format, as supplied (the AO upload schema gives the flight-plan EOBT). Copied verbatim to the output field aobt; not parsed."
         },
         "arrival_date_time": {
           "type": ["string", "null"],
           "format": "date-time",
-          "description": "Actual in-block time (AIBT) in ISO-8601 format."
+          "description": "Arrival time in ISO-8601 format, as supplied. Not used by PyNeats."
         },
         "departure_airport": {
           "type": "string",
@@ -73,15 +73,15 @@
         },
         "engine_uid": {
           "type": ["string", "null"],
-          "description": "Unique engine identifier."
+          "description": "Engine UID from the ICAO Aircraft Engine Emissions Databank (EDB), e.g. '3CM026'; not an engine name."
         },
         "load_factor": {
           "type": ["number", "null"],
-          "description": "Payload / max-payload ratio (0–1)."
+          "description": "Payload mass / maximum payload mass (BADA MPL, or MTOW - OEW when BADA gives no positive MPL), dimensionless; not a seat load factor."
         },
         "takeoff_mass": {
           "type": ["number", "null"],
-          "description": "Takeoff mass in kg."
+          "description": "Take-off mass in kg: the mass at the start of the take-off run."
         }
       },
       "additionalProperties": true
@@ -93,7 +93,7 @@
       "properties": {
         "hydrogen_content": {
           "type": ["number", "null"],
-          "description": "Mass fraction of hydrogen in the fuel."
+          "description": "Hydrogen content of the fuel in wt.% (percent by mass, e.g. 13.79), not a 0-1 fraction."
         },
         "hydrogen_per_carbon_ratio": {
           "type": ["number", "null"],
@@ -101,19 +101,19 @@
         },
         "aromatic_content": {
           "type": ["number", "null"],
-          "description": "Mass fraction of aromatics in the fuel."
+          "description": "Aromatics content of the fuel, % by volume basis (MRR Annex IIIa 5(4)); percent or fraction scale not defined. Not used in PyNeats calculations."
         },
         "calorific_value": {
           "type": ["number", "null"],
-          "description": "Lower heating value in MJ/kg."
+          "description": "Lower calorific value in J/kg (the AO gives MJ/kg; the NEATS application multiplies by 1e6). A value outside 35e6-50e6 J/kg makes the flight fail."
         },
         "naphthalene": {
           "type": ["number", "null"],
-          "description": "Mass fraction of naphthalene in the fuel."
+          "description": "Naphthalene content of the fuel, % by volume basis (MRR Annex IIIa 5(4)); percent or fraction scale not defined. Not used in PyNeats calculations."
         },
         "sulphur": {
           "type": ["number", "null"],
-          "description": "Mass fraction of sulphur in the fuel."
+          "description": "Sulphur content of the fuel, % by mass basis (MRR Annex IIIa 5(4)); percent or fraction scale not defined. Not used in PyNeats calculations."
         }
       },
       "additionalProperties": true
@@ -158,15 +158,15 @@
         },
         "fl": {
           "type": "number",
-          "description": "Flight level (hundreds of feet) or altitude."
+          "description": "Flight level: ISA pressure altitude in hundreds of feet, e.g. 350 for FL350. Always read as a flight level and converted to metres as FL x 30.48 m; never read as an altitude in feet or metres."
         },
         "ff": {
           "type": ["number", "null"],
-          "description": "Fuel flow in kg/s."
+          "description": "Fuel flow in kg/s for the whole aircraft (all engines), not per engine."
         },
         "ee": {
           "type": ["number", "null"],
-          "description": "Overall engine efficiency."
+          "description": "Overall propulsion efficiency (thrust x true airspeed / (fuel flow x lower calorific value)), dimensionless fraction."
         },
         "am": {
           "type": ["number", "null"],
@@ -174,7 +174,7 @@
         },
         "tas": {
           "type": ["number", "null"],
-          "description": "True airspeed in m/s."
+          "description": "True airspeed in m/s (the AO gives knots; the NEATS application converts to m/s before calling PyNeats)."
         }
       },
       "additionalProperties": true

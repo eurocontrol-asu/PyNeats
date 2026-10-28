@@ -116,7 +116,7 @@ The interpolation module converts the input trajectory (primary or secondary) to
 
 *PyNeats currently uses straightforward linear interpolation via PyContrails' `resample_and_fill` method. For secondary data, the coarse native sampling can yield segments that are not fully realistic and may stray outside the flight envelope after interpolation. To obtain more realistic trajectories, smoothing is applied to ground speed using the **Savitzky–Golay filter** from PyContrails, reducing the number of segments that fall outside the flight envelope.*
 
-For optional primary variables along the trajectory (e.g. true airspeed, aircraft mass, fuel flow, or engine efficiency), **linear interpolation** is applied to align their values with the trajectory timestamps. Missing data points are not filled: a point the AO leaves empty also empties the resampled points between its two neighbours, and these stay empty in the performance step.
+For optional primary variables along the trajectory (true airspeed, aircraft mass, fuel flow and engine efficiency), **linear interpolation** in time is applied to align their values with the resampled timestamps. An empty value is skipped, as if the AO had not sent that point: each resampled point is interpolated between the nearest points that have a value, and before the first or after the last point with a value it takes that nearest value. A variable with no value at any point is treated as not provided. Empty values are not filled from BADA.
 
 ### 3.3 Weather
 
@@ -169,7 +169,7 @@ The emissions and climate modules require the following aircraft-performance val
 - **Fuel flow**
 - **Engine efficiency**
 
-The performance model is used to estimate these values when the AO does not provide them. A quantity is taken from the AO when at least one point has a value; points the AO leaves empty are not estimated (see Input Decision Logic).
+The performance model is used to estimate these values when the AO does not provide them. A quantity is taken from the AO when at least one point has a value; points the AO leaves empty are not estimated by the performance model: they are interpolated in time between the nearest points with a value, or take that nearest value before the first or after the last point with a value (see §3.2 and Input Decision Logic).
 
 **BADA** is the current chosen model for performance computation in PyNeats, in its open-source version from EUROCONTROL (**pyBADA**). BADA requires, at a given point of the trajectory:
 
@@ -190,13 +190,13 @@ Each performance quantity has its own source, so the cases below are not exclusi
 2. **Fuel flow, engine efficiency and aircraft mass all provided:** no BADA thrust or fuel-flow calculation; the provided values are used directly downstream. The fuel-burn plausibility check (total fuel burn at most 1.2 × (MTOW − OEW), applied on every other path with the fuel flow actually used; a flight it rejects is retried with BADA 3 and then, when it has points below FL20, without those points; it fails only if every attempt is rejected) also applies on this path, but a flight it rejects here fails at once, without retries, because every retry would use the same AO fuel flow. A fuel flow sent in kg/h instead of kg/s is caught this way.
 3. **Otherwise BADA computes thrust and fuel flow at each point**, with the aircraft mass taken from, in order: the AO aircraft mass, if provided; else the AO take-off weight (TOW), decreased along the trajectory with the BADA fuel flow; else the iterative estimate of rule 5.
 4. **Outputs:**
-    - **Fuel flow:** AO fuel flow (kg/s) if provided; else, if the AO provides aircraft mass, the mass decrease since the previous point divided by the time step to the next point (set to 0 where the mass increases; 0 at the first point and empty at the last, so the last segment's mass decrease is not counted); else the BADA fuel flow.
+    - **Fuel flow:** AO fuel flow (kg/s) if provided; else, if the AO provides aircraft mass, the mass decrease from each point to the next point divided by the time between the two points (set to 0 where the mass increases; empty at the last point, which has no next point); else the BADA fuel flow. The fuel burn of each segment is this fuel flow times the segment duration, so when the mass never increases the total fuel burn equals the mass at the first point minus the mass at the last point of the trajectory used: the 60 s resampled trajectory, without the points below FL20 when that retry is used. These masses are interpolated from the AO masses (see §3.2). The resampled points are the whole minutes from the first to the last AO time, so when the first or last AO time is not on a whole minute, the mass decrease before the first whole minute or after the last whole minute is not counted.
     - **Engine efficiency:** AO value if provided; else computed from BADA thrust and BADA fuel flow. This also holds when the AO provides fuel flow: **engine efficiency requires thrust AND fuel flow** from a consistent source, so engine efficiency = f(BADA thrust, BADA fuel flow), while the AO fuel flow is used downstream.
     - **Aircraft mass:** as in rule 3. When the AO provides fuel flow but no aircraft mass, the mass decreases with the BADA fuel flow (from the AO TOW or from the estimated TOW, whose trip fuel also uses the BADA fuel flow), so the mass decrease differs from the reported fuel burn.
 
-    A quantity counts as provided when at least one point has a value; points left empty are not filled from BADA and are left out of the fuel totals.
+    A quantity counts as provided when at least one point has a value; points left empty are not filled from BADA: they are interpolated in time between the nearest points with a value, or take that nearest value before the first or after the last point with a value (see §3.2).
 
-    Before any of these rules, also on the path of rule 2, a true airspeed is untrusted when it is missing, when its calibrated airspeed is below the BADA stall speed (at MTOW, take-off configuration by default) or above the BADA maximum operating speed (VMO, no margin; 400 kt when the BADA model gives none), or when its Mach number is 1 or more. No point is removed: an untrusted true airspeed is replaced by linear interpolation in time between the nearest trusted points; before the first and after the last trusted point it takes the calibrated airspeed of that point, converted to true airspeed at its own altitude. The acceleration is recomputed. A computed true airspeed is checked and replaced on the 1-minute speed before smoothing, then smoothed with the same 7-point filter; the smoothed value is used at the replaced points (not before the first or after the last trusted point, which keep the calibrated airspeed of that point) and at the points within the smoothing window of a replaced point (up to 3 points away), which can change too. All other points, and every point of a flight without an untrusted point, keep their true airspeed (the last point, which has no next point, takes the value of the point before it). The output `true_airspeed` is the value after this step. A flight fails, with no retry, when more than 80 % of its time is untrusted, except on the path of rule 2 (BADA fuel flow not used), where the flight is kept with its true airspeed replaced.
+    Before any of these rules, also on the path of rule 2, a true airspeed is untrusted when it is missing (only a computed true airspeed can be missing here: empty AO values were already interpolated at the resampling, see §3.2), when its calibrated airspeed is below the BADA stall speed (at MTOW, take-off configuration by default) or above the BADA maximum operating speed (VMO, no margin; 400 kt when the BADA model gives none), or when its Mach number is 1 or more. No point is removed: an untrusted true airspeed is replaced by linear interpolation in time between the nearest trusted points; before the first and after the last trusted point it takes the calibrated airspeed of that point, converted to true airspeed at its own altitude. The acceleration is recomputed. A computed true airspeed is checked and replaced on the 1-minute speed before smoothing, then smoothed with the same 7-point filter; the smoothed value is used at the replaced points (not before the first or after the last trusted point, which keep the calibrated airspeed of that point) and at the points within the smoothing window of a replaced point (up to 3 points away; also the first 3 points of the flight when one of its first 7 points is replaced, and the 3 points before the last point when one of the 7 points before the last point is replaced), which can change too. All other points keep their true airspeed; a flight with an AO true airspeed and no untrusted point keeps it at every point. A computed true airspeed has no value at the last point, which has no next point: that point is always untrusted and takes the value of the point before it, but it does not cause the points before it to be re-smoothed. The output `true_airspeed` is the value after this step. A flight fails, with no retry, when more than 80 % of its time is untrusted, when no point is trusted, or when the check itself fails. On the path of rule 2 (BADA fuel flow not used), only a failure of the check itself fails the flight: in the other two cases the flight is kept with its true airspeed replaced (or kept as is when no point is trusted).
 
 5. **Neither mass nor TOW provided:** the load factor is used (AO-provided or conservative default of 1). The following approach (similar to PyContrails) is applied:
 
@@ -240,14 +240,14 @@ To account for fuel properties provided by AOs, a **custom `NEATSFuel` class** h
 
 - The `NEATSFuel` class **inherits from `SAFBlend`** in CoCiP:
     - All fuel properties defined in `SAFBlend` are initially set identically in `NEATSFuel`.
-    - If the AO provides a value for the **hydrogen content** fuel property, it overrides the initial `hydrogen_content` value.
-    - If the AO has not provided hydrogen content but has provided the **hydrogen-to-carbon molecular mass ratio ($r$)**, `hydrogen_content` is overridden by:
+    - If the AO provides a value for the **hydrogen content** fuel property (wt.%, percent by mass, e.g. 13.79), it overrides the initial `hydrogen_content` value.
+    - If the AO has not provided hydrogen content but has provided the **hydrogen-to-carbon ratio ($r$, atomic: hydrogen atoms per carbon atom, MRR Annex IIIa §1(36))**, `hydrogen_content` (wt.%) is overridden by:
 
-        $$\text{Hydrogen content} = \frac{r \cdot 1.008}{12.011 + r \cdot 1.008}$$
+        $$\text{Hydrogen content [wt.\%]} = \frac{r \cdot 1.008}{12.011 + r \cdot 1.008} \times 100$$
 
     - If the AO provides the **calorific value**, it overrides the `q_fuel` conservative default of **42 800 000 J/kg**. If it does not, and an airport fuel file is configured, the value for the departure airport is used.
     - A supplied `q_fuel` must be in J/kg and between **35 and 50 MJ/kg**. Outside this range (typically a value in MJ/kg) the flight fails at parsing; a wrong value in the airport fuel file stops the run when the runner is built.
-    - If **neither** hydrogen content **nor** hydrogen-to-carbon ratio is provided, the hydrogen content defaults to the conservative **13.79 %**.
+    - If **neither** hydrogen content **nor** hydrogen-to-carbon ratio is provided, the hydrogen content defaults to the conservative **13.79 wt.%**.
 - The water emission index **`ei_h2o`** (initial default 1.23 in PyContrails/CoCiP) is **adjusted linearly** based on the hydrogen content value, in line with what is done in `SAFBlend`.
 - The **nvPM** is reduced using the `black_carbon` class from PyContrails — as done in `SAFBlend` — taking the hydrogen content as parameter (currently only available for SAF in PyContrails).
 - The **aromatic content, sulphur, and naphthalene** fuel properties, which an AO can provide, are **not used so far** in any calculation of the Emissions module.
@@ -270,7 +270,7 @@ The CO₂-equivalent computation is based on **GWP for three horizons: 20, 50, a
 The **EAGWP** (Efficacy-adjusted Absolute Global Warming Potential) for Contrails at the time horizon $H$ is defined as:
 
 $$
-EAGWP_{Con}(H) = \frac{EF \cdot \varepsilon_{Con}}{S_{Earth} \cdot s_{yr}} \quad [W \cdot m^{-2}]
+EAGWP_{Con}(H) = \frac{EF \cdot \varepsilon_{Con}}{S_{Earth} \cdot s_{yr}} \quad [W \cdot m^{-2} \cdot yr]
 $$
 
 where:
@@ -283,7 +283,7 @@ where:
 The **AGWP for CO₂** at the time horizon $H$ is obtained using AirClim values scaled by emitted mass:
 
 $$
-AGWP_{CO2}(H) = C(H) \cdot m_{CO2} \quad [W \cdot m^{-2}]
+AGWP_{CO2}(H) = C(H) \cdot m_{CO2} \quad [W \cdot m^{-2} \cdot yr]
 $$
 
 where $C(H)$ are AGWP coefficients at horizon $H$ from AirClim:
@@ -308,7 +308,7 @@ $$
 EAGWP_{Spec}(H) =
 \frac{K_{AGWP \leftarrow RF}^{Spec}(H)}{K_{ATR \leftarrow RF}^{Spec}(H_0)}
 \cdot \frac{\varepsilon_{Spec}^{2}}{RF_{Spec}^{Backward}}
-\cdot ATR^{Spec}(H_0) \quad [W \cdot m^{-2}]
+\cdot ATR^{Spec}(H_0) \quad [W \cdot m^{-2} \cdot yr]
 $$
 
 where:
