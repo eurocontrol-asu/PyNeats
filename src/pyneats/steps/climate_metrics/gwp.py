@@ -45,6 +45,10 @@ __all__ = [
 # Supported species for aCCFs pathway
 SPECIES: Final[tuple[str, ...]] = ("CH4", "O3", "H2O")
 
+# Primary-mode ozone: computed separately, with its own efficacy and conversion
+# factors, then added into the "CH4" output entry (the output keeps 5 species).
+PMO: Final[str] = "PMO"
+
 # Column name pattern expected for ATR at H0 = 20 years [K per segment]
 ATR_COL_TEMPLATE: Final[str] = "ATR_20_{spec}"
 
@@ -104,6 +108,34 @@ class GWPMetrics(
 
     default_params = GWPParams
 
+    # ---------- Helpers (Lookup) ----------
+
+    @staticmethod
+    def _factor(table: str, mapping: Mapping[str, float], species: str) -> float:
+        """Return ``mapping[species]``; raise if the species has no entry.
+
+        A missing species used to fall back to 1.0, which silently mis-scales it
+        (for PMO without an RF backward factor, about 2x too large).
+        """
+        try:
+            return float(mapping[species])
+        except KeyError:
+            raise ClimateImpactStepError(
+                f"No {table} value for species '{species}'"
+            ) from None
+
+    def _conversion_factor(
+        self,
+        table: str,
+        mapping: Mapping[int, Mapping[str, float]],
+        horizon: int,
+        species: str,
+    ) -> float:
+        """Return ``mapping[horizon][species]``; raise if either key is missing."""
+        if horizon not in mapping:
+            raise ClimateImpactStepError(f"No {table} values for horizon H={horizon}")
+        return self._factor(f"{table}[H={horizon}]", mapping[horizon], species)
+
     # ---------- Helpers (Math) ----------
 
     def _agwp_co2_Wm2yr(self, m_co2: float) -> dict[int, float]:
@@ -140,7 +172,7 @@ class GWPMetrics(
             EAGWP for each time horizon in W·m⁻²·yr (the same value for every
             horizon).
         """
-        eps = float(self.params.efficacy.get("Contrails", 1.0))
+        eps = self._factor("efficacy", self.params.efficacy, "Contrails")
         s = self.params.surface_earth
         s_yr = self.params.seconds_per_year
         return dict.fromkeys(self.params.horizons, total_ef_J * eps / (s * s_yr))
@@ -156,18 +188,27 @@ class GWPMetrics(
         """Scales ATR(H0) [K] to EAGWP(H) [W·m⁻²·yr].
 
         EAGWP(H) = ATR(H0) * k_AGWP(H) / k_ATR(H0) / rf_backward * efficacy**2.
-        """
-        eps_spec = float(self.params.efficacy.get(species, 1.0))
-        h_0 = self.params.atr_ref_horizon
-        rf_backward = float(self.params.rf_backward_factor.get(species, 1.0))
 
-        k_atr_h_0 = float(self.params.k_atr_from_rf.get(h_0, {}).get(species, 1.0))
+        Every factor is looked up for ``species`` itself (PMO has its own);
+        a missing entry raises ``ClimateImpactStepError``.
+        """
+        eps_spec = self._factor("efficacy", self.params.efficacy, species)
+        h_0 = self.params.atr_ref_horizon
+        rf_backward = self._factor(
+            "RF backward factor", self.params.rf_backward_factor, species
+        )
+
+        k_atr_h_0 = self._conversion_factor(
+            "k_ATR conversion factor", self.params.k_atr_from_rf, h_0, species
+        )
         if k_atr_h_0 == 0.0:
             raise ClimateImpactStepError(f"k_ATR←E[{species}][H0={h_0}] is zero.")
 
         out: dict[int, float] = {}
         for h in self.params.horizons:
-            k_agwp = float(self.params.k_agwp_from_rf.get(h, {}).get(species, 1.0))
+            k_agwp = self._conversion_factor(
+                "k_AGWP conversion factor", self.params.k_agwp_from_rf, h, species
+            )
             # the conversion factors do include efficacy for ATR calculation
             # therefore need to multiply the ATR values from the aCCFs with the efficacy to be consistent with the conversion factors
             # this translates with the efficacy being square in the formula:
@@ -186,6 +227,8 @@ class GWPMetrics(
         1. Sums 'ef' column for Contrails [J].
         2. Sums 'ATR_20_X' columns for Non-CO2 [K].
         3. Applies conversion factors.
+        4. If 'ATR_20_PMO' is present, converts it with the PMO factors and
+           adds it into the CH4 entry.
 
         Each entry's values hold ``EAGWP_Wm2yr`` [W m-2 yr] and ``CO2eq_kg``
         [kg CO2-equivalent].
@@ -229,6 +272,16 @@ class GWPMetrics(
                     pd.to_numeric(df[atr_col], errors="coerce").fillna(0.0).sum()
                 )
                 eagwp_spec = self._eagwp_spec_Wm2yr(sp, atr_h0_total_K)
+
+                pmo_col = ATR_COL_TEMPLATE.format(spec=PMO)
+                if sp == "CH4" and pmo_col in df.columns:
+                    # PMO part with its own efficacy and factors, added into CH4
+                    atr_pmo_K = float(
+                        pd.to_numeric(df[pmo_col], errors="coerce").fillna(0.0).sum()
+                    )
+                    eagwp_pmo = self._eagwp_spec_Wm2yr(PMO, atr_pmo_K)
+                    eagwp_spec = {h: eagwp_spec[h] + eagwp_pmo[h] for h in horizons}
+
                 co2eq_spec = self._co2eq_from_eagwp_Wm2yr(eagwp_spec)
 
                 results.append(
@@ -244,6 +297,9 @@ class GWPMetrics(
                         ],
                     }
                 )
+            except ClimateImpactStepError:
+                # Missing or zero factor: a configuration error, not a data issue
+                raise
             except Exception:
                 self.logger.exception("Failed to compute %s metrics from segments", sp)
 
@@ -256,7 +312,8 @@ class GWPMetrics(
         Computations for Method D
         1. Reads 'AGWP_{h}_{spec}' directly from attributes [W m-2 yr].
         2. Applies Efficacy.
-        3. Divides by CO2 contribution (CO2eq).
+        3. Adds 'AGWP_{h}_PMO' x efficacy_PMO, when present, into CH4.
+        4. Divides by CO2 contribution (CO2eq).
 
         Each entry's values hold ``EAGWP_Wm2yr`` [W m-2 yr] and ``CO2eq_kg``
         [kg CO2-equivalent].
@@ -264,8 +321,15 @@ class GWPMetrics(
         results = []
         horizons = self.params.horizons
 
-        # --- A. Non-CO2 Species (CH4, O3, H2O) ---
+        # PMO is optional (absent in flights from before it was stored apart)
+        has_pmo = any(f"AGWP_{h}_{PMO}" in flight.attrs for h in horizons)
+        eps_pmo = (
+            self._factor("efficacy", self.params.efficacy, PMO) if has_pmo else 0.0
+        )
+
+        # --- A. Non-CO2 Species (CH4 incl. PMO, O3, H2O) ---
         for sp in SPECIES:
+            eps = self._factor("efficacy", self.params.efficacy, sp)
             val_list = []
             for h in horizons:
                 # Key format: AGWP_20_CH4
@@ -275,8 +339,10 @@ class GWPMetrics(
                 raw_agwp = flight.attrs.get(attr_key, 0.0)
 
                 # Apply Efficacy
-                eps = float(self.params.efficacy.get(sp, 1.0))
                 eagwp = raw_agwp * eps
+                if sp == "CH4" and has_pmo:
+                    # PMO part with its own efficacy, added into CH4
+                    eagwp += flight.attrs.get(f"AGWP_{h}_{PMO}", 0.0) * eps_pmo
 
                 # Convert to CO2eq
                 denom = self.params.agwp_coeff_wm2yr_per_kg[h]
@@ -297,7 +363,7 @@ class GWPMetrics(
                 has_contrails = True
 
                 raw_agwp = flight.attrs.get(attr_key, 0.0)
-                eps = float(self.params.efficacy.get("Contrails", 1.0))
+                eps = self._factor("efficacy", self.params.efficacy, "Contrails")
                 eagwp = raw_agwp * eps
 
                 denom = self.params.agwp_coeff_wm2yr_per_kg[h]
@@ -366,13 +432,16 @@ class GWPMetrics(
             - Each ``climate_metrics`` value: ``horizon`` [years],
               ``EAGWP_Wm2yr`` (efficacy-weighted time-integrated forcing,
               [W m-2 yr]) and ``CO2eq_kg`` (EAGWP / C(H), [kg CO2-equivalent]).
-              For CO2, ``CO2eq_kg`` is the total CO2 [kg]. CH4 includes PMO in
-              Method D and, with ``accf_kwargs["PMO"]`` True (default), in
-              Method C.
+              For CO2, ``CO2eq_kg`` is the total CO2 [kg]. The ``CH4`` entry
+              is CH4 including PMO: the PMO part (Method C ``ATR_20_PMO``,
+              written when ``accf_kwargs["PMO"]`` is True (default); Method D
+              ``AGWP_{H}_PMO``) is computed with its own efficacy and factors
+              and added to the CH4 part before the guardrail.
 
         Raises:
             ClimateImpactStepError: If ``total_co2`` is missing, if the input
-                view shape is inconsistent, or if the non-CO2/CO2 guardrail
+                view shape is inconsistent, if a species has no efficacy, RF
+                backward or conversion factor, or if the non-CO2/CO2 guardrail
                 trips.
             TypeError: If the input view type is neither segment-ATR nor
                 global-AGWP.

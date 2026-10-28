@@ -315,7 +315,7 @@ DEFAULT_CLIMACCF_KWARGS: Final[Mapping[str, Any]] = {
     "issr_rhi_threshold": 1.0,  # RHI threshold for ice-supersaturated region detection
     "efficacy": False,  # Disable efficacy weighting (use direct radiative forcing)
     "forecast_step": 12,  # Use 12-hour meteorological forecast data
-    "PMO": True,  # Include particulate matter organic (PMO) aerosol effects
+    "PMO": True,  # Include primary-mode ozone (PMO, long-term O3 decrease from NOx-driven CH4 loss)
     "pfca": "PCFA-SAC",  # Probabilistic fuel consumption approach with SAC radiative forcing
     "horizontal_resolution": None,  # Use native data resolution
     "unit_K_per_kg_fuel": False,  # Output in ATR units (not K per kg fuel)

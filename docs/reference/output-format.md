@@ -110,6 +110,10 @@ horizons (20, 50 and 100 years), each with:
 - `CO2eq_kg`: CO2-equivalent, kg. For CO2 it is the flight total CO2
   (`co2_baseline_kg`) at every horizon.
 
+The `CH4` entry is CH4 including primary-mode ozone (PMO). PMO is computed
+separately, with its own efficacy and conversion factors, and added to the CH4
+values; there is no separate `PMO` entry.
+
 The species and their order depend on the method:
 
 - Large emitters (Method C): `CO2`, `Contrails`, `CH4`, `O3`, `H2O`. A flight

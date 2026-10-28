@@ -323,9 +323,26 @@ where:
     | H₂O | 0.52 |
     | O₃ | 0.508 |
     | CH₄ | 0.492 |
+    | PMO | 0.492 (CH₄ value: PMO is derived from the CH₄ aCCF) |
+
+    A species without an RF backward factor, an efficacy or a conversion factor is an error; there is no default of 1.
 
 - $H_0 = 20$ is the reference horizon for pulse computation within CLIMaCCF.
-- $\varepsilon_{Spec}$ are the efficacies as defined in the specification document.
+- $\varepsilon_{Spec}$ are the efficacies as defined in the specification document: CH₄ 1.04, O₃ 1.05, H₂O 1.0 and PMO 1.0 (the PMO value is the RSTS value, confirmed by the method owner on 2026-10-28). Values in `EFFICACY` in `pyneats.core.physics`.
+
+**Primary-mode ozone (PMO).** PMO is the long-term decrease in O₃ that follows the NOx-driven decrease in CH₄. With `accf_kwargs["PMO"]` True (default), the local aCCF step writes a separate segment column
+
+$$
+ATR^{PMO}(H_0) = 0.29 \cdot ATR^{CH4}(H_0)
+$$
+
+(PMO/CH₄ RF ratio 0.29, `PMO_CH4_RF_RATIO`, as in CLIMaCCF and OpenAirClim); $ATR^{CH4}$ itself excludes PMO. $EAGWP_{PMO}(H)$ is computed with the formula above and the PMO values of $K_{AGWP \leftarrow RF}$, $K_{ATR \leftarrow RF}$, $\varepsilon$ and $RF^{Backward}$. The output keeps one `CH4` entry, which is **CH₄ including PMO**:
+
+$$
+EAGWP_{CH4\,incl.\,PMO}(H) = EAGWP_{CH4}(H) + EAGWP_{PMO}(H)
+$$
+
+The sum is taken before the non-CO₂/CO₂ plausibility check.
 
 The conversion factors $K_{AGWP \leftarrow RF}$ and $K_{ATR \leftarrow RF}$ (Pulse 2025 scenario, from *Dahlmann et al., 2025*) used in PyNeats are:
 
@@ -367,6 +384,12 @@ The OpenAirClim library directly outputs the global warming potential for each s
 
 $$
 EAGWP_{Spec}(H) = AGWP_{Spec}(H) \cdot \varepsilon_{Spec}
+$$
+
+OpenAirClim gives PMO as a separate species. PyNEATS keeps it apart, applies the PMO efficacy, and adds it into the `CH4` entry (**CH₄ including PMO**), before the non-CO₂/CO₂ plausibility check:
+
+$$
+EAGWP_{CH4\,incl.\,PMO}(H) = AGWP_{CH4}(H) \cdot \varepsilon_{CH4} + AGWP_{PMO}(H) \cdot \varepsilon_{PMO}
 $$
 
 And finally, the CO₂-equivalent:

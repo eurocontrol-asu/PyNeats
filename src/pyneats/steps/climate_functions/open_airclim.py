@@ -244,11 +244,12 @@ class OpenAirClimModel(
     def run(self, flight: FlightWithEmissions) -> FlightWithGlobalAGWP:
         """Run openairclim on the flight inventory (Method D).
 
-        Sets ``flight.attrs["AGWP_{H}_{O3,CH4,H2O,CONT}"]`` for H = 20, 50 and
+        Sets ``flight.attrs["AGWP_{H}_{O3,CH4,PMO,H2O,CONT}"]`` for H = 20, 50 and
         100 years, in W m-2 yr (openairclim "W m-2 year"), without efficacy,
         read from openairclim's ``AGWP_{H}_{reference_year}`` (window
         starting in the reference year; see ``_create_worker_toml``). ``AGWP_{H}_CH4``
-        includes PMO.
+        excludes PMO, which is stored separately in ``AGWP_{H}_PMO``; GWPMetrics
+        applies each its own efficacy and adds them into the "CH4" output entry.
         """
         # The runners create the folder at start-up; direct users of the model
         # (and worker processes) get it created here.
@@ -329,9 +330,8 @@ class OpenAirClimModel(
                     # Assign Attributes
                     for h in [20, 50, 100]:
                         flight.attrs[f"AGWP_{h}_O3"] = results[f"AGWP_{h}"]["O3"]
-                        flight.attrs[f"AGWP_{h}_CH4"] = (
-                            results[f"AGWP_{h}"]["CH4"] + results[f"AGWP_{h}"]["PMO"]
-                        )
+                        flight.attrs[f"AGWP_{h}_CH4"] = results[f"AGWP_{h}"]["CH4"]
+                        flight.attrs[f"AGWP_{h}_PMO"] = results[f"AGWP_{h}"]["PMO"]
                         flight.attrs[f"AGWP_{h}_H2O"] = results[f"AGWP_{h}"]["H2O"]
                         flight.attrs[f"AGWP_{h}_CONT"] = results[f"AGWP_{h}"]["cont"]
 

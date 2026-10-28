@@ -15,6 +15,7 @@ from pyneats.steps.emissions.views import FlightWithEmissions
 __all__ = [
     "REQUIRED_CONTRAIL_COLS",
     "REQUIRED_ATR_COLS",
+    "OPTIONAL_ATR_COLS",
     "FlightWithRFContrailsImpact",
     "FlightWithNonCO2Impact",
     "FlightWithSegmentATR",
@@ -28,8 +29,13 @@ REQUIRED_ATR_COLS: Final[tuple[str, ...]] = (
     "ATR_20_H2O",
 )
 
+# Optional: P-ATR20 of primary-mode ozone [K per segment], written by local_accf
+# when accf_kwargs["PMO"] is True (0.29 x ATR_20_CH4).
+OPTIONAL_ATR_COLS: Final[tuple[str, ...]] = ("ATR_20_PMO",)
+
 # Flight-level AGWP at H = 20/50/100 years [W m-2 yr], without efficacy
-# (openairclim "W m-2 year"); CH4 includes PMO.
+# (openairclim "W m-2 year"); CH4 excludes PMO. OpenAirClim also gives
+# AGWP_{20,50,100}_PMO (optional, not required here).
 REQUIRED_AGWP_ATTRS: Final[tuple[str, ...]] = (
     "AGWP_20_CH4",
     "AGWP_20_O3",
