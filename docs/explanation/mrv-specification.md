@@ -377,9 +377,30 @@ While **OpenAirClim** is designed to compute climate trajectories associated wit
 
 For contrails, a **base inventory** must be provided so that the marginal contrail contribution can be estimated in addition to it. In PyNeats, the base inventory currently used is:
 
-- **`ELK_aviation_2025_res5deg_flat.nc`** (DLR ELK aviation inventory v2.1, regridded to 5°; its `Inventory_Year` attribute is 2025)
+- **`ELK_aviation_2025_res5deg_flat.nc`** (DLR ELK aviation inventory v2.1, regridded to 5°; its `Inventory_Year` attribute is 2025; bundled in `pyneats/resources`)
 
 **Reference year.** Every flight is computed as a pulse emitted in one reference year, `OPEN_AIRCLIM_REFERENCE_YEAR` in `neats_default_parameters.py` (2025), whatever the flight date. The emission inventory year, the start of the metric window ($t_0$) and the simulated period (reference year to reference year + 100) all use it, so the same flight gives the same result in any calendar year. The reference year must be covered by the base inventory. Changing it changes the background concentrations OpenAirClim uses, and therefore the results.
+
+PyNeats uses **openairclim 0.20.0** with the OpenAirClim repository data **0.2.0** (Zenodo, DOI [10.5281/zenodo.22962383](https://doi.org/10.5281/zenodo.22962383)), bundled in `pyneats/resources/repository`. The configuration (`pyneats/resources/openairclim.toml`) was decided by the method owners on 2026-10-28:
+
+| Setting | Value | Meaning |
+|---|---|---|
+| `O3.rf.approach`, `CH4.tau.approach` | `"perturbation"` | NOx → O3 and NOx → CH4 lifetime responses from the perturbation response surfaces (`resp_RF_O3_pert.nc`, `resp_CH4_pert.nc`) |
+| `species.nox` | `"NO2"` | The NOx mass PyNeats passes is NO2-equivalent (ICAO convention). openairclim 0.20 defaults to `"NO"`, which would scale the NOx responses by 46/30, so the value is set explicitly |
+| `inventories.rel_to_base` | `true` | The flight is computed relative to the bundled base inventory above (`OpenAirClimParams.base_inventory_path`). If the configured file does not exist, the run stops with an error naming the path; `base_inventory_path = None` is the explicit way to run without a base inventory |
+| `species.out` | no `"SWV"` | Stratospheric water vapour from CH4 oxidation is not computed |
+| `CH4.rf.attr`, `CO2.rf.attr` | not set: openairclim default `"proportional"` | Attribution of the non-linear CH4 (and CO2) RF to the flight |
+| CH4 solver | openairclim defaults | openairclim integrates the CH4 lifetime equation with scipy's default tolerances. On a single flight this gives AGWP_CH4 about 0.3 % lower than a tightly converged solution |
+
+The **AGWP values are the flight's own share.** With a base inventory, openairclim's own metrics output covers the base fleet plus the flight. PyNeats therefore integrates the radiative forcing of the flight (aircraft identifier `DEFAULT`) over the window $[t_0, t_0 + H)$:
+
+$$
+AGWP_{Spec}(H) = \sum_{t = t_0}^{t_0 + H - 1} RF_{Spec}(t) \cdot 1\,\text{yr}
+$$
+
+This is the same formula openairclim uses for its own AGWP. $AGWP_{CH4}$ includes the primary-mode ozone (PMO). The metric start year $t_0$ is the reference year (2025), which is also the year of the bundled base inventory, so flights of any date run (audit item O4).
+
+**Change from openairclim 0.13.0.** The contrail model of openairclim 0.19 and later is new science, accepted by the method owners. Measured on 100 Network Manager flights (2025-07-09), the decided 0.20.0 setup against the 0.13.0 setup (tagging, NOx as NO), as ratios of the fleet sums: contrails **×0.56** (per-flight median ×0.61), O3 ×1.16, CH4 + PMO ×0.67 (H = 20) and ×0.55 (H = 100), H2O ×1.00, CO2 unchanged. Method D results therefore change.
 
 The OpenAirClim library directly outputs the global warming potential for each species ($AGWP_{Spec}(H)$) **without including the efficacy term**. Including the efficacy term provides:
 

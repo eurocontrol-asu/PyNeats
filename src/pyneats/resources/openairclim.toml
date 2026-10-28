@@ -1,47 +1,57 @@
-# This is a configuration file for demonstrating OpenAirClim
+# OpenAirClim configuration used by PyNEATS Method D.
+# openairclim 0.20.0 (PyPI) with repository data 0.2.0
+# (Zenodo, DOI 10.5281/zenodo.22962383), bundled in
+# pyneats/resources/repository (see PROVENANCE.txt there).
+# OpenAirClimModel._create_worker_toml overrides the inventory/output/data
+# paths, time.range, metrics.t_0 and output name for every worker run.
+# Settings marked "decision A.x" were decided by Ramon + Philippe on
+# 2026-10-28 (docs/internal/pyneats_units_audit.md).
 
 # Species considered
 [species]
 # Species defined in emission inventories
 # possible values: "CO2", "H2O", "NOx", "distance"
 inv = ["CO2", "H2O", "NOx", "distance"]
-# Assumed NOx species in emission inventory
-# possible values: "NO", "NO2"
-nox = "NO"
-# Output / response species
-# possible values: "CO2", "H2O", "O3", "CH4", "PMO", "cont"
+# Assumed NOx species in emission inventory (decision A.2, Ramon + Philippe
+# 2026-10-28).
+# PyNEATS supplies pycontrails NOx mass, i.e. NOx expressed as NO2 (ICAO
+# convention). "NO2" applies no correction; "NO" (the openairclim 0.20
+# default) would scale O3/CH4/PMO by 46/30.
+nox = "NO2"
+# Output / response species. No "SWV" (decision A.4, Ramon + Philippe
+# 2026-10-28): SWV would also need ch4_for_swv_calc.nc, which is not bundled.
+# possible values: "CO2", "H2O", "O3", "CH4", "PMO", "cont", "SWV"
 out = ["CO2", "H2O", "O3", "CH4", "PMO", "cont"]
 
-# Emission inventories
+# Emission inventories (overridden per worker)
 [inventories]
 dir = "inputs/"
 files = ["emissions_inventory.nc"]
-# base emission inventories, only considered if rel_to_base = true
+# base emission inventories, only considered if rel_to_base = true.
+# PyNEATS sets rel_to_base = true with ELK_aviation_2025_res5deg_flat.nc
+# when OpenAirClimParams.base_inventory_path is set (decision A.4, Ramon +
+# Philippe 2026-10-28); a configured file that is missing is an error, and
+# base_inventory_path = None runs without a base. The contrail RF of the
+# flight is then computed relative to that base fleet.
 rel_to_base = false
-base.dir = "input/"
+base.dir = "inputs/"
 base.files = []
 
 # Output options
 [output]
-# Full simulation run = true, climate metrics only = true
 run_oac = true
 run_metrics = true
 run_plots = false
 dir = "outputs/"
 name = "real"
 overwrite = true
-# Computation of 2D concentration responses is not yet supported.
-# possible values: false
 concentrations = false
 
-# Time settings
+# Time settings (range overridden per worker)
 [time]
 dir = "inputs/"
 # Time range in years: t_start, t_end, step, (t_end not included)
 range = [2025, 2126, 1]  # overridden by PyNEATS: reference year + horizon
-# Time evolution of emissions
-# either type "scaling" or type "norm"
-# file = "time_norm_historic_SSP.nc"
 
 # Global background concentrations
 [background]
@@ -58,26 +68,35 @@ N2O.scenario = "SSP2-4.5"
 dir = "repository/"
 CO2.response_grid = "0D"
 CO2.conc.method = "Sausen&Schumann"
-# RF method based on Etminan et al. 2016 is used by default.
-#CO2.rf.method = "Etminan_2016"
+CO2.rf.method = "Etminan_2016"
 
 H2O.response_grid = "2D"
-H2O.rf.file = "resp_RF.nc"    # AirClim response surface
+H2O.rf.file = "resp_RF_H2O.nc"
 
+# NOx -> O3 / CH4: perturbation approach (decision A.1, Ramon + Philippe
+# 2026-10-28; also the openairclim 0.20 default, set explicitly here).
+# openairclim checks that the approach matches the resp_method attribute of
+# the response files. For "tagging" use resp_RF_O3.nc / resp_ch4.nc.
 O3.response_grid = "2D"
-O3.rf.file = "resp_RF_O3.nc"  # tagging
-#O3.rf.file = "resp_RF.nc"    # AirClim response surface, requires adjustment of CORR_RF_O3 !
+O3.rf.approach = "perturbation"
+O3.rf.file = "resp_RF_O3_pert.nc"
 
 CH4.response_grid = "2D"
-CH4.tau.file = "resp_ch4.nc"  # tagging
+CH4.tau.approach = "perturbation"
+CH4.tau.file = "resp_CH4_pert.nc"
 CH4.rf.method = "Etminan_2016"
+# CH4.rf.attr (and CO2.rf.attr) are NOT set on purpose: the openairclim 0.20
+# library default is "proportional" (core/config_model.py, _CH4RFConfig.attr
+# and _CO2RFConfig.attr), which is the attribution we use (decision A.5,
+# Ramon + Philippe 2026-10-28). Do not override it here;
+# tests/test_open_airclim_method_d.py checks the resolved value.
 
 cont.response_grid = "cont"
 cont.resp.file = "resp_cont_lf.nc"
 
-# Temperature options
+# Temperature options. Only used by openairclim's dT/ATR/AGTP/AEGWP outputs;
+# PyNEATS reads AGWP (no efficacy) and applies its own efficacies.
 [temperature]
-# valid methods: "Boucher&Reddy"
 method = "Boucher&Reddy"
 # Climate sensitivity parameter, Ponater et al. 2006, Table 1
 # https://doi.org/10.1016/j.atmosenv.2006.06.036
@@ -91,19 +110,19 @@ cont.efficacy = 0.59
 
 # Climate metrics options
 [metrics]
-# iterate over elements in lists types t_0 and H
-#types = ["AGTP", "AGWP", "ATR"] # valid climate metrics: AGTP, AGWP, ATR
-types = ["AGWP"]   # Absolute Global Warming Potential
-H = [20,50,100]          # Horizon: 100 years
-t_0 = [2025]             # overridden by PyNEATS: OPEN_AIRCLIM_REFERENCE_YEAR
+types = ["AGWP"]
+H = [20, 50, 100]
+# Start of the AGWP window. Overridden by PyNEATS: OPEN_AIRCLIM_REFERENCE_YEAR
+# (audit item O4).
+t_0 = [2025]
 
-# aircraft defined in inventory
-# following identifiers are NOT allowed: "TOTAL"
-# "DEFAULT" is used if "ac" coordinate not defined in emission inventories
-# G_250, eff_fac and PMrel must be defined for each aircraft if contrails are
-# to be calculated.
+# "DEFAULT" is used because the PyNEATS inventory has no "ac" coordinate.
+# openairclim >= 0.17 requires G_250, b and PMrel for contrails (eff_fac
+# was removed upstream).
 [aircraft]
 types = ["DEFAULT"]
 DEFAULT.G_250 = 1.70   # Schmidt-Appleman mixing line slope at 250 hPa
-DEFAULT.eff_fac = 1.0  # efficiency factor compared to 0.333
-DEFAULT.PMrel = 1.0    # relative PM emissions compared to 1e15
+DEFAULT.PMrel = 1.0    # nvPM emissions relative to 1.5e15 kg-1
+# Wingspan [m]. 35 m is openairclim's reference wingspan
+# (calc_cont.apply_wingspan_correction), so the contrail RF correction is 1.
+DEFAULT.b = 35.0

@@ -17,7 +17,7 @@ cd PyNeats
 make install
 ```
 
-This runs `uv sync` and installs external dependencies (PyBADA, open-airclim).
+This runs `uv sync`, which installs all dependencies, including PyBADA and openairclim 0.20.0 (PyPI).
 
 ### Verify installation
 

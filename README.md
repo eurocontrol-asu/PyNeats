@@ -14,7 +14,7 @@ It integrates multiple established open-source tools to provide a reproducible, 
 
 - [**PyContrails**](https://github.com/contrailcirrus/pycontrails) – for contrail prediction and atmospheric data processing
 - [**PyBADA**](https://github.com/eurocontrol-bada/pybada) – for aircraft performance modelling using EUROCONTROL's BADA datasets
-- [**open-airclim**](https://github.com/dlr-pa/oac) – for integrating climate response functions and GWP calculations
+- [**openairclim**](https://github.com/dlr-pa/oac) (0.20.0, from PyPI) – for integrating climate response functions and GWP calculations
 - aCCF estimates are computed inside PyNeats for performance reasons but are based on the [**ClimAccf**](https://github.com/dlr-pa/climaccf) library
 
 The library is designed for **researchers, airspace operators, regulators, and industry** who need a transparent and auditable implementation for MRV purposes.
@@ -47,7 +47,7 @@ The library is designed for **researchers, airspace operators, regulators, and i
 git clone https://github.com/eurocontrol-asu/PyNeats.git
 cd PyNeats
 
-# Install all dependencies (including PyBADA and open-airclim)
+# Install all dependencies (including PyBADA and openairclim)
 make install
 ```
 
@@ -67,9 +67,6 @@ uv sync --all-groups
 
 # Install PyBADA (requires special flags due to Python version constraints)
 uv run pip install pybada --no-deps --ignore-requires-python
-
-# Install open-airclim
-uv run pip install git+https://github.com/dlr-pa/oac.git
 
 # Install PyNeats
 uv pip install -e .   # triggers hatch-vcs, generates src/pyneats/_version.py
@@ -252,7 +249,7 @@ PyNeats integrates with these established open-source projects:
 |---------|---------|------|
 | **PyContrails** | Contrail prediction and atmospheric data | [github.com/contrailcirrus/pycontrails](https://github.com/contrailcirrus/pycontrails) |
 | **PyBADA** | Aircraft performance modeling | [github.com/eurocontrol-bada/pybada](https://github.com/eurocontrol-bada/pybada) |
-| **open-airclim** | Climate response functions and GWP | [github.com/dlr-pa/oac](https://github.com/dlr-pa/oac) |
+| **openairclim** 0.20.0 (PyPI) | Climate response functions and GWP | [github.com/dlr-pa/oac](https://github.com/dlr-pa/oac) |
 
 ---
 
