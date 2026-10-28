@@ -88,7 +88,7 @@ uv run examples/fleet_small_emitter.py \
 - `--weather-path` (required): Path to meteorological data directory
 - `--bada-path` (required): Path to BADA (Base of Aircraft Data) directory
 - `--airport-fuel-path` (optional): Path to a CSV or JSON file mapping airport codes to fuel properties
-- `--tmp-dir` (required): Path to a temporary directory for OpenAirClim file I/O
+- `--tmp-dir` (required): Path to a temporary directory for OpenAirClim file I/O (created if missing)
 - `--njobs` (optional): Number of parallel jobs (default: 2)
 
 **Example with test data:**

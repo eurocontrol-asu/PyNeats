@@ -132,7 +132,8 @@ runner.eval()            # runs the pipeline and populates runner.results
 
 Small emitters use OpenAirClim, which requires a temporary directory for its
 file I/O. Use `SmallFleetRunnerParams` (a `FleetRunnerParams` subclass with
-the additional `tmp_base_dir_path` field):
+the additional `tmp_base_dir_path` field). The runner creates the directory if
+it is missing and stops at start-up if it cannot write to it:
 
 ```python
 from pyneats.runners.small_emitter import (
