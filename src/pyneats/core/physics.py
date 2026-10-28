@@ -16,6 +16,9 @@ SECONDS_PER_YEAR : int
     (see docs/internal/pyneats_units_audit.md).
 SOLAR_CONSTANT : float
     Solar constant in W m^-2.
+PVU_PER_SI : float
+    Potential vorticity units per SI unit of potential vorticity
+    (1 PVU = 1e-6 K m^2 kg^-1 s^-1).
 CO2_AGWP_COEFF_WM2YR_PER_KG : Mapping[int, float]
     CO2 AGWP coefficients C(H) in W m-2 yr per kg CO2, keyed by horizon in
     years.
@@ -54,6 +57,7 @@ __all__ = [
     "CONVERSION_FACTORS_ATR_TO_RF",
     "EFFICACY",
     "SOLAR_CONSTANT",
+    "PVU_PER_SI",
     "ACCF_SCALE_03",
     "ACCF_SCALE_CH4",
     "ACCF_SCALE_H2O",
@@ -66,6 +70,8 @@ SURFACE_EARTH: Final[float] = 5.101e14  # m²
 # [J] into EAGWP [W m-2 yr]
 SECONDS_PER_YEAR: Final[int] = 31_556_952  # s
 SOLAR_CONSTANT: Final[float] = 1360.0  # [W m^-2]
+# [PVU per K m^2 kg^-1 s^-1]: PV[PVU] = PV[SI] * PVU_PER_SI (1 PVU = 1e-6 SI)
+PVU_PER_SI: Final[float] = 1e6
 
 # CO2 GWP coefficients from AirClim (Dahlmann et al., 2025)
 # C(H) in W·m⁻²·yr·kg⁻¹ (per kgCO2); keys are horizons in years.

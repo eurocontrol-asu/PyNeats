@@ -25,6 +25,7 @@ from pyneats.core.neats_default_parameters import DEFAULT_ACCF_VALIDITY_PRESSURE
 from pyneats.core.physics import ACCF_SCALE_03
 from pyneats.core.physics import ACCF_SCALE_CH4
 from pyneats.core.physics import ACCF_SCALE_H2O
+from pyneats.core.physics import PVU_PER_SI
 from pyneats.core.physics import SOLAR_CONSTANT
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
@@ -50,8 +51,8 @@ class LocalACCFParams(ACCFParams):
     col_time: str = "time"  # datetime64
     col_latitude: str = "latitude"  # [deg]
     # [K m^2 kg^-1 s^-1] (SI, pycontrails PotentialVorticity), not PVU
-    # (1 PVU = 1e-6 SI). Used as supplied; see h2o_raw_formula and
-    # docs/internal/pyneats_units_audit.md.
+    # (1 PVU = 1e-6 SI). h2o_raw_formula converts it to PVU before the
+    # regression; see docs/internal/pyneats_units_audit.md (O1).
     col_potential_vorticity: str = "potential_vorticity"
     # [kg(NOx)/kg(fuel)]; pycontrails NOx EI, NOx expressed as NO2 (ICAO EDB)
     col_nox_ei: str = "nox_ei"
@@ -247,20 +248,22 @@ class LocalACCFModel(
     def h2o_raw_formula(pv: FloatArray) -> FloatArray:
         """Returns raw (unscaled) P-ATR20-H2O [K/kg(fuel)].
 
-        ``pv`` is used as supplied, i.e. in SI units (K m^2 kg^-1 s^-1). The
-        CLIMaCCF reference implementation applies this regression to PV in
-        PVU (``pv * 1e6``). Without that factor the PV term here is ~1e-6 of
-        the CLIMaCCF value, so the result is effectively the constant term
-        (see docs/internal/pyneats_units_audit.md).
+        ``pv`` is in SI units (K m^2 kg^-1 s^-1), as pycontrails supplies it.
+        The regression (CLIMaCCF; Matthes et al., 2023, Annex A) is defined
+        for PV in PVU, so ``pv`` is converted with ``PVU_PER_SI``
+        (1 PVU = 1e-6 SI) before it is applied, as CLIMaCCF does
+        (see docs/internal/pyneats_units_audit.md, O1).
         """
 
-        return 4.05e-16 + 1.48e-16 * np.abs(pv)
+        pv_pvu = np.abs(pv) * PVU_PER_SI  # [PVU]
+        return 4.05e-16 + 1.48e-16 * pv_pvu
 
     def compute_h2o(self, flight: Flight) -> FloatArray:
         """Compute water vapor (H2O) Pulse-based Average Temperature Response
         over 20 years (P-ATR20) for water vapor emissions.
-        Uses potential vorticity as input parameter (SI units, not PVU; see
-        ``h2o_raw_formula`` and docs/internal/pyneats_units_audit.md).
+        Uses potential vorticity as input parameter (SI units;
+        ``h2o_raw_formula`` converts it to PVU, see
+        docs/internal/pyneats_units_audit.md, O1).
         Returns K per segment.
         """
 
