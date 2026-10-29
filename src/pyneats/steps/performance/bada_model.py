@@ -68,6 +68,7 @@ from pyneats.core.neats_default_parameters import (
 from pyneats.core.neats_default_parameters import REFERENCE_Q_FUEL
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
+from pyneats.steps.performance.aircraft_resolver import _select_bada_model
 from pyneats.steps.performance.airspeed_trust import apply_airspeed_trust
 from pyneats.steps.performance.altitude_filter import filter_low_altitude_points
 from pyneats.steps.performance.bada_adapters import BADA3Adapter
@@ -125,18 +126,6 @@ class PerfOutput(TypedDict):
 
 def _as_float(x: Any) -> float:
     return float(np.asarray(x, dtype=float))
-
-
-def _normalize_code_or_none(code: str | None) -> str | None:
-    if code is None:
-        return None
-    s = str(code).strip()
-    if not s:
-        return None
-    # handle common "nan" strings
-    if s.lower() in {"nan", "none", "null"}:
-        return None
-    return s
 
 
 def _has_ao_fuel_and_efficiency(df: pd.DataFrame) -> bool:
@@ -428,7 +417,7 @@ class BADAPerformanceModelParams(PerformanceModelParams):
         series: str | None,
         engine_id: str | None,
     ) -> tuple[int, str, str, str]:
-        """Resolve BADA type using the mapper"""
+        """Resolve BADA type using the mapper (``BadaMapper.bada_type``)."""
 
         return self.mapper.bada_type(icao, series, engine_id)
 
@@ -538,12 +527,12 @@ class BADAPerformanceModel(
 
             # --- Second attempt: retry with BADA3 ---
             try:
-                _, _, bada4_code, _ = self.params.bada_type(
+                _, bada3_code, bada4_code, _ = self.params.bada_type(
                     icao, series=series, engine_id=engine_id_attr
                 )
-                bada4_code = _normalize_code_or_none(bada4_code)
+                first_version, _ = _select_bada_model(bada3_code, bada4_code)
 
-                if bada4_code is None:
+                if first_version == "BADA3":
                     self.logger.info(
                         "BADA performance evaluation already performed with BADA3, no need to retry with BADA3 again",
                         extra={
@@ -848,23 +837,30 @@ class BADAPerformanceModel(
         engine_id: str | None,
         force_bada3: bool = False,
     ) -> tuple[BaseBADAAdapter, str, int, str]:
-        """Resolve BADA adapter based on aircraft type and available info."""
+        """Resolve BADA adapter based on aircraft type and available info.
+
+        ``params.bada_type`` gives the mapping row and ``_select_bada_model``
+        the BADA family, the same pieces as ``resolve_aircraft``, so the
+        public resolver gives the same answer without a flight.
+        """
         nb_eng, bada3_code, bada4_code, resolved_engine = self.params.bada_type(
             icao, series=series, engine_id=engine_id
         )
-        bada4_code = _normalize_code_or_none(bada4_code)
+        bada_version, bada_code = _select_bada_model(
+            bada3_code, bada4_code, force_bada3
+        )
 
-        if bada4_code is None or force_bada3:
+        if bada_version == "BADA3":
             adapter: BaseBADAAdapter = BADA3Adapter(
                 str(self.bada3_path),
-                bada3_code,
+                bada_code,
                 rocd_phase_threshold_fpm=self.params.rocd_phase_threshold,
             )
             return adapter, "BADA3", nb_eng, resolved_engine
 
         adapter = BADA4Adapter(
             str(self.bada4_path),
-            bada4_code,
+            bada_code,
             rocd_phase_threshold_fpm=self.params.rocd_phase_threshold,
         )
         return adapter, "BADA4", nb_eng, resolved_engine

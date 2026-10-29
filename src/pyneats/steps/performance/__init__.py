@@ -4,6 +4,9 @@ Performance step package for NEATS.
 Exposes all performance model interfaces, adapters, and views.
 """
 
+from pyneats.steps.performance.aircraft_resolver import EngineSource
+from pyneats.steps.performance.aircraft_resolver import ResolvedAircraft
+from pyneats.steps.performance.aircraft_resolver import resolve_aircraft
 from pyneats.steps.performance.bada_adapters import AircraftProtocol
 from pyneats.steps.performance.bada_adapters import BADA3Adapter
 from pyneats.steps.performance.bada_adapters import BADA4Adapter
@@ -29,4 +32,7 @@ __all__ = [
     "BADA4Adapter",
     "BADAPerformanceModelParams",
     "BADAPerformanceModel",
+    "EngineSource",
+    "ResolvedAircraft",
+    "resolve_aircraft",
 ]
