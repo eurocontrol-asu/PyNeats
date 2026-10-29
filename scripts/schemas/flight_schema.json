@@ -77,7 +77,7 @@
         },
         "load_factor": {
           "type": ["number", "null"],
-          "description": "Payload mass / maximum payload mass (BADA MPL, or MTOW - OEW when BADA gives no positive MPL), dimensionless; not a seat load factor."
+          "description": "Payload mass / maximum payload mass (BADA MPL, or MTOW - OEW when BADA gives no positive MPL), dimensionless, 0 to 1; not a seat load factor. PyNEATS sets a value above 1 to 1.0 (with a warning) and rejects a negative value."
         },
         "takeoff_mass": {
           "type": ["number", "null"],
