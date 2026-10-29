@@ -37,6 +37,7 @@ cite line numbers on `dev` before the fix they describe.
 | O1 (local aCCF H2O: potential vorticity in SI, regression in PVU) | Fixed: `LocalACCFModel.h2o_raw_formula` converts PV from SI to PVU (`PVU_PER_SI` = 1e6 in `physics.py`) before the regression, as CLIMaCCF does; the weather layer still supplies SI, which the ClimAccf backend needs (maintainer and method-owner decision). Measured on the NM sample 2025-07-09 (4,683 flights with climate results, against `dev` d239aa2): H2O CO2eq × 2.17, total CO2eq +2.18 % (H20), +1.86 % (H50), +1.56 % (H100); fuel, CO2 and the other species bit-identical. H2O now agrees with CLIMaCCF within 0.33 % on the 5 golden flights. Golden outputs regenerated: only H2O values change (`ATR_20_H2O`, H2O EAGWP and CO2eq) | `fix/accf-h2o-pv-units` | 2026-10-28 |
 | A13 (mixed fuel-flow provenance) | Fixed: when the AO provides `ff` without `am`, the mass decreases with the AO fuel flow, from the AO TOM or from min(MTOW, OEW + payload_factor x MPL + 1.15 x AO trip fuel) (no iteration); the fuel-burn guardrail runs on the AO fuel flow before that, and its rejection is final (maintainer and method-owner decision). Fuel and CO2 unchanged; mass profile, computed `ee` and contrails change for these flights; flights with `am` or without `ff` unchanged; golden outputs regenerated (contrail EF −0.12 % to +0.07 %) | `fix/mass-from-ao-fuel-flow` | 2026-10-28 |
 | A3 (`load_factor` not range-checked: 1.5 or 80 gave more fuel without a warning, −0.5 a take-off mass below OEW) | Fixed: 0–1 kept unchanged (0 = ferry flight); above 1 set to 1.0 with a warning naming the flight and the value, not divided by 100 (DLR TC_LF_GT_ONE; in `neats_json_to_flights` for JSON input and in the parser for DataFrame input); negative fails the flight at parsing (no retry; other flights go on), as an out-of-range `q_fuel` does (maintainer decision). `None` and NaN unchanged. Valid inputs unchanged; no golden result changes | `fix/load-factor-range` | 2026-10-29 |
+| A6 PR 1 (`takeoff_mass` dropped without notice when the AO provides `am`; the warning meant for it could not be reached) | Fixed: one WARNING per flight, naming the flight and both masses, when `am` overrides a `takeoff_mass` that differs from the first `am` by more than max(1000 kg, 2 %), on every path where `am` wins (the early exit with `ff`, `ee` and `am` included; once across the BADA3 retry and the altitude fallback, and once for a flight with a list `engine_uid`); smaller differences and a missing or non-finite `takeoff_mass` stay at DEBUG or silent; the output attr `takeoff_weight` still shows the AO value; dead warning removed (maintainer decision: warning only). No number changes; no golden result changes. Still open: range check against OEW/MTOW (PR 2) | `fix/takeoff-mass-ignored-warning` | 2026-10-29 |
 
 ## 1. Outcome
 
@@ -396,7 +397,7 @@ Each entry gives:
 5. **Clarify the AO template** (fraction, % or ppm; mass or volume) before any use. Document
    that SO2 and sulphate outputs are fixed Jet A-1 values.
 
-**A6. `takeoff_mass`: point of application and precedence.** *Definition settled (§6.0): mass at the beginning of the take-off run, MRR §1(29). PyNEATS's point of application does not guarantee that event (see below).*
+**A6. `takeoff_mass`: point of application and precedence.** *Definition settled (§6.0): mass at the beginning of the take-off run, MRR §1(29). PyNEATS's point of application does not guarantee that event (see below).* *Warning when `am` overrides a different `takeoff_mass` added in A6 PR 1 (see the follow-up status table).*
 1. `takeoff_weight` → `_choose_mass_strategy` / `_single_pass_performance`
    (`bada_model.py:786-808,849`).
 2. The unit is kg and consistent. It is applied at the first **retained** trajectory point:
@@ -411,7 +412,7 @@ Each entry gives:
    notice.
 4. Possibly, if the application trims the trajectory to the take-off point.
 5. **Clarify the AO template**: mass at brake release or at the first trajectory point.
-   Optionally log at warning level when `am` overrides `takeoff_mass`.
+   Optionally log at warning level when `am` overrides `takeoff_mass` (done in A6 PR 1, see the status table).
 
 **A7. `departure_date_time`: EOBT or AOBT.** *Partly resolved (§6.0): Item 13 holds the EOBT (ICAO Doc 4444). The MRR does not choose. The PyNEATS "AOBT" label is unsupported.*
 1. `neats_io.py:106` → attr `aobt` → `report.py:114-135`.
