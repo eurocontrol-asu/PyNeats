@@ -13,6 +13,8 @@ Classes
 -------
 BadaMappingPaths
      Configuration for CSV mapping file locations.
+BadaMapping
+     Result of the fallback chain, with the source of the engine UID.
 BadaMapper
      Main resolver implementing the fallback chain for BADA type resolution.
 """
@@ -24,8 +26,25 @@ from dataclasses import dataclass
 from functools import cached_property
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
+
+
+EngineSource = Literal["operator", "MRR conservative", "ECTL mapping row"]
+"""Where the engine UID passed to the emissions step comes from.
+
+- ``"operator"``: the value of the ``engine_uid`` flight attribute
+  (the engine declared by the aircraft operator), stripped and upper-cased.
+  The value is not checked: a blank value given with a series that matches
+  an (ICAO, SERIES) row reaches the emissions step as ``""``, and ``"nan"``
+  as ``"NAN"``, both labelled ``"operator"``.
+- ``"MRR conservative"``: the engine of ``MRR_conservative_mapping.csv``
+  for the ICAO type (no engine declared).
+- ``"ECTL mapping row"``: the ``ENGINE_ID`` of the ECTL mapping row
+  matched for the BADA model (no engine declared, ICAO type not in
+  ``MRR_conservative_mapping.csv``).
+"""
 
 
 def _norm_series(s: str) -> str:
@@ -57,6 +76,37 @@ class BadaMappingPaths:
     icao_engine: Path
     default_engine_by_icao: Path
     icao_only: Path
+
+
+@dataclass(frozen=True)
+class BadaMapping:
+    """
+    Result of the BADA mapping chain for one aircraft.
+
+    Attributes
+    ----------
+    nb_eng : int
+        Number of engines (``NB_ENG`` of the matched row).
+    bada3 : str
+        BADA3 model code (``BADA3`` of the matched row).
+    bada4 : str
+        BADA4 model code (``BADA4`` of the matched row, ``"nan"`` when the
+        row has none).
+    engine_id : str
+        Engine UID given to the emissions step (``engine_uid`` attribute).
+    engine_source : EngineSource
+        Where ``engine_id`` comes from.
+    row_engine_id : str
+        ``ENGINE_ID`` of the matched mapping row (``""`` when the file has
+        no such column). It can differ from ``engine_id``.
+    """
+
+    nb_eng: int
+    bada3: str
+    bada4: str
+    engine_id: str
+    engine_source: EngineSource
+    row_engine_id: str
 
 
 # ------ Shared, cross-instance CSV cache -------------------------------------
@@ -96,8 +146,10 @@ class BadaMapper:
 
     Methods
     -------
+    resolve(icao, series, engine_id)
+        Resolve BADA info and the engine source using a fallback chain of keys.
     bada_type(icao, series, engine_id)
-        Resolve BADA info using a fallback chain of keys.
+        Same chain as ``resolve``, returned as a tuple.
     """
 
     COL_ICAO = "ICAO"
@@ -149,8 +201,11 @@ class BadaMapper:
 
     # --- Helpers -------------------------------------------------------------
     def _coerce_return(
-        self, row: pd.Series, engine_id_override: str | None = None
-    ) -> tuple[int, str, str, str]:
+        self,
+        row: pd.Series,
+        engine_id_override: str | None = None,
+        engine_source: EngineSource = "ECTL mapping row",
+    ) -> BadaMapping:
         missing = [
             c
             for c in (self.COL_NB_ENG, self.COL_BADA3, self.COL_BADA4)
@@ -163,14 +218,23 @@ class BadaMapper:
         bada3 = str(row[self.COL_BADA3])
         bada4 = str(row[self.COL_BADA4])
 
+        row_engine_id = (
+            str(row[self.COL_ENGINE_ID]) if self.COL_ENGINE_ID in row.index else ""
+        )
         if engine_id_override is not None:
             engine_id = engine_id_override
         else:
-            engine_id = (
-                str(row[self.COL_ENGINE_ID]) if self.COL_ENGINE_ID in row.index else ""
-            )
+            engine_id = row_engine_id
+            engine_source = "ECTL mapping row"
 
-        return nb_eng, bada3, bada4, engine_id
+        return BadaMapping(
+            nb_eng=nb_eng,
+            bada3=bada3,
+            bada4=bada4,
+            engine_id=engine_id,
+            engine_source=engine_source,
+            row_engine_id=row_engine_id,
+        )
 
     def _find_one(self, df: pd.DataFrame, **filters: str) -> pd.Series | None:
         if df.empty:
@@ -199,15 +263,47 @@ class BadaMapper:
         engine_id: str | None = None,
     ) -> tuple[int, str, str, str]:
         """
-        Resolve BADA info using:
+        Resolve BADA info with the chain of ``resolve``.
+
+        Returns:
+            (NB_ENG: int, BADA3: str, BADA4: str, ENGINE_ID: str), where
+            ENGINE_ID is the engine UID given to the emissions step
+            (``BadaMapping.engine_id``).
+
+        Raises:
+            KeyError: If nothing can be resolved.
+        """
+        m = self.resolve(icao, series, engine_id)
+        return m.nb_eng, m.bada3, m.bada4, m.engine_id
+
+    def resolve(
+        self,
+        icao: str,
+        series: str | None = None,
+        engine_id: str | None = None,
+    ) -> BadaMapping:
+        """
+        Resolve BADA info and the engine UID for emissions.
+
+        The BADA row (NB_ENG, BADA3, BADA4) is the first match of:
           1) (ICAO, SERIES, ENGINE_ID)
           2) (ICAO, SERIES)
           3) (ICAO, ENGINE_ID)
-          4) Default ENGINE_ID by ICAO, then step (3)
-          5) ICAO only
+          4) ICAO only
+
+        The engine UID for emissions is the declared ENGINE_ID when one is
+        given (``"operator"``). Without one, steps (2) and (4) take the
+        default ENGINE_ID for the ICAO type from MRR_conservative_mapping.csv
+        (``"MRR conservative"``), else the ENGINE_ID of the matched row
+        (``"ECTL mapping row"``). The MRR default engine never selects the
+        BADA row: it is not used as a key in steps (1) or (3).
+
+        A blank declared engine (``" "``) is a quirk kept from the original
+        chain: step (2) keeps it (``""``, ``"operator"``) because it tests
+        ``is not None``, while step (4) ignores it because it tests truth.
 
         Returns:
-            (NB_ENG: int, BADA3: str, BADA4: str, ENGINE_ID: str)
+            BadaMapping
 
         Raises:
             KeyError: If nothing can be resolved.
@@ -232,7 +328,9 @@ class BadaMapper:
                 },
             )
             if row is not None:
-                return self._coerce_return(row, engine_id_override=engine_n)
+                return self._coerce_return(
+                    row, engine_id_override=engine_n, engine_source="operator"
+                )
 
         # 2) (ICAO, SERIES)
         if series_n:
@@ -242,10 +340,14 @@ class BadaMapper:
             )
             if row is not None:
                 if engine_n is not None:
-                    return self._coerce_return(row, engine_id_override=engine_n)
+                    return self._coerce_return(
+                        row, engine_id_override=engine_n, engine_source="operator"
+                    )
                 elif engine_conservative is not None:
                     return self._coerce_return(
-                        row, engine_id_override=engine_conservative
+                        row,
+                        engine_id_override=engine_conservative,
+                        engine_source="MRR conservative",
                     )
                 else:
                     return self._coerce_return(row)
@@ -257,15 +359,23 @@ class BadaMapper:
                 **{self.COL_ICAO: icao_n, self.COL_ENGINE_ID: engine_n},
             )
             if row is not None:
-                return self._coerce_return(row, engine_id_override=engine_n)
+                return self._coerce_return(
+                    row, engine_id_override=engine_n, engine_source="operator"
+                )
 
         # 4) ICAO only
         row = self._find_one(self._df_icao_only, **{self.COL_ICAO: icao_n})
         if row is not None:
             if engine_n:
-                return self._coerce_return(row, engine_id_override=engine_n)
+                return self._coerce_return(
+                    row, engine_id_override=engine_n, engine_source="operator"
+                )
             elif engine_conservative:
-                return self._coerce_return(row, engine_id_override=engine_conservative)
+                return self._coerce_return(
+                    row,
+                    engine_id_override=engine_conservative,
+                    engine_source="MRR conservative",
+                )
             else:
                 return self._coerce_return(row, engine_id_override=None)
 

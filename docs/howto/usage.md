@@ -185,6 +185,41 @@ runner = FlightRunnerLargeEmitter(
 runner.eval()
 ```
 
+## Check the BADA Model and Engine of an Aircraft
+
+`resolve_aircraft` tells, without running a flight, which BADA model the
+performance step uses and which engine UID goes to pycontrails for the
+emissions. The performance step uses the same mapping chain and the same
+BADA4/BADA3 rule. It raises `FileNotFoundError` when the BADA4 or BADA3
+directory under `bada_path` does not exist, and `KeyError` when the type
+cannot be resolved.
+
+```python
+from pyneats.steps.performance import resolve_aircraft
+
+r = resolve_aircraft("A320", series=None, engine_uid=None, bada_path="/path/to/bada")
+# ResolvedAircraft(bada_version='BADA4', bada_release='4.2.1',
+#     bada_model='A320-214', bada_engine='CFM56-5B4/P SAC',
+#     bada_engine_uid='3CM026', n_engine=2, aircraft_type='A320',
+#     emissions_engine_uid='1IA001',
+#     emissions_engine_source='MRR conservative')
+```
+
+`emissions_engine_source` is `"operator"` (the declared `engine_uid`),
+`"MRR conservative"` (the engine of `MRR_conservative_mapping.csv` for the
+type, when no engine is declared) or `"ECTL mapping row"` (the engine of the
+mapping row, when the type is not in `MRR_conservative_mapping.csv`). The
+emissions engine can differ from the engine of the BADA model. Golden flight
+EAF2143 (A320, no engine declared) flies the BADA4 A320-214 model (CFM56-5B4/P,
+`3CM026`), and its emissions use the MRR conservative engine `1IA001`: total NOx
+51.9 kg, against 30.3 kg with the pycontrails default engine for the A320.
+
+`force_bada3=True` gives the BADA3 model of the BADA3 retry (when the BADA4
+attempt of a flight fails); the engine UID and the number of engines do not
+change. When the AO provides fuel flow, engine efficiency and aircraft mass,
+no BADA calculation is made, and `n_engine` in the output is read from the
+BADA file instead of the mapping.
+
 ## Read the Output
 
 After `eval()`, `FleetRunnerLargeEmitter` and `FleetRunnerSmallEmitter` put
