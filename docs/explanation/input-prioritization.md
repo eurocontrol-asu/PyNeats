@@ -13,8 +13,8 @@ This page describes the decision logic for determining which performance and fue
 | Trajectory | OFP, QAR | FTFM/RTFM, CTFM |
 | Fuel flow | Recorded fuel flow, or derived from the recorded mass evolution | BADA estimate |
 | Engine efficiency | Recorded η | From BADA thrust and BADA fuel flow |
-| Aircraft mass | Mass evolution | Take-off weight decreased along the trajectory with the BADA fuel flow |
-| Take-off weight | AO-declared TOW | Iterative estimate: min(MTOW, OEW + load_factor × MPL + 1.15 × trip fuel), see [Mass Estimation](#mass-estimation) |
+| Aircraft mass | Mass evolution | Take-off weight decreased along the trajectory with the AO fuel flow when provided, else with the BADA fuel flow |
+| Take-off weight | AO-declared TOW | Estimate: min(MTOW, OEW + load_factor × MPL + 1.15 × trip fuel), with the AO trip fuel when the AO provides fuel flow, else iterated with the BADA trip fuel; see [Mass Estimation](#mass-estimation) |
 | Fuel properties | AO-declared (H/C, q_fuel) | Airport fuel file for the departure airport (if configured), then the consortium defaults (q_fuel 42.8 MJ/kg, hydrogen 13.79 wt.%) |
 | Engine UID | AO-declared | MRR conservative value |
 
@@ -32,8 +32,8 @@ graph TD
     B -->|No| M{"Aircraft mass<br/>provided?"}
     M -->|Yes| M1["Mass: AO values"]
     M -->|No| T{"TOW<br/>provided?"}
-    T -->|Yes| M2["Mass: AO TOW, decreased<br/>with the BADA fuel flow"]
-    T -->|No| M3["Mass: iterative estimate<br/>from the load factor"]
+    T -->|Yes| M2["Mass: AO TOW, decreased<br/>with the AO fuel flow if provided,<br/>else the BADA fuel flow"]
+    T -->|No| M3["Mass: estimate from the<br/>load factor, decreased in the same way"]
     M1 --> R["BADA thrust and<br/>BADA fuel flow at each point"]
     M2 --> R
     M3 --> R
@@ -56,8 +56,8 @@ graph TD
 | --- | --- | --- | --- | --- |
 | Fuel flow, engine η and aircraft mass | none (see untrusted airspeeds below) | AO | AO | AO |
 | Aircraft mass, with at most one of fuel flow and engine η | thrust and fuel flow | AO | AO if provided, else from the AO mass decrease | AO if provided, else BADA |
-| TOW, no aircraft mass | thrust and fuel flow | AO TOW, decreased with the BADA fuel flow | AO if provided, else BADA | AO if provided, else BADA |
-| Neither aircraft mass nor TOW | thrust and fuel flow | iterative estimate (below), decreased with the BADA fuel flow | AO if provided, else BADA | AO if provided, else BADA |
+| TOW, no aircraft mass | thrust and fuel flow | AO TOW, decreased with the AO fuel flow if provided, else with the BADA fuel flow | AO if provided, else BADA | AO if provided, else BADA |
+| Neither aircraft mass nor TOW | thrust and fuel flow | estimate (below) from the AO trip fuel if fuel flow is provided, else iterative with the BADA trip fuel; decreased with the AO fuel flow if provided, else with the BADA fuel flow | AO if provided, else BADA | AO if provided, else BADA |
 
 !!! note "BADA mapping"
     Every flight needs its aircraft type in the BADA mapping, even when the AO provides fuel flow, engine efficiency and aircraft mass. The BADA file gives the wingspan (needed for contrails). The mapping gives the number of engines (needed for emissions; read from the BADA file when no BADA calculation is made) and, when no engine is declared, the engine UID: the MRR conservative engine where the type has one, otherwise the engine of the mapping row. A type that is not in the mapping makes the flight fail.
@@ -66,7 +66,7 @@ graph TD
     When the AO provides fuel flow but not engine efficiency, the efficiency is computed from BADA thrust and BADA fuel flow, so that thrust and fuel flow come from the same model. The AO fuel flow is used for the downstream emission calculations.
 
 !!! note "Aircraft mass with AO fuel flow"
-    When the AO provides fuel flow but no aircraft mass, the aircraft mass decreases along the trajectory with the BADA fuel flow, not with the AO fuel flow. This holds whether the mass starts from the AO TOW or from the estimated TOW, whose trip fuel also uses the BADA fuel flow. The mass decrease along the trajectory then differs from the reported fuel burn.
+    When the AO provides fuel flow but no aircraft mass, the aircraft mass decreases along the trajectory with the AO fuel flow: from each point to the next, by the AO fuel flow times the time between the two points. It starts from the AO TOW, or, without one, from the estimated TOW whose trip fuel is the AO fuel (see [Mass Estimation](#mass-estimation)). The mass decrease from the first to the last point then equals the reported fuel burn. A point with no AO fuel flow (none is expected: empty values are interpolated at the resampling, see "Provided values" below) counts as no fuel burnt, as in the reported fuel burn. A mass that ends below OEW (the AO fuel is larger than the TOW allows) is kept as computed and logged as a warning. BADA then computes thrust, and its own fuel flow for the engine efficiency, at this mass. Before this, the fuel-burn plausibility check runs on the AO fuel flow (see below).
 
 !!! note "Mass decrease"
     With AO aircraft mass and no AO fuel flow, the fuel flow at each point of the resampled (60 s) trajectory is the mass decrease from that point to the next point divided by the time between the two points, set to 0 where the mass increases. It is empty at the last point, which has no next point. The fuel burn of each segment is this fuel flow times the segment duration, so when the mass never increases the total fuel burn equals the mass at the first point minus the mass at the last point of the trajectory used: the resampled trajectory, without the points below FL20 when that retry is used. These masses are interpolated from the AO masses (see "Provided values" below). The resampled points are the whole minutes from the first to the last AO time, so when the first or last AO time is not on a whole minute, the mass decrease before the first whole minute or after the last whole minute is not counted.
@@ -75,7 +75,7 @@ graph TD
     A quantity counts as provided when at least one point has a value. Points left empty are not filled from BADA. When the trajectory is resampled to 60 s, an empty value is skipped, as if the AO had not sent that point: each resampled point is interpolated linearly in time between the nearest points that have a value, and before the first or after the last point with a value it takes that nearest value. A quantity with no value at any point is treated as not provided.
 
 !!! note "Fuel-burn plausibility check"
-    A flight is rejected when its total fuel burn, with the fuel flow actually used (AO, derived from the mass, or BADA), exceeds 1.2 × (MTOW − OEW). A flight rejected by this check goes through the retries described in [BADA Type Mapping](#bada-type-mapping): BADA 3, then (when the flight has points below FL20) the calculation without those points. It fails only if every attempt is rejected. When fuel flow, engine efficiency and aircraft mass are all provided, the check also applies, but a rejected flight fails at once, without retries: every retry would use the same AO fuel flow. A fuel flow sent in kg/h instead of kg/s is caught this way. A point where BADA raises an error, or gives a fuel flow that is not finite, negative or above 100 kg/s, counts as a BADA failure at that point (the point takes the values of the previous point; a failure at the first point, or more than 5 such points in a row, makes the attempt fail). The AO fuel flow and the fuel flow derived from the AO mass are not checked point by point.
+    A flight is rejected when its total fuel burn, with the fuel flow actually used (AO, derived from the mass, or BADA), exceeds 1.2 × (MTOW − OEW). A flight rejected by this check goes through the retries described in [BADA Type Mapping](#bada-type-mapping): BADA 3, then (when the flight has points below FL20) the calculation without those points. It fails only if every attempt is rejected. When the AO provides fuel flow, engine efficiency and aircraft mass, or fuel flow without aircraft mass, a rejected flight fails at once, without retries: every retry would use the same AO fuel flow. Without aircraft mass, the check runs on the AO fuel flow before the aircraft mass is decreased with it. When the AO provides fuel flow and aircraft mass but no engine efficiency, a rejected flight still goes through the retries. A fuel flow sent in kg/h instead of kg/s is caught this way. A point where BADA raises an error, or gives a fuel flow that is not finite, negative or above 100 kg/s, counts as a BADA failure at that point (the point takes the values of the previous point; a failure at the first point, or more than 5 such points in a row, makes the attempt fail). The AO fuel flow and the fuel flow derived from the AO mass are not checked point by point.
 
 !!! note "Untrusted airspeeds"
     Before any of the cases above, also when the AO provides fuel flow, engine efficiency and aircraft mass, the true airspeed of each point is checked. It is untrusted when it is missing (only a computed true airspeed can be missing here: empty AO values were already interpolated at the resampling, see "Provided values" above), when its calibrated airspeed is below the BADA stall speed (at MTOW, take-off configuration by default; parameter `airspeed_stall_config`) or above the aircraft's maximum operating speed (the BADA VMO, with no margin; 400 kt when the BADA model gives none), or when its Mach number is 1 or more. The Mach limit is not the maximum operating Mach number (BADA MMO): the true airspeed comes from the ground speed and a modelled wind, so a normal cruise can show a few hundredths above MMO (a wind error of 10 kt at FL370 is about Mach 0.017), and some BADA models stand for a faster aircraft type. No point is removed: an untrusted true airspeed is replaced by linear interpolation in time between the nearest trusted points. Before the first or after the last trusted point, it takes the calibrated airspeed of that trusted point, converted back to true airspeed at the point's own altitude and temperature, so a descent after the last cruise point keeps a constant calibrated airspeed and its true airspeed falls with the altitude. The acceleration is recomputed from the result. When PyNeats computes the true airspeed from the ground speed and the wind, the check and the replacement use the 1-minute speed before smoothing. The replaced series is then smoothed with the same filter (7 points), and the result is used only at the points whose smoothing window contains an untrusted point: the replaced points, their neighbours up to 3 points away, and the first 3 points of the flight when one of its first 7 points is untrusted, or the 3 points before the last point when one of the 7 points before the last point is untrusted. The true airspeed of those neighbours can change by tens of knots, or more next to a slow stretch, because the original smoothing had pulled them towards the slow minutes. Untrusted points before the first or after the last trusted point keep the calibrated airspeed of that trusted point after the smoothing too, so the smoothing does not extend a climb or descent over them. All other points keep their true airspeed exactly; a flight with an AO true airspeed and no untrusted point keeps it at every point. A computed true airspeed has no value at the last point, which has no next point: that point is always untrusted and takes the true airspeed of the point before it (it does not trigger the re-smoothing of its neighbours). The output `true_airspeed` is the value after this step; the output columns are unchanged. Known limits: a too-fast minute that is not above VMO, such as a "catch-up" minute near the runway after a frozen position (for example at a calibrated airspeed between 250 kt and VMO), stays trusted, and the points before or after it take its calibrated airspeed. The first and last trusted points can take the smoothed value while the points held before or after them keep its unsmoothed calibrated airspeed, so the speed can step there and the acceleration has a one-point spike. A flight fails, without the BADA 3 and FL20 retries, when more than 80 % of its time has an untrusted true airspeed, when no point is trusted, or when the check itself fails. When the AO provides fuel flow, engine efficiency and aircraft mass, the BADA fuel flow is not used, so only a failure of the check itself fails the flight: its true airspeed is still replaced (or kept as is when no point is trusted).
@@ -84,7 +84,17 @@ graph TD
 
 ## Mass Estimation
 
-When neither aircraft mass nor TOW is available, PyNeats applies an **iterative** procedure using the load factor (AO-provided or conservative default of 1):
+When neither aircraft mass nor TOW is available, PyNeats estimates the TOW from the load factor (AO-provided or conservative default of 1).
+
+**With AO fuel flow**, the trip fuel is known: it is the AO fuel burn, the sum of the AO fuel flow times the segment durations. No iteration is needed:
+
+$$
+TOW = \min(MTOW,\; OEW + \text{load\_factor} \times MPL + 1.15 \times \text{AO trip fuel})
+$$
+
+The mass then decreases along the trajectory with the AO fuel flow, so it ends at $OEW + \text{load\_factor} \times MPL + 0.15 \times \text{AO trip fuel}$ when MTOW does not cap the TOW.
+
+**Without AO fuel flow**, PyNeats applies an **iterative** procedure with the BADA fuel flow:
 
 **Step 1 — Initial estimate:**
 
@@ -119,7 +129,7 @@ The correspondence between ICAO aircraft types, aircraft versions, engine identi
 2. **BADA 3** type when the mapping gives no BADA 4 type, or when the BADA 4 calculation fails
 3. If that also fails and the flight has points below FL20 (at most 80 % of its points), those points are removed and the calculation is tried again (BADA 4, then BADA 3)
 
-A flight rejected by the fuel-burn plausibility check goes through the same chain and fails only if every attempt is rejected.
+A flight rejected by the fuel-burn plausibility check goes through the same chain and fails only if every attempt is rejected, except when the AO provides fuel flow, engine efficiency and aircraft mass, or fuel flow without aircraft mass: it then fails at once (see "Fuel-burn plausibility check" above).
 
 The mapping tables were built with fleet statistics, used as frequency-based proxies where no direct correspondence exists. A type absent from the tables makes the flight fail.
 
@@ -134,7 +144,7 @@ The granularity of AO-provided data significantly affects output accuracy:
 | Input level | Performance accuracy | Notes |
 | --- | --- | --- |
 | Full primary (mass + fuel + η) | ★★★★★ | Best — no modelling needed |
-| Fuel flow only | ★★★★☆ | η from BADA thrust and BADA fuel flow; aircraft mass and TOW estimated from the load factor |
+| Fuel flow only | ★★★★☆ | η from BADA thrust and BADA fuel flow; TOW estimated from the load factor and the AO trip fuel, aircraft mass decreased with the AO fuel flow |
 | Mass evolution | ★★★☆☆ | Fuel flow from the AO mass decrease; thrust (and η) from BADA |
 | TOW only | ★★☆☆☆ | Mass evolution estimated |
 | Load factor only | ★☆☆☆☆ | Fully modelled — conservative |

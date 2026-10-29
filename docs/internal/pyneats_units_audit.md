@@ -34,6 +34,7 @@ cite line numbers on `dev` before the fix they describe.
 | O4 (OpenAirClim metric window pinned to 2025; every flight dated 2026 failed) | Fixed: every flight is emitted in one reference year, `OPEN_AIRCLIM_REFERENCE_YEAR` = 2025 in `neats_default_parameters.py` (inventory year, `metrics.t_0`, `time.range`, result key); the same flight gives the same result whatever its date (maintainer and method-owner decision). Flights dated 2025: results bit-identical | `fix/openairclim-reference-year` | 2026-10-28 |
 | A1 (no fuel check when the AO provides fuel flow, engine efficiency and aircraft mass; a fuel flow in kg/h was accepted) | Fixed: the fuel-burn guardrail (total fuel <= 1.2 x (MTOW - OEW)) also runs on that path; its rejection is final (no BADA3 retry, no altitude fallback) and its message says the AO fuel flow must be in kg/s (maintainer decision). Valid inputs unchanged | `fix/ao-fuel-flow-check` | 2026-10-28 |
 | O1 (local aCCF H2O: potential vorticity in SI, regression in PVU) | Fixed: `LocalACCFModel.h2o_raw_formula` converts PV from SI to PVU (`PVU_PER_SI` = 1e6 in `physics.py`) before the regression, as CLIMaCCF does; the weather layer still supplies SI, which the ClimAccf backend needs (maintainer and method-owner decision). Measured on the NM sample 2025-07-09 (4,683 flights with climate results, against `dev` d239aa2): H2O CO2eq × 2.17, total CO2eq +2.18 % (H20), +1.86 % (H50), +1.56 % (H100); fuel, CO2 and the other species bit-identical. H2O now agrees with CLIMaCCF within 0.33 % on the 5 golden flights. Golden outputs regenerated: only H2O values change (`ATR_20_H2O`, H2O EAGWP and CO2eq) | `fix/accf-h2o-pv-units` | 2026-10-28 |
+| A13 (mixed fuel-flow provenance) | Fixed: when the AO provides `ff` without `am`, the mass decreases with the AO fuel flow, from the AO TOM or from min(MTOW, OEW + payload_factor x MPL + 1.15 x AO trip fuel) (no iteration); the fuel-burn guardrail runs on the AO fuel flow before that, and its rejection is final (maintainer and method-owner decision). Fuel and CO2 unchanged; mass profile, computed `ee` and contrails change for these flights; flights with `am` or without `ff` unchanged; golden outputs regenerated (contrail EF −0.12 % to +0.07 %) | `fix/mass-from-ao-fuel-flow` | 2026-10-28 |
 
 ## 1. Outcome
 
@@ -507,8 +508,22 @@ Each entry gives:
 - **Recommendation**: document this, or integrate mass from the provided `ff`. The decision
   belongs to the method owner.
 - *Documented in `input-prioritization.md` and `mrv-specification.md` (#75, see the
-  follow-up status table). The design choice
-  (integrate mass from the provided `ff` or not) stays open for the method owner.*
+  follow-up status table).*
+- *Resolved on `fix/mass-from-ao-fuel-flow` (decision of the maintainer and the method owner,
+  2026-10-28), only for flights with `ff` and no `am`: the mass starts at the AO TOM, or at
+  min(MTOW, OEW + payload_factor x MPL + 1.15 x Σ AO ff x dt) without one, and decreases
+  with the AO fuel flow, so mass(t₀) − mass(t_end) = Σ fuel_burn. A segment with an empty AO
+  `ff` counts as 0 kg, as in Σ fuel_burn; a mass ending below OEW is logged as a warning, not
+  clipped. BADA still computes thrust, and its fuel flow for a computed `ee` (unchanged rule),
+  at that mass. The fuel-burn guardrail runs on the AO `ff` before the mass is integrated, so a
+  kg/h fuel flow fails with the kg/s message (final, as for A1) instead of a negative mass
+  inside BADA. Fuel and CO2 are unchanged; on the golden `fleet_5_flights_fuel_flow_col`
+  flights the mass decrease was the BADA fuel (e.g. EAF2143: 3,785 kg against an AO fuel of
+  3,872 kg) and now equals the AO fuel. Flights with `am` (with any other column), or without
+  `ff`, are unchanged. Golden outputs regenerated: only the 10 records with `ff` and no `am`
+  change (`fuel_flow_col` 5/5, `mixed_columns` EAF2143, aggregated `tc_perf_no_am`,
+  `_no_am_ee`, `_no_am_tas`, `_no_am_ee_tas`); in them fuel, CO2 and the gaseous and nvPM
+  emissions are identical, and the contrail EF changes by −0.12 % to +0.07 %.*
 
 ## 7. New discrepancies
 

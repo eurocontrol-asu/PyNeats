@@ -33,6 +33,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 from typing import Literal
+from typing import NamedTuple
 from typing import TypedDict
 
 import numpy as np
@@ -151,6 +152,129 @@ def _has_ao_fuel_and_efficiency(df: pd.DataFrame) -> bool:
         "fuel_flow" in df.columns
         and "engine_efficiency" in df.columns
         and "aircraft_mass" in df.columns
+    )
+
+
+def _has_ao_fuel_flow_without_mass(df: pd.DataFrame) -> bool:
+    """True when the AO provides ``fuel_flow`` but no ``aircraft_mass`` column.
+
+    On this path the mass is integrated from the AO fuel flow (audit A13,
+    ``BADAPerformanceModel._performance_from_ao_fuel_flow``). Evaluated after
+    the early exit and before ``_derive_fuel_flow_from_mass_if_needed``, which
+    adds ``fuel_flow`` only when ``aircraft_mass`` is present.
+    """
+    return "fuel_flow" in df.columns and "aircraft_mass" not in df.columns
+
+
+def _fuel_burn_per_segment(
+    fuel_flow: NDArray[np.floating], segment_duration: NDArray[np.floating]
+) -> NDArray[np.floating]:
+    """Fuel burned over each forward segment [kg] = fuel_flow [kg/s] x duration [s].
+
+    A segment where the product is not finite (empty fuel flow, or the NaN
+    duration of the last point) counts as 0 kg, as the sum of ``fuel_burn``
+    (pandas skips NaN) does for the reported fuel.
+    """
+    burn = np.asarray(fuel_flow, dtype=float) * np.asarray(
+        segment_duration, dtype=float
+    )
+    return np.where(np.isfinite(burn), burn, 0.0)
+
+
+def _mass_from_fuel_flow(
+    initial_mass: float,
+    fuel_flow: NDArray[np.floating],
+    segment_duration: NDArray[np.floating],
+) -> NDArray[np.floating]:
+    """Aircraft mass [kg] at each point, decreasing with the given fuel flow.
+
+    mass[0] = initial_mass and mass[i + 1] = mass[i] - fuel_flow[i] [kg/s] x
+    segment_duration[i] [s], with segment_duration[i] = t[i + 1] - t[i]. The
+    burn of the last point (no next point) is not applied, so
+    mass[0] - mass[-1] equals the sum of ``fuel_burn`` (NaN skipped). A
+    segment with a non-finite burn counts as 0 kg (``_fuel_burn_per_segment``).
+    The result is not clipped.
+    """
+    burn = _fuel_burn_per_segment(fuel_flow, segment_duration)
+    burned_before = np.concatenate(([0.0], np.cumsum(burn)[:-1]))
+    return float(initial_mass) - burned_before
+
+
+# Hint added to a fuel-burn guardrail rejection of an AO fuel flow.
+_AO_FUEL_FLOW_HINT = (
+    " (fuel flow provided by the aircraft operator: it must be"
+    " in kg/s for the whole aircraft; kg/h gives 3600 times"
+    " too much)"
+)
+
+
+class _ZeroFuelWeight(NamedTuple):
+    """Masses [kg] for the initial mass estimate (payload_factor dimensionless)."""
+
+    operating_empty_weight: float
+    maximum_takeoff_weight: float
+    payload_factor: float
+    zero_fuel_weight: float
+
+
+def _zero_fuel_weight(
+    adapter: BaseBADAAdapter,
+    flight: Flight,
+    icao: str,
+    default_payload_factor: float,
+    logger: Any,
+) -> _ZeroFuelWeight:
+    """ZFW = OEW + payload_factor x MPL [kg] for the initial mass estimate.
+
+    ``payload_factor`` is the flight attribute, or ``default_payload_factor``
+    when the attribute is missing or not finite (a warning is logged then).
+    MPL is taken as MTOW - OEW when the adapter gives no usable MPL (missing,
+    zero, negative or NaN). Fails without retry when the adapter gives no OEW
+    or MTOW.
+    """
+    payload_factor: float | None = flight.attrs.get("payload_factor")
+
+    if payload_factor is None:
+        payload_factor = default_payload_factor
+    elif not np.isfinite(payload_factor):
+        # NaN would otherwise pass min(MTOW, NaN) as MTOW without a word.
+        logger.warning(
+            "Flight %s: 'payload_factor' attribute %r is not finite;"
+            " using the default %s",
+            flight.attrs.get("flight_id"),
+            payload_factor,
+            default_payload_factor,
+        )
+        payload_factor = default_payload_factor
+    else:
+        logger.debug("'payload_factor' attribute provided, using it")
+
+    operating_empty_weight = adapter.OEW
+    maximum_takeoff_weight = adapter.MTOW
+    if operating_empty_weight is None or maximum_takeoff_weight is None:
+        raise PerformanceStepError(
+            f"BADA adapter for ICAO '{icao}' does not provide OEW or MTOW",
+            retryable=False,
+        )
+
+    # A zero, negative or NaN MPL is treated as missing (BADA 3.16 U2____.OPF
+    # gives 0, which would otherwise mean ZFW = OEW whatever the payload factor).
+    bada_mpl = adapter.MPL
+    if bada_mpl is None or not np.isfinite(bada_mpl) or bada_mpl <= 0:
+        logger.warning(
+            "BADA adapter for ICAO '%s' does not provide a usable MPL (%s), assuming MPL = MTOW - OEW. Conservative case",
+            icao,
+            bada_mpl,
+        )
+        maximum_payload = maximum_takeoff_weight - operating_empty_weight
+    else:
+        maximum_payload = bada_mpl
+
+    return _ZeroFuelWeight(
+        operating_empty_weight=operating_empty_weight,
+        maximum_takeoff_weight=maximum_takeoff_weight,
+        payload_factor=payload_factor,
+        zero_fuel_weight=operating_empty_weight + payload_factor * maximum_payload,
     )
 
 
@@ -366,9 +490,10 @@ class BADAPerformanceModel(
 
         A fuel-burn guardrail rejection goes through the whole chain: BADA3
         retry, then altitude fallback; the flight fails only if every attempt
-        is rejected. The exception is the AO path (fuel flow, engine
-        efficiency and aircraft mass all provided), where the rejection is
-        final: every retry would reuse the same operator fuel flow. A failure raised with ``retryable=False`` ends the chain
+        is rejected. The exception is a fuel flow provided by the AO (with
+        engine efficiency and aircraft mass, or without aircraft mass), where
+        the rejection is final: every retry would reuse the same operator fuel
+        flow. A failure raised with ``retryable=False`` ends the chain
         where it occurs. On this path that flag is carried by the airspeed
         trust step (more than 80 % of the flight time untrusted or no trusted
         row, except when the AO provides fuel flow, engine efficiency and
@@ -576,6 +701,13 @@ class BADAPerformanceModel(
             if early is not None:
                 return early
 
+            # 2b) AO fuel flow without AO mass: the mass will decrease with
+            # this fuel flow (audit A13), so check it before integrating it.
+            # A kg/h fuel flow would otherwise drive the mass negative inside
+            # BADA. Final rejection: every retry reuses the same AO fuel flow.
+            if _has_ao_fuel_flow_without_mass(df):
+                self._check_ao_fuel_flow(df, adapter)
+
             # 3) derive fuel_flow from mass trajectory if needed
             self._derive_fuel_flow_from_mass_if_needed(df)
 
@@ -664,6 +796,24 @@ class BADAPerformanceModel(
                 f"{self.params.fuel_burn_threshold} = {limit:.0f} kg{hint}",
                 retryable=retryable,
             )
+
+    def _check_ao_fuel_flow(self, df: pd.DataFrame, adapter: BaseBADAAdapter) -> None:
+        """Fuel-burn guardrail on the AO fuel flow, before any mass is integrated.
+
+        Used when the AO provides ``fuel_flow`` without ``aircraft_mass``: the
+        total of fuel_flow [kg/s] x segment_duration [s] (NaN skipped) is
+        checked as in ``_check_total_fuel_burn``. The rejection is not
+        retryable (a BADA3 retry or the altitude fallback would reuse the same
+        AO fuel flow) and says the fuel flow must be in kg/s. ``df`` is not
+        modified.
+        """
+        fuel_flow = pd.to_numeric(df["fuel_flow"], errors="coerce")
+        self._check_total_fuel_burn(
+            df.assign(fuel_burn=fuel_flow * df["segment_duration"]),
+            adapter,
+            retryable=False,
+            hint=_AO_FUEL_FLOW_HINT,
+        )
 
     # ---------- adapter & attrs ----------
     def _extract_aircraft_attrs(
@@ -856,11 +1006,7 @@ class BADAPerformanceModel(
                 df,
                 adapter,
                 retryable=False,
-                hint=(
-                    " (fuel flow provided by the aircraft operator: it must be"
-                    " in kg/s for the whole aircraft; kg/h gives 3600 times"
-                    " too much)"
-                ),
+                hint=_AO_FUEL_FLOW_HINT,
             )
 
             if "fuel" not in df.columns and "fuel_burn" in df.columns:
@@ -933,8 +1079,22 @@ class BADAPerformanceModel(
         q_fuel_attr: float | None,
         reference_q_fuel: float,
     ) -> tuple[PerfOutput, float]:
-        """Choose mass estimation strategy and use iterative estimation with the performance
-        model if needed. Returns both perf output and q_fuel_used."""
+        """Choose the mass strategy and run the performance model with it.
+
+        Returns both perf output and q_fuel_used. In order of priority:
+
+        1. ``aircraft_mass`` column (AO): used point by point.
+        2. ``fuel_flow`` column (AO) without ``aircraft_mass``: the mass starts
+           at the ``takeoff_weight`` attribute, or at the estimate from the AO
+           trip fuel, and decreases with the AO fuel flow
+           (``_performance_from_ao_fuel_flow``, audit A13).
+        3. ``takeoff_weight`` attribute: the mass decreases with the BADA fuel
+           flow (``_single_pass_performance``).
+        4. Otherwise the iterative estimate with the BADA trip fuel
+           (``_estimate_initial_mass_iterative``).
+
+        BADA computes thrust and its own fuel flow at that mass in every case.
+        """
 
         # Determine q_fuel to use
         q_fuel_used = q_fuel_attr if q_fuel_attr is not None else reference_q_fuel
@@ -969,6 +1129,16 @@ class BADAPerformanceModel(
             )
             return perf, q_fuel_used
 
+        if _has_ao_fuel_flow_without_mass(df):
+            self.logger.debug(
+                "'fuel_flow' column provided without 'aircraft_mass': the mass"
+                " decreases with the AO fuel flow"
+            )
+            perf = self._performance_from_ao_fuel_flow(
+                adapter, df, flight, icao, q_fuel_used, reference_q_fuel
+            )
+            return perf, q_fuel_used
+
         initial_mass: float | None = flight.attrs.get("takeoff_weight")
         if initial_mass is not None:
             self.logger.debug("'takeoff_weight' attribute provided, using it")
@@ -987,6 +1157,80 @@ class BADAPerformanceModel(
         )
         return perf, q_fuel_used
 
+    def _performance_from_ao_fuel_flow(
+        self,
+        adapter: BaseBADAAdapter,
+        df: pd.DataFrame,
+        flight: Flight,
+        icao: str,
+        q_fuel_used: float,
+        default_q_fuel: float,
+    ) -> PerfOutput:
+        """Mass from the AO fuel flow when the AO gives no ``aircraft_mass`` (audit A13).
+
+        All masses in kg. The initial mass is the ``takeoff_weight`` attribute
+        when given, otherwise min(MTOW, ZFW + trip fuel x
+        (1 + fuel_reserve_fraction)) with ZFW from
+        ``_zero_fuel_weight`` and trip fuel = sum of AO
+        fuel_flow [kg/s] x segment_duration [s]. That trip fuel is known, so
+        no iteration is needed. The mass then decreases with the AO fuel flow
+        (``_mass_from_fuel_flow``), so mass[0] - mass[-1] equals the reported
+        fuel (sum of ``fuel_burn``). A segment with an empty AO fuel flow
+        (none is expected: empty values are interpolated at resampling) counts
+        as 0 kg, as in the reported fuel. A final mass below OEW is logged as
+        a warning and not clipped. BADA then computes thrust and its own fuel
+        flow (used for the engine efficiency when it is missing) at each mass.
+        The AO fuel flow is used as given: no q_fuel correction.
+        """
+        fuel_flow = pd.to_numeric(df["fuel_flow"], errors="coerce").to_numpy(
+            dtype=float
+        )
+        segment_duration = df["segment_duration"].to_numpy(dtype=float)
+        trip_fuel = float(_fuel_burn_per_segment(fuel_flow, segment_duration).sum())
+
+        takeoff_weight: float | None = flight.attrs.get("takeoff_weight")
+        if takeoff_weight is not None:
+            self.logger.debug("'takeoff_weight' attribute provided, using it")
+            initial_mass = float(takeoff_weight)
+        else:
+            zfw = _zero_fuel_weight(
+                adapter, flight, icao, self.params.payload_factor, self.logger
+            )
+            fuel_factor = 1.0 + self.params.fuel_reserve_fraction
+            initial_mass = min(
+                zfw.maximum_takeoff_weight,
+                zfw.zero_fuel_weight + trip_fuel * fuel_factor,
+            )
+            self.logger.debug(
+                "Initial mass from the AO trip fuel (%s kg): %s kg. MTOW: %s kg",
+                trip_fuel,
+                initial_mass,
+                zfw.maximum_takeoff_weight,
+            )
+
+        mass = _mass_from_fuel_flow(initial_mass, fuel_flow, segment_duration)
+
+        oew = adapter.OEW
+        if oew is not None and mass[-1] < oew:
+            self.logger.warning(
+                "Flight %s: the mass integrated from the AO fuel flow ends at"
+                " %.0f kg, below OEW %.0f kg (initial mass %.0f kg, AO fuel"
+                " %.0f kg); not clipped",
+                flight.attrs.get("flight_id"),
+                mass[-1],
+                oew,
+                initial_mass,
+                trip_fuel,
+            )
+
+        return self._single_pass_performance(
+            adapter,
+            df.assign(aircraft_mass=mass),
+            initial_mass=None,
+            q_fuel_used=q_fuel_used,
+            default_q_fuel=default_q_fuel,
+        )
+
     def _single_pass_performance(
         self,
         adapter: BaseBADAAdapter,
@@ -1000,9 +1244,10 @@ class BADAPerformanceModel(
 
         With ``initial_mass`` [kg, at the first retained trajectory point] the
         mass is integrated with the BADA fuel flow
-        (mass -= ff_corrected [kg/s] x segment_duration [s]), even when a
-        ``fuel_flow`` column is provided. Without it, the ``aircraft_mass``
-        column [kg] is used point by point. Returned fuel flow is kg/s for the
+        (mass -= ff_corrected [kg/s] x segment_duration [s]); callers pass it
+        only when no AO ``fuel_flow`` column is given. Without it, the
+        ``aircraft_mass`` column [kg] is used point by point (the AO column,
+        or the mass integrated from the AO fuel flow). Returned fuel flow is kg/s for the
         whole aircraft and thrust is N.
 
         A point where BADA raises, or gives a fuel flow that is not finite,
@@ -1147,40 +1392,19 @@ class BADAPerformanceModel(
         All masses in kg. Initial mass = min(MTOW, ZFW + trip fuel x
         (1 + fuel_reserve_fraction)), with ZFW = OEW + payload_factor x MPL
         (or x (MTOW - OEW) when MPL is missing or not positive) and trip fuel = sum of BADA fuel
-        flow [kg/s] x segment_duration [s] (NaN skipped).
+        flow [kg/s] x segment_duration [s] (NaN skipped). Used only when the AO
+        gives no ``aircraft_mass``, no ``fuel_flow`` and no ``takeoff_weight``;
+        with an AO fuel flow the trip fuel is known and
+        ``_performance_from_ao_fuel_flow`` is used instead.
         """
 
-        payload_factor: float | None = flight.attrs.get("payload_factor")
-
-        if payload_factor is None:
-            payload_factor = self.params.payload_factor
-        else:
-            self.logger.debug("'payload_factor' attribute provided, using it")
-
-        operating_empty_weight = adapter.OEW
-        maximum_takeoff_weight = adapter.MTOW
-        if operating_empty_weight is None or maximum_takeoff_weight is None:
-            raise PerformanceStepError(
-                f"BADA adapter for ICAO '{icao}' does not provide OEW or MTOW",
-                retryable=False,
-            )
-
-        # A zero, negative or NaN MPL is treated as missing (BADA 3.16 U2____.OPF
-        # gives 0, which would otherwise mean ZFW = OEW whatever the payload factor).
-        bada_mpl = adapter.MPL
-        if bada_mpl is None or not np.isfinite(bada_mpl) or bada_mpl <= 0:
-            self.logger.warning(
-                "BADA adapter for ICAO '%s' does not provide a usable MPL (%s), assuming MPL = MTOW - OEW. Conservative case",
-                icao,
-                bada_mpl,
-            )
-            maximum_payload = maximum_takeoff_weight - operating_empty_weight
-        else:
-            maximum_payload = bada_mpl
-
-        zero_fuel_weight: float = (
-            operating_empty_weight + payload_factor * maximum_payload
+        zfw = _zero_fuel_weight(
+            adapter, flight, icao, self.params.payload_factor, self.logger
         )
+        operating_empty_weight = zfw.operating_empty_weight
+        maximum_takeoff_weight = zfw.maximum_takeoff_weight
+        payload_factor = zfw.payload_factor
+        zero_fuel_weight = zfw.zero_fuel_weight
         fuel_factor: float = 1.0 + self.params.fuel_reserve_fraction
 
         # Conservative initial mass guess (between OEW and MTOW weighted by payload factor)
@@ -1283,8 +1507,9 @@ class BADAPerformanceModel(
         """Write BADA outputs to ``df``.
 
         ``thrust`` [N]; ``aircraft_mass`` [kg] is the input column when given,
-        otherwise the mass integrated with the BADA fuel flow (the constant
-        first-pass guess if ``max_mass_estimation_iter`` <= 1); a provided or
+        otherwise the mass integrated with the AO fuel flow when it is given,
+        otherwise with the BADA fuel flow (the constant first-pass guess if
+        ``max_mass_estimation_iter`` <= 1); a provided or
         mass-derived ``fuel_flow`` [kg/s] is kept as is; ``fuel_burn`` =
         fuel_flow x segment_duration [kg per segment].
         """

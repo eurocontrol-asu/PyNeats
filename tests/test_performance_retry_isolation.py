@@ -107,6 +107,7 @@ def _make_model(bada_results: list[Any], ao: set[str]) -> tuple[MagicMock, Magic
         "_finalize_columns",
         "_build_result",
         "_check_total_fuel_burn",
+        "_check_ao_fuel_flow",
         "_attach_output_attrs",
     ):
         setattr(model, name, getattr(BADAPerformanceModel, name).__get__(model))
@@ -184,12 +185,12 @@ def test_guardrail_rejection_retried_with_bada3(ao: set[str]) -> None:
 
 
 def test_guardrail_rejection_reaches_altitude_fallback() -> None:
-    # AO fuel flow is impossible: BADA4 and BADA3 are both rejected, then the
-    # altitude fallback runs. Before the fix, the BADA3 retry saw fuel flow +
-    # efficiency + the BADA4 mass, skipped the guardrail and accepted the flight.
-    model, _adapter = _make_model(
-        [PLAUSIBLE_FUEL_FLOW, PLAUSIBLE_FUEL_FLOW], {"ff", "ee"}
-    )
+    # BADA4 and BADA3 fuel are both impossible: both are rejected, then the
+    # altitude fallback runs. Before the fix, the BADA3 retry saw the BADA4
+    # fuel flow and mass + the AO efficiency, skipped the guardrail and
+    # accepted the flight. (An impossible AO fuel flow is now rejected without
+    # retry: tests/test_mass_from_ao_fuel_flow.py.)
+    model, _adapter = _make_model([IMPOSSIBLE_FUEL_FLOW, IMPOSSIBLE_FUEL_FLOW], {"ee"})
     fallback_result = MagicMock(name="altitude fallback result")
     model._run_with_altitude_fallback = MagicMock(return_value=fallback_result)
 
