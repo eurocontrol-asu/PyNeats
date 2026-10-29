@@ -33,6 +33,7 @@ cite line numbers on `dev` before the fix they describe.
 | OpenAirClim temp folder (`tmp_base_dir_path`) never created: with a missing folder every small-emitter flight failed at the last step | Fixed: the small-emitter runners create the folder at start-up and stop there, naming the path, if it cannot be written to; the model also creates it before each run. No change in results | `fix/openairclim-tmp-dir` | 2026-10-28 |
 | O4 (OpenAirClim metric window pinned to 2025; every flight dated 2026 failed) | Fixed: every flight is emitted in one reference year, `OPEN_AIRCLIM_REFERENCE_YEAR` = 2025 in `neats_default_parameters.py` (inventory year, `metrics.t_0`, `time.range`, result key); the same flight gives the same result whatever its date (maintainer and method-owner decision). Flights dated 2025: results bit-identical | `fix/openairclim-reference-year` | 2026-10-28 |
 | A1 (no fuel check when the AO provides fuel flow, engine efficiency and aircraft mass; a fuel flow in kg/h was accepted) | Fixed: the fuel-burn guardrail (total fuel <= 1.2 x (MTOW - OEW)) also runs on that path; its rejection is final (no BADA3 retry, no altitude fallback) and its message says the AO fuel flow must be in kg/s (maintainer decision). Valid inputs unchanged | `fix/ao-fuel-flow-check` | 2026-10-28 |
+| O1 (local aCCF H2O: potential vorticity in SI, regression in PVU) | Fixed: `LocalACCFModel.h2o_raw_formula` converts PV from SI to PVU (`PVU_PER_SI` = 1e6 in `physics.py`) before the regression, as CLIMaCCF does; the weather layer still supplies SI, which the ClimAccf backend needs (maintainer and method-owner decision). Measured on the NM sample 2025-07-09 (4,683 flights with climate results, against `dev` d239aa2): H2O CO2eq × 2.17, total CO2eq +2.18 % (H20), +1.86 % (H50), +1.56 % (H100); fuel, CO2 and the other species bit-identical. H2O now agrees with CLIMaCCF within 0.33 % on the 5 golden flights. Golden outputs regenerated: only H2O values change (`ATR_20_H2O`, H2O EAGWP and CO2eq) | `fix/accf-h2o-pv-units` | 2026-10-28 |
 
 ## 1. Outcome
 
@@ -56,8 +57,8 @@ cite line numbers on `dev` before the fix they describe.
   Inside PyNEATS, away from the AO fields, the audit found unit errors with large numerical
   effects (Section 7):
   - The default local aCCF H2O formula receives potential vorticity in SI units, but its
-    coefficients are defined for PVU. The H2O term loses all sensitivity to the weather, and
-    H2O ATR is underestimated 1.6–3.3 times per flight.
+    coefficients are defined for PVU. The H2O term lost all sensitivity to the weather, and
+    H2O ATR was underestimated 1.6–3.3 times per golden flight (fixed, see O1 point 6).
   - The small-emitter output `contrails_ef_J` contains an AGWP in W m-2 yr, not joules.
   - OpenAirClim is told the NOx species is NO, while the NOx PyNEATS supplies is
     NO2-equivalent. Method D O3 and CH4 are then about 53 % too high.
@@ -645,6 +646,30 @@ consequential finding.
 5. **Convert in PyNEATS**: multiply by 1e6 inside `compute_h2o`. Do **not** convert in the
    weather layer, because the ClimAccf backend needs SI. Regenerate golden outputs, and add a
    LocalACCF-against-CLIMaCCF regression test.
+6. **Resolution (2026-10-28, Ramon and Philippe).** Convert inside `LocalACCFModel`, not in the
+   weather layer. `h2o_raw_formula` now applies the regression to |PV| in PVU:
+   4.05e-16 + 1.48e-16·|PV_SI|·`PVU_PER_SI`, with `PVU_PER_SI` = 1e6 in `core/physics.py`.
+   `compute_h2o` and the ClimAccf backend still receive PV in SI, as before.
+   - **Tests.** `tests/test_accf_h2o_pv_units.py`: 2e-6 SI (2 PVU) gives 4.05e-16 + 2.96e-16;
+     the result depends on PV (10 PVU gives 4.65 times the constant term); the sign of PV is
+     ignored; `compute_h2o` gives the regression in PVU / scale × fuel burn. These tests fail on
+     `dev` d239aa2.
+   - **Effect, measured against `dev` d239aa2** (NM sample 2025-07-09, Method C, 4,959 flights,
+     4,683 with climate results in both runs, the same 276 failures): H2O CO2eq × 2.1736 at every
+     horizon (per flight × 1.02 to × 4.41, median × 1.93); total CO2eq +2.18 % (H20), +1.86 %
+     (H50), +1.56 % (H100). Fuel, CO2, CH4, O3 and contrails are bit-identical.
+   - **Cross-check with CLIMaCCF** (dlr-pa/climaccf 0184719, run through the pycontrails ACCF
+     model outside the PyNEATS environment): fuel-weighted H2O aCCF on the 5 golden flights
+     agrees within 0.33 % (before the fix: × 1.6 to × 3.3 apart). CLIMaCCF converts PV with
+     `self.pvu = ds['pv'].values * 1e6` (`climaccf/accf.py:55`) and applies the same regression
+     (`accf.py:168`).
+   - **Golden outputs regenerated** with `scripts/create_golden_outputs.py` on this branch. All
+     11 `*_output.json` files change, because every golden flight uses Method C; no input file
+     changes. Only `ATR_20_H2O` and the H2O EAGWP and CO2eq values change; fuel, CO2, the other
+     species and contrails are identical. H2O CO2eq is × 1.59 to × 3.29 per flight (it now
+     depends on PV); for example EAF2143 (default case) 765.7 → 2,511.2 kg at H20.
+   - **Still open.** No automated LocalACCF-against-CLIMaCCF regression test is added, because
+     `climaccf` is not installed in the PyNEATS environment.
 
 **O2. Method D `contrails_ef_J` holds an AGWP, not joules.**
 1. `gwp.py:426`: `total_ef_J = float(flight.attrs.get("AGWP_20_CONT", 0.0))`, small emitter only.
