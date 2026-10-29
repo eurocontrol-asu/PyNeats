@@ -125,9 +125,9 @@ The species and their order depend on the method:
 
 See [explanation/mrv-specification.md](../explanation/mrv-specification.md) §3.7 for the formulas.
 
-**Multi-engine flights.** When `engine_uid` in the JSON input
-(`trajectory_json_filepath`) is a list, each engine is run as a separate copy
-of the flight. The copies are averaged into one result after the emission step, and `engine_uid` lists the engines of the
+**Multi-engine flights.** When `engine_uid` is a list, in the JSON input
+(`trajectory_json_filepath`) or in a `trajectory_dataframe`, each engine is
+run as a separate copy of the flight. The copies are averaged into one result after the emission step, and `engine_uid` lists the engines of the
 averaged copies. A copy that fails before the averaging gives its own error
 record, with `flight_id` `"<flight_id>__eng<i>"` and the `engine_uid` of that
 copy; the result then averages the copies that succeeded, and its
@@ -138,8 +138,11 @@ one low-altitude zero result per copy, also with `flight_id`
 `"<flight_id>__eng<i>"` and the `engine_uid` of that copy. `bada_version` and
 `bada_code` of the averaged result are those of one copy. A multi-engine
 flight can therefore have more than one entry in `flight_results`.
-With `trajectory_dataframe`, a list of two or more engines is not supported:
-`split_df_into_flights` raises `ValueError`, so `eval()` raises.
+With `trajectory_dataframe`, put the list in the `engine_uid` cells of the
+flight, as `concat_neats_flight` does for a list in `attrs`; the result is the
+same as for the JSON input. A tuple or NumPy array cell (for example from a
+Parquet file) is read as a list. An empty list gives one error record at
+`parsing` and no result.
 
 ### Low-altitude zero result
 
