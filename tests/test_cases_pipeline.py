@@ -582,9 +582,6 @@ class TestBehavioralAssertions:
 
     # TC_LF_GT_ONE: "Set load factor to 1"
 
-    @pytest.mark.xfail(
-        reason="Known DLR test failing in evaluated version", strict=True
-    )
     def test_lf_gt_one_output_clamped(
         self,
         aggregated_fleet_run: FleetRunnerLargeEmitter,
@@ -1452,9 +1449,6 @@ class TestPrePipelineValidation:
     Note: some tests like lf_gt_one are doubled with and without pipeline.
     """
 
-    @pytest.mark.xfail(
-        reason="Known DLR test failing in evaluated version", strict=True
-    )
     def test_lf_gt_one_clamped_by_parser(self) -> None:
         """TC_LF_GT_ONE pre-check: load_factor > 1 is clamped to 1.0
         during JSON-to-DataFrame conversion.

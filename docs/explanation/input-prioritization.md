@@ -84,7 +84,7 @@ graph TD
 
 ## Mass Estimation
 
-When neither aircraft mass nor TOW is available, PyNeats estimates the TOW from the load factor (AO-provided or conservative default of 1).
+When neither aircraft mass nor TOW is available, PyNeats estimates the TOW from the load factor (AO-provided or conservative default of 1). An AO load factor above 1 is set to 1 with a warning; a negative one fails the flight at parsing.
 
 **With AO fuel flow**, the trip fuel is known: it is the AO fuel burn, the sum of the AO fuel flow times the segment durations. No iteration is needed:
 

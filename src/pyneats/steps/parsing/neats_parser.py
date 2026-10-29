@@ -19,6 +19,7 @@ from pyneats.core.neats_fuel import check_q_fuel
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
 from pyneats.core.views import ValidationError
+from pyneats.steps.parsing.neats_io import clamp_payload_factor
 from pyneats.steps.parsing.params import TrajectoryParserParams
 from pyneats.steps.parsing.protocol import TrajectoryParser
 from pyneats.steps.parsing.protocol import TrajectoryParserStepError
@@ -238,7 +239,8 @@ class NeatsTrajectoryParser(
         5. Rejects trajectories spanning more than 24 hours (likely a
            concatenation or timezone bug).
         6. Builds flight attributes, optionally filling fuel properties from
-           the per-airport fallback map if provided.
+           the per-airport fallback map if provided. A ``payload_factor``
+           above 1 is set to 1.0 with a warning; a negative one is rejected.
         7. Rejects low-altitude trajectories that never cross the configured
            ``max_pressure_level`` in hPa (no contribution to non-CO2 climate
            impact).
@@ -253,8 +255,9 @@ class NeatsTrajectoryParser(
         Raises:
             TrajectoryParserStepError: If required columns are missing, if
                 altitude/timestamp conversion fails, if the cleaned trajectory
-                is empty, if the trajectory duration exceeds 24 hours, or if
-                the trajectory never reaches the minimum pressure altitude.
+                is empty, if the trajectory duration exceeds 24 hours, if
+                ``payload_factor`` is negative or not a number, or if the
+                trajectory never reaches the minimum pressure altitude.
         """
         try:
             self.logger.debug("NM parse start: rows=%d, cols=%d", *flight.shape)
@@ -353,6 +356,36 @@ class NeatsTrajectoryParser(
                                 airport,
                                 val,
                             )
+
+            # 5.6) Payload factor (AO load_factor), a fraction of the maximum
+            #      payload: above 1 is set to 1.0 with a warning (already done
+            #      for JSON input); a negative value fails the flight here.
+            #      NaN (and pd.NA, stored as NaN) is left to the performance
+            #      step (default + warning). A numeric string is stored as a
+            #      float, so it is not passed on to the performance step.
+            payload_factor = NEATSFuel._to_scalar(attrs.get("payload_factor"))
+            if payload_factor is pd.NA:
+                attrs["payload_factor"] = float("nan")
+            elif payload_factor is not None:
+                try:
+                    payload_factor_value = float(payload_factor)
+                except (TypeError, ValueError) as e:
+                    raise TrajectoryParserStepError(
+                        f"payload_factor (AO load_factor) {payload_factor!r} is "
+                        f"not a number; give a fraction of the maximum payload "
+                        f"(0 to 1) or leave it out (None) to use the default."
+                    ) from e
+                if payload_factor_value < 0.0:
+                    raise TrajectoryParserStepError(
+                        f"payload_factor (AO load_factor) = {payload_factor_value:g} "
+                        f"is negative. It is a fraction of the maximum payload, "
+                        f"from 0 (no payload) to 1 (full payload)."
+                    )
+                clamped = clamp_payload_factor(payload_factor, attrs.get("flight_id"))
+                if clamped is not payload_factor:
+                    attrs["payload_factor"] = clamped
+                elif isinstance(payload_factor, str):
+                    attrs["payload_factor"] = payload_factor_value
 
             # 6) Guard: list engine_uid is only supported by FleetRunner
             if isinstance(attrs.get("engine_uid"), list):

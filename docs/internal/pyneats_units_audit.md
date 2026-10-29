@@ -36,6 +36,7 @@ cite line numbers on `dev` before the fix they describe.
 | A1 (no fuel check when the AO provides fuel flow, engine efficiency and aircraft mass; a fuel flow in kg/h was accepted) | Fixed: the fuel-burn guardrail (total fuel <= 1.2 x (MTOW - OEW)) also runs on that path; its rejection is final (no BADA3 retry, no altitude fallback) and its message says the AO fuel flow must be in kg/s (maintainer decision). Valid inputs unchanged | `fix/ao-fuel-flow-check` | 2026-10-28 |
 | O1 (local aCCF H2O: potential vorticity in SI, regression in PVU) | Fixed: `LocalACCFModel.h2o_raw_formula` converts PV from SI to PVU (`PVU_PER_SI` = 1e6 in `physics.py`) before the regression, as CLIMaCCF does; the weather layer still supplies SI, which the ClimAccf backend needs (maintainer and method-owner decision). Measured on the NM sample 2025-07-09 (4,683 flights with climate results, against `dev` d239aa2): H2O CO2eq × 2.17, total CO2eq +2.18 % (H20), +1.86 % (H50), +1.56 % (H100); fuel, CO2 and the other species bit-identical. H2O now agrees with CLIMaCCF within 0.33 % on the 5 golden flights. Golden outputs regenerated: only H2O values change (`ATR_20_H2O`, H2O EAGWP and CO2eq) | `fix/accf-h2o-pv-units` | 2026-10-28 |
 | A13 (mixed fuel-flow provenance) | Fixed: when the AO provides `ff` without `am`, the mass decreases with the AO fuel flow, from the AO TOM or from min(MTOW, OEW + payload_factor x MPL + 1.15 x AO trip fuel) (no iteration); the fuel-burn guardrail runs on the AO fuel flow before that, and its rejection is final (maintainer and method-owner decision). Fuel and CO2 unchanged; mass profile, computed `ee` and contrails change for these flights; flights with `am` or without `ff` unchanged; golden outputs regenerated (contrail EF −0.12 % to +0.07 %) | `fix/mass-from-ao-fuel-flow` | 2026-10-28 |
+| A3 (`load_factor` not range-checked: 1.5 or 80 gave more fuel without a warning, −0.5 a take-off mass below OEW) | Fixed: 0–1 kept unchanged (0 = ferry flight); above 1 set to 1.0 with a warning naming the flight and the value, not divided by 100 (DLR TC_LF_GT_ONE; in `neats_json_to_flights` for JSON input and in the parser for DataFrame input); negative fails the flight at parsing (no retry; other flights go on), as an out-of-range `q_fuel` does (maintainer decision). `None` and NaN unchanged. Valid inputs unchanged; no golden result changes | `fix/load-factor-range` | 2026-10-29 |
 
 ## 1. Outcome
 
@@ -351,6 +352,22 @@ Each entry gives:
 4. Possibly. The application might convert a seat load factor.
 5. **Clarify the AO template**: "payload mass ÷ maximum payload, fraction 0–1; not a seat load
    factor".
+   - *Range fixed on `fix/load-factor-range` (maintainer decision, 2026-10-29; see the
+     follow-up status table). `NeatsTrajectoryParser` checks `payload_factor` on every input
+     path (AO JSON, `FlightRunner` and `FleetRunner` DataFrame input): 0–1 is kept unchanged
+     (0 is a ferry or positioning flight); above 1 is set to 1.0 with the warning
+     "Flight <id>: payload_factor (AO load_factor) <value> is above 1; using 1.0"
+     (`clamp_payload_factor`, also applied in `neats_json_to_flights`, as the DLR test
+     TC_LF_GT_ONE expects); a negative value fails the flight at parsing with
+     "payload_factor (AO load_factor) = <value> is negative. ...", which is final (parsing
+     has no retry) and, in a fleet, an error record while the other flights go on. A value
+     that is not a number (e.g. "full") also fails at parsing; a numeric string (e.g. "0.8")
+     is stored as a float. `None` gives the default 1.0 and NaN (or `pd.NA`, stored as NaN)
+     the default with a warning in the performance step, as before. A value of 80 (a
+     percentage) is set to 1.0, not divided by 100. The two TC_LF_GT_ONE tests no longer
+     xfail. Golden results unchanged: the only golden flight with a value above 1
+     (`ACA812__tc_lf_gt_one`, 1.5) also has `takeoff_mass`, so its factor is not used; its
+     stored `payload_factor` attribute (1.5) is not compared by the golden tests.*
 
 **A4. `hydrogen_per_carbon_ratio`: atomic or mass basis.** *Resolved (§6.0): atomic, MRR §1(36). PyNEATS matches.*
 1. `neats_io.py:116` → `neats_fuel.py:83-87`.

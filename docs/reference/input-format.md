@@ -33,6 +33,13 @@ sample: [`tests/data/golden/fleet_5_flights_input.json`](https://github.com/euro
 |---|---|---|---|
 | `aircraft_type` | string | yes | ICAO type, e.g. `"A320"` |
 
+`load_factor` (optional, nullable) is payload mass / maximum payload mass, a
+fraction from 0 (no payload, e.g. a ferry flight) to 1 (full payload); it is
+not a seat load factor. It is used only when the AO gives neither aircraft mass
+nor take-off mass. A value above 1 is set to 1.0 with a warning (it is not
+divided by 100); a negative value fails the flight at parsing. When `null`, the
+default 1 is used.
+
 ### `fuel_properties`
 
 All fields are nullable. When `null`, the value from the airport fuel file

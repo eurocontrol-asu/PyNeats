@@ -70,6 +70,30 @@ def _ts_to_utc_string(ts_raw: str) -> str:
         ) from None
 
 
+def clamp_payload_factor(value: Any, flight_id: Any) -> Any:
+    """Return 1.0 for a payload factor above 1, with a warning; else ``value``.
+
+    The payload factor (AO ``load_factor``) is a fraction of the maximum
+    payload, so 1 is full payload. A value above 1 is set to 1.0, as the DLR
+    test TC_LF_GT_ONE requires; it is not divided by 100. ``None``, NaN, a
+    negative value and a value that is not a number are returned unchanged:
+    ``NeatsTrajectoryParser`` rejects a negative value or one that is not a
+    number, and the performance step uses the default for NaN.
+    """
+    try:
+        payload_factor = float(value)
+    except (TypeError, ValueError):
+        return value
+    if payload_factor > 1.0:
+        logger.warning(
+            "Flight %s: payload_factor (AO load_factor) %g is above 1; using 1.0",
+            flight_id,
+            payload_factor,
+        )
+        return 1.0
+    return value
+
+
 @dataclass(frozen=True)
 class FlightConversionFailure:
     """A flight that ``neats_json_to_flights`` could not convert.
@@ -207,7 +231,9 @@ def neats_json_to_flights(
     - ``aircraft_properties.load_factor`` -> ``payload_factor``:
       dimensionless fraction, used as payload mass / maximum payload (BADA
       MPL, or MTOW - OEW when MPL is unavailable), not a seat load factor,
-      as defined in MRR Annex IIIa §1(32).
+      as defined in MRR Annex IIIa §1(32). A value above 1 is set to 1.0
+      with a warning (``clamp_payload_factor``); a negative value is kept
+      here and fails the flight in ``NeatsTrajectoryParser``.
     - ``fuel_properties.hydrogen_content`` -> ``hydrogen_content``: wt.%
       (percent by mass, e.g. 13.79), not a 0-1 fraction.
     - ``fuel_properties.hydrogen_per_carbon_ratio`` -> ``h_c_ratio``: used
@@ -333,7 +359,11 @@ def _flight_to_frame(flight: Mapping[str, Any], model_type: str) -> pd.DataFrame
             "aircraft_series": ap.get("aircraft_version"),
             "engine_uid": ap.get("engine_uid"),
             "takeoff_weight": ap.get("takeoff_mass"),
-            "payload_factor": ap.get("load_factor"),
+            # Above 1 set to 1.0 with a warning; a negative value fails
+            # the flight in NeatsTrajectoryParser.
+            "payload_factor": clamp_payload_factor(
+                ap.get("load_factor"), fi.get("flight_identification")
+            ),
             # Fuel (canonical names aligned with NEATSFuel / Flight4D)
             "hydrogen_content": fp.get("hydrogen_content"),
             "h_c_ratio": fp.get("hydrogen_per_carbon_ratio"),

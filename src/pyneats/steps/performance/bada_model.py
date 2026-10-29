@@ -328,10 +328,11 @@ class BADAPerformanceModelParams(PerformanceModelParams):
         when the adapter gives no usable MPL (missing, zero, negative or NaN;
         BADA3 and BADA4 adapters both read it from the BADA files).
         The first-pass constant-mass guess is
-        OEW + payload_factor x (MTOW - OEW). Not a seat load factor; not
-        clipped. Overridden by the ``payload_factor`` flight attribute and
-        used only when neither an ``aircraft_mass`` column nor a
-        ``takeoff_weight`` attribute is given.
+        OEW + payload_factor x (MTOW - OEW). Not a seat load factor; this
+        parameter is not range-checked. Overridden by the ``payload_factor``
+        flight attribute (limited to 0-1 by ``NeatsTrajectoryParser``: above
+        1 set to 1.0, negative rejected) and used only when neither an
+        ``aircraft_mass`` column nor a ``takeoff_weight`` attribute is given.
     fuel_reserve_fraction : float
         Dimensionless fraction: fuel on board = trip fuel x
         (1 + fuel_reserve_fraction) in the initial mass estimate.
