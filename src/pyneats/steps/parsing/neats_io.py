@@ -15,6 +15,7 @@ from datetime import UTC
 from datetime import datetime
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from pyneats.steps.parsing.views import Flight4D
@@ -487,6 +488,34 @@ def select_json_flights(
     return result
 
 
+def _is_missing_attr(value: Any) -> bool:
+    """Return True if a flight-level cell holds no value (None, NaN, NaT, pd.NA).
+
+    A list or array (e.g. a multi-engine ``engine_uid``) is a value, also when
+    it is empty or holds NaN: ``pd.notna`` on it gives an array, not a bool.
+    A 0-d array is read as the scalar it holds.
+    """
+    if isinstance(value, np.ndarray):
+        if value.ndim > 0:
+            return False
+    elif not pd.api.types.is_scalar(value):
+        return False
+    return bool(pd.isna(value))
+
+
+def _attr_value(value: Any) -> Any:
+    """Return a flight-level cell as the JSON input gives it.
+
+    A tuple or a 1-d (or higher) array, e.g. an ``engine_uid`` cell read back
+    from Parquet or Arrow, becomes a list; other values are returned as is.
+    """
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, np.ndarray) and value.ndim > 0:
+        return value.tolist()
+    return value
+
+
 def split_df_into_flights(
     df: pd.DataFrame,
     *,
@@ -513,7 +542,9 @@ def split_df_into_flights(
     datetime64 (naive values are read as UTC, tz-aware values are converted
     to UTC) or as a string in the parser ``date_format``. Per-flight columns
     (e.g. ``q_fuel`` in J/kg, ``hydrogen_content`` in wt.%) are moved to
-    ``df.attrs``.
+    ``df.attrs``. A per-flight cell that is None, NaN or NaT is left out of
+    ``df.attrs``. A list cell (e.g. a multi-engine ``engine_uid``) is copied
+    as is; a tuple or array cell is copied as a list.
     """
 
     flight_key_cols = ["flight_id", "arrival_airport", "departure_airport", "aobt"]
@@ -544,7 +575,9 @@ def split_df_into_flights(
         # Extract attrs from the *first row* of the group
         first_row = grp.iloc[0]
         attrs = {
-            col: first_row[col] for col in attr_columns if pd.notna(first_row[col])
+            col: _attr_value(first_row[col])
+            for col in attr_columns
+            if not _is_missing_attr(first_row[col])
         }
 
         # Drop attribute columns from the actual trajectory dataframe

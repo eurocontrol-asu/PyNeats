@@ -167,7 +167,10 @@ class FleetRunnerParams(RunnerConfig):
             (``flight_id``, ``departure_airport``, ``arrival_airport``,
             ``aobt``, ``aircraft_type``, ..., ``q_fuel`` in J/kg,
             ``hydrogen_content`` in wt.% (percent by mass)) are flight-level
-            and are moved to ``attrs`` by ``split_df_into_flights``.
+            and are moved to ``attrs`` by ``split_df_into_flights``. For a
+            multi-engine flight, the ``engine_uid`` cells hold a list of engine
+            UIDs, as in the JSON input (see
+            ``docs/reference/output-format.md``, "Multi-engine flights").
     """
 
     # Required fleet resource
@@ -740,7 +743,15 @@ class FleetRunner(Runner):
         expanded: list[pd.DataFrame] = []
         for df in self.source_fleet:
             engine_uid = df.attrs.get("engine_uid")
-            if isinstance(engine_uid, list):
+            if isinstance(engine_uid, list) and not engine_uid:
+                # No engine to run: an error record, not a silent drop.
+                flight_id = df.attrs.get("flight_id", "UNKNOWN")
+                msg = "engine_uid is an empty list; give at least one engine."
+                self.error_records.append(
+                    _create_error_record(df, flight_id, "parsing", msg)
+                )
+                logger.warning("Flight %s failed at parsing: %s", flight_id, msg)
+            elif isinstance(engine_uid, list):
                 # Composite parent key — same construction as fleet_utils.py and
                 # split_df_into_flights(), so grouping is robust even when raw
                 # flight_id alone is not unique.
@@ -760,6 +771,9 @@ class FleetRunner(Runner):
                     expanded.append(copy_df)
             else:
                 expanded.append(df)
+        if self.source_fleet and not expanded:
+            # Every flight had an empty engine list: nothing left to run.
+            self._pipeline_aborted = True
         self.source_fleet = expanded
 
     def _parse_flight(self) -> Self:
