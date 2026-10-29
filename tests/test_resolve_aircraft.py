@@ -35,6 +35,13 @@ def bada(bada_path: Path | None) -> Path:
     return bada_path
 
 
+def _require_bada4_model(bada: Path, code: str) -> None:
+    """Skip when the BADA4 model files are not in this BADA data (CI has a subset)."""
+    root = bada / DEFAULT_BADA4_VERSION
+    if not (root / code / f"{code}.xml").is_file():
+        pytest.skip(f"BADA4 model {code} not found under {root}")
+
+
 @pytest.fixture
 def fake_bada(tmp_path: Path) -> Path:
     """BADA root with empty BADA4 and BADA3 directories (mapping only)."""
@@ -52,6 +59,7 @@ def fake_bada(tmp_path: Path) -> Path:
 def test_mrr_conservative_engine(bada: Path) -> None:
     """A320 without a declared engine: BADA4 A320-214 (CFM56-5B4/P), but the
     emissions engine is the MRR conservative 1IA001 (V2527-A5)."""
+    _require_bada4_model(bada, "A320-214")
     r = resolve_aircraft("A320", bada_path=bada)
     assert r == ResolvedAircraft(
         bada_version="BADA4",
@@ -93,6 +101,7 @@ def test_operator_engine_with_series(bada: Path) -> None:
 @pytest.mark.requires_bada
 def test_ectl_mapping_row_engine(bada: Path) -> None:
     """A342 is not in MRR_conservative_mapping.csv: the row engine is used."""
+    _require_bada4_model(bada, "A340-213")
     r = resolve_aircraft("A342", bada_path=bada)
     assert r.bada_version == "BADA4"
     assert r.bada_model == "A340-213"
@@ -317,6 +326,15 @@ def test_resolver_matches_performance_step(bada: Path) -> None:
     series["flight_information"]["aircraft_properties"]["aircraft_version"] = "A320-214"
     flights = neats_json_to_flights([*golden, operator, series])
     assert len(flights) == 7
+    for df in flights:
+        model = resolve_aircraft(
+            df.attrs["aircraft_type"],
+            df.attrs.get("aircraft_series"),
+            df.attrs.get("engine_uid"),
+            bada_path=bada,
+        )
+        if model.bada_version == "BADA4":
+            _require_bada4_model(bada, model.bada_model)
 
     sources = set()
     for df in flights:
