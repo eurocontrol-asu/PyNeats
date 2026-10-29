@@ -34,6 +34,8 @@ EFFICACY : dict
     Efficacy values for different species (dimensionless).
 RF_BACKWARD_FACTOR : dict
     Backward calculation factors for radiative forcing (divisors).
+PMO_CH4_RF_RATIO : float
+    PMO / CH4 radiative-forcing ratio (dimensionless, 0.29).
 ACCF_SCALE_03 : Mapping[str, float]
     Scaling factors for O3 ACCFs (divisors), keyed by aCCF version.
 ACCF_SCALE_CH4 : Mapping[str, float]
@@ -62,6 +64,7 @@ __all__ = [
     "ACCF_SCALE_CH4",
     "ACCF_SCALE_H2O",
     "RF_BACKWARD_FACTOR",
+    "PMO_CH4_RF_RATIO",
 ]
 
 METRICS_HORIZONS: Final[tuple[int, ...]] = (20, 50, 100)
@@ -100,7 +103,11 @@ CONVERSION_FACTORS_ATR_TO_RF: Final[dict[int, dict[str, float]]] = {
 }
 
 
-# Efficacies as specifided in the RSTS document (coming from AirClim)
+# Efficacies as specified in the RSTS document (coming from AirClim).
+# PMO (primary-mode ozone, the long-term O3 decrease that follows the NOx-driven
+# CH4 decrease): 1.0 is the RSTS value, confirmed by the method owner 2026-10-28.
+# gwp.py applies it to the PMO part only, which is then added into the "CH4"
+# output entry (see docs/explanation/mrv-specification.md).
 EFFICACY: Final[dict[str, float]] = {
     "Contrails": 0.37,
     "CH4": 1.04,
@@ -117,11 +124,19 @@ EFFICACY: Final[dict[str, float]] = {
 # conversion factors from Dahlmann et al., 2025
 # Used as a divisor in gwp.py. The values are approximately 1 / ACCF_SCALE_*["V1.0"]
 # (1/1.97 = 0.508, 1/2.03 = 0.493, 1/1.92 = 0.521), so the two tables are coupled.
+# PMO has the CH4 value: in Method C its ATR is derived from the CH4 aCCF
+# (ATR_PMO = PMO_CH4_RF_RATIO x ATR_CH4), so it carries the same aCCF scaling.
 RF_BACKWARD_FACTOR: Final[dict[str, float]] = {
     "CH4": 0.492,
     "O3": 0.508,
     "H2O": 0.52,
+    "PMO": 0.492,
 }
+
+# PMO / CH4 radiative-forcing ratio [dimensionless]: PMO RF = 0.29 x CH4 RF.
+# Source: CLIMaCCF (aCCF CH4 x 1.29 when PMO is on) and OpenAirClim
+# calc_ch4.py:217 (v0.13.0). local_accf.py uses it to write ATR_20_PMO.
+PMO_CH4_RF_RATIO: Final[float] = 0.29
 
 # ACCFs scaling factors, keyed by aCCF version; local_accf divides the aCCF output
 # by them

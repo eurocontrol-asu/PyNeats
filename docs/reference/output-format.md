@@ -110,6 +110,10 @@ horizons (20, 50 and 100 years), each with:
 - `CO2eq_kg`: CO2-equivalent, kg. For CO2 it is the flight total CO2
   (`co2_baseline_kg`) at every horizon.
 
+The `CH4` entry is CH4 including primary-mode ozone (PMO). PMO is computed
+separately, with its own efficacy and conversion factors, and added to the CH4
+values; there is no separate `PMO` entry.
+
 The species and their order depend on the method:
 
 - Large emitters (Method C): `CO2`, `Contrails`, `CH4`, `O3`, `H2O`. A flight
@@ -324,4 +328,6 @@ efficiency and aircraft mass:
   `contrail_age`, `sdr_mean`, `rsr_mean`, `olr_mean`, `rf_sw_mean`,
   `rf_lw_mean`, `rf_net_mean`, `cocip`
 - **Climate functions (aCCF v1.0A)**: `ATR_20_O3`, `ATR_20_CH4`,
-  `ATR_20_H2O`
+  `ATR_20_H2O`, and `ATR_20_PMO` when PMO is on (default). `ATR_20_CH4`
+  excludes PMO; `ATR_20_PMO` = 0.29 x `ATR_20_CH4`. Both are added into the
+  `CH4` climate-metrics entry.

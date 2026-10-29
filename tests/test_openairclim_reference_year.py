@@ -96,6 +96,6 @@ def test_flight_dated_2026_runs_and_equals_2025(
     )
     agwp_2025 = _agwp("2025-07-09T10:00", tmp_path)
     agwp_2026 = _agwp("2026-07-09T10:00", tmp_path)
-    assert len(agwp_2025) == 12  # 3 horizons x O3, CH4, H2O, CONT
+    assert len(agwp_2025) == 15  # 3 horizons x O3, CH4, PMO, H2O, CONT
     assert all(np.isfinite(v) for v in agwp_2025.values())
     assert agwp_2026 == agwp_2025

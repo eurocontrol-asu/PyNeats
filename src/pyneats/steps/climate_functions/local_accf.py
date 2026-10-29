@@ -25,6 +25,7 @@ from pyneats.core.neats_default_parameters import DEFAULT_ACCF_VALIDITY_PRESSURE
 from pyneats.core.physics import ACCF_SCALE_03
 from pyneats.core.physics import ACCF_SCALE_CH4
 from pyneats.core.physics import ACCF_SCALE_H2O
+from pyneats.core.physics import PMO_CH4_RF_RATIO
 from pyneats.core.physics import PVU_PER_SI
 from pyneats.core.physics import SOLAR_CONSTANT
 from pyneats.core.steps import BaseStep
@@ -140,7 +141,7 @@ class LocalACCFModel(
     Key Features:
         - Species-specific formulations based on meteorological parameters
         - Version-specific scaling factors
-        - PMO multiplier option for CH4
+        - Optional PMO column (``ATR_20_PMO`` = PMO_CH4_RF_RATIO x ``ATR_20_CH4``)
     """
 
     default_params = LocalACCFParams
@@ -209,7 +210,7 @@ class LocalACCFModel(
         """Compute methane (CH4) Pulse-based Average Temperature Response over 20 years (P-ATR20)
         for methane depletion from NOx emissions.
         Uses geopotential and top-of-atmosphere incoming shortwave radiation as input parameters.
-        Returns K per segment (PMO included when ``accf_kwargs["PMO"]`` is True).
+        Returns K per segment, CH4 only (PMO is written separately by ``run``).
         """
 
         gp = _as_np(flight[self.params.col_geopotential])
@@ -237,10 +238,6 @@ class LocalACCFModel(
             raise ACCFStepError(
                 f"Unknown ACCF version for CH4: {self.params.accf_kwargs['accf_v']}"
             ) from e
-        if self.params.accf_kwargs["PMO"]:
-            # PMO effect merged into CH4 (dimensionless factor 1.29)
-            accf = accf * 1.29
-
         return accf
 
     # ---- H2O: raw formula & compute ----
@@ -302,6 +299,9 @@ class LocalACCFModel(
             ``FlightWithNonCO2Impact`` — flight with ``ATR_20_O3``,
             ``ATR_20_CH4`` and ``ATR_20_H2O`` columns in K per segment
             (P-ATR20 of that segment's emissions; NaN outside validity).
+            With ``accf_kwargs["PMO"]`` True (default) it also writes
+            ``ATR_20_PMO`` = ``PMO_CH4_RF_RATIO`` (0.29) x ``ATR_20_CH4``
+            [K per segment]; ``ATR_20_CH4`` itself excludes PMO.
 
         Raises:
             ACCFStepError: If the local regression evaluation fails.
@@ -336,6 +336,9 @@ class LocalACCFModel(
             flight["ATR_20_O3"] = o3
             flight["ATR_20_CH4"] = ch4
             flight["ATR_20_H2O"] = h2o
+            if self.params.accf_kwargs["PMO"]:
+                # Primary-mode ozone, derived from the CH4 aCCF [K per segment]
+                flight["ATR_20_PMO"] = PMO_CH4_RF_RATIO * ch4
 
         except Exception as e:
             self.logger.exception("local ACCF evaluation failed")
