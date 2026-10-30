@@ -425,10 +425,10 @@ class TestClimateGuardrailNonCO2:
         gwp = self._make_gwp()
 
         # We need a very large AGWP to produce CO2eq > 100x CO2
-        # CO2eq = EAGWP / (C(H) * s_yr)
-        # So AGWP must be large enough: AGWP * efficacy / (C(H) * s_yr) > 100 * 1000
-        # C(20) ~ 2.495e-14, s_yr = 31556926
-        # => AGWP > 100 * 1000 * 2.495e-14 * 31556926 ≈ 0.0787
+        # CO2eq = EAGWP / C(H), EAGWP = AGWP * efficacy (Method D)
+        # So AGWP must be large enough: AGWP * efficacy / C(H) > 100 * 1000
+        # C(20) = 24.16e-15 (CO2_AGWP_COEFF_WM2YR_PER_KG, MRV specification)
+        # => AGWP * efficacy > 100 * 1000 * 24.16e-15 ≈ 2.4e-9
         huge_agwp = 1e6  # Far exceeds threshold
 
         flight = self._make_flight_with_global_agwp(

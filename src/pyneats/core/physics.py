@@ -11,9 +11,10 @@ METRICS_HORIZONS : tuple of int
 SURFACE_EARTH : float
     Surface area of the Earth in m².
 SECONDS_PER_YEAR : int
-    Number of seconds in a year: 31,556,952 s = 365.2425 d (Gregorian mean
-    year). docs/explanation/mrv-specification.md uses 31,536,000 s (365 d)
-    (see docs/internal/pyneats_units_audit.md).
+    Number of seconds in a year: 31,536,000 s = 365 d, as in
+    docs/explanation/mrv-specification.md (s_yr). Was 31,556,952 s (365.2425 d,
+    Gregorian mean year) before decision C.16 (2026-10-28, see
+    docs/internal/pyneats_units_audit.md).
 SOLAR_CONSTANT : float
     Solar constant in W m^-2.
 PVU_PER_SI : float
@@ -21,7 +22,9 @@ PVU_PER_SI : float
     (1 PVU = 1e-6 K m^2 kg^-1 s^-1).
 CO2_AGWP_COEFF_WM2YR_PER_KG : Mapping[int, float]
     CO2 AGWP coefficients C(H) in W m-2 yr per kg CO2, keyed by horizon in
-    years.
+    years: 24.16 / 47.57 / 74.36e-15, as in
+    docs/explanation/mrv-specification.md. Was 24.12 / 47.50 / 74.24e-15 before
+    decision C.16.
 CONVERSION_FACTORS_AGWP_TO_RF : dict
     Conversion factors from RF to AGWP(H) (Dahlmann et al., 2025; the name
     reads the other way), keyed by horizon in years and species. Absolute
@@ -69,21 +72,27 @@ __all__ = [
 
 METRICS_HORIZONS: Final[tuple[int, ...]] = (20, 50, 100)
 SURFACE_EARTH: Final[float] = 5.101e14  # m²
-# Gregorian mean year (365.2425 d); used as s/yr to turn contrail energy forcing
-# [J] into EAGWP [W m-2 yr]
-SECONDS_PER_YEAR: Final[int] = 31_556_952  # s
+# s_yr of the MRV specification (docs/explanation/mrv-specification.md, sect.
+# 3.7.1): 365 d. Used as s/yr to turn contrail energy forcing [J] into EAGWP
+# [W m-2 yr]. Was 31_556_952 s (365.2425 d, Gregorian mean year) until decision
+# C.16 (Ramon and Philippe, 2026-10-28: "use the DOC values"); the change makes
+# contrail EAGWP 0.066 % larger (31_556_952 / 31_536_000).
+SECONDS_PER_YEAR: Final[int] = 31_536_000  # s
 SOLAR_CONSTANT: Final[float] = 1360.0  # [W m^-2]
 # [PVU per K m^2 kg^-1 s^-1]: PV[PVU] = PV[SI] * PVU_PER_SI (1 PVU = 1e-6 SI)
 PVU_PER_SI: Final[float] = 1e6
 
-# CO2 GWP coefficients from AirClim (Dahlmann et al., 2025)
+# CO2 AGWP coefficients C(H) from AirClim (Dahlmann et al., 2025), as listed in
+# the MRV specification (docs/explanation/mrv-specification.md, sect. 3.7.1).
 # C(H) in W·m⁻²·yr·kg⁻¹ (per kgCO2); keys are horizons in years.
-# Values from commit bf3aa7b; docs/explanation/mrv-specification.md still lists
-# the older 24.16 / 47.57 / 74.36e-15 (see docs/internal/pyneats_units_audit.md).
+# Commit bf3aa7b had changed them to 24.12 / 47.50 / 74.24e-15; decision C.16
+# (Ramon and Philippe, 2026-10-28: "use the DOC values") restored the
+# specification values (see docs/internal/pyneats_units_audit.md). Non-CO2
+# CO2eq = EAGWP / C(H) is 0.15-0.17 % smaller than with the bf3aa7b values.
 CO2_AGWP_COEFF_WM2YR_PER_KG: Mapping[int, float] = {
-    20: 24.12e-15,
-    50: 47.50e-15,
-    100: 74.24e-15,
+    20: 24.16e-15,
+    50: 47.57e-15,
+    100: 74.36e-15,
 }
 
 # New generic conversion factors to convert RF to AGWP or ATR
