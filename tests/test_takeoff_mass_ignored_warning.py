@@ -7,7 +7,8 @@ WARNING meant for this case could not be reached. Now one WARNING per flight
 names the flight and both masses when they differ by more than
 max(1000 kg, 2 % of the first aircraft_mass). A smaller difference stays at
 DEBUG. No number changes, and the output attribute ``takeoff_weight`` still
-shows the AO value.
+shows the AO value. Every takeoff_mass here is within [OEW, 1.05 x MTOW]:
+a value outside fails the flight (``tests/test_takeoff_mass_range.py``).
 
 The tests below the mocked ones run the real step from ``run`` down with the
 BADA adapter mocked; the last test uses real BADA data and skips when the
@@ -64,6 +65,7 @@ def _make_model(
         "run_by_bada_version",
         "_run_with_altitude_fallback",
         "_log_takeoff_mass_ignored",
+        "_check_takeoff_mass_range",
         "_early_exit_if_fuel_and_efficiency",
         "_derive_fuel_flow_from_mass_if_needed",
         "_choose_mass_strategy",
@@ -169,7 +171,7 @@ def _capture(caplog: pytest.LogCaptureFixture) -> None:
 
 
 @pytest.mark.parametrize("ao", [{"am"}, {"ff", "am"}, {"ff", "ee", "am"}])
-@pytest.mark.parametrize("takeoff_mass", [AM0 - 8_000.0, AM0 + 8_000.0, 1_000_000.0])
+@pytest.mark.parametrize("takeoff_mass", [AM0 - 8_000.0, AM0 + 8_000.0, 82_000.0])
 def test_large_difference_warns_once(
     caplog: pytest.LogCaptureFixture, ao: set[str], takeoff_mass: float
 ) -> None:
@@ -228,12 +230,21 @@ def test_within_threshold_debug_only(
 def test_threshold_is_1000_kg_for_a_light_aircraft(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """2 % of 20,000 kg is 400 kg: the 1,000 kg floor applies."""
+    """2 % of 20,000 kg is 400 kg: the 1,000 kg floor applies.
+
+    These masses are below the OEW of the mocked adapter (45,000 kg), so the
+    take-off mass range check is switched off here.
+    """
     df = _df({"am"})
     df["aircraft_mass"] = 20_000.0
-    _run({"am"}, df=df, takeoff_weight=20_900.0)
-    assert _warnings(caplog) == []
-    _run({"am"}, df=df, takeoff_weight=21_100.0)
+    with patch(
+        "pyneats.steps.performance.bada_model._takeoff_mass_range_error",
+        return_value=None,
+        create=True,
+    ):
+        _run({"am"}, df=df, takeoff_weight=20_900.0)
+        assert _warnings(caplog) == []
+        _run({"am"}, df=df, takeoff_weight=21_100.0)
     assert len(_warnings(caplog)) == 1
 
 
@@ -283,7 +294,7 @@ def test_warned_once_across_retries(
     expected_attempts: list[str],
 ) -> None:
     _, _, attempts = _run(
-        {"am"}, failing_attempts=failing_attempts, takeoff_weight=1_000_000.0
+        {"am"}, failing_attempts=failing_attempts, takeoff_weight=82_000.0
     )
     assert attempts == expected_attempts
     assert len(_warnings(caplog)) == 1
@@ -293,7 +304,7 @@ def test_warned_once_when_every_attempt_fails(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with pytest.raises(PerformanceStepError):
-        _run({"am"}, failing_attempts=4, takeoff_weight=1_000_000.0)
+        _run({"am"}, failing_attempts=4, takeoff_weight=82_000.0)
     assert len(_warnings(caplog)) == 1
 
 
@@ -313,7 +324,7 @@ def _engine_copy_attrs(n_engines: int) -> list[dict[str, Any]]:
         "departure_airport": "LFPG",
         "aobt": "2023-01-01 10:00:00",
         "engine_uid": [f"ENG{i}" for i in range(n_engines)],
-        "takeoff_weight": 1_000_000.0,
+        "takeoff_weight": 82_000.0,
     }
     runner = MagicMock()
     runner.source_fleet = [source]
@@ -335,7 +346,7 @@ def test_list_engine_uid_warns_once_per_flight(
         _run(ao, **attrs)
     msgs = _warnings(caplog)
     assert len(msgs) == 1
-    assert msgs[0].startswith("Flight EJU1920: takeoff_mass 1000000 kg is not used")
+    assert msgs[0].startswith("Flight EJU1920: takeoff_mass 82000 kg is not used")
     # The other copies log the same message at DEBUG.
     debug = [
         r.getMessage()
@@ -360,7 +371,7 @@ def test_engine_copy_key_matches_fleet_runner() -> None:
 
 
 @pytest.mark.parametrize("ao", [{"am"}, {"ff", "am"}, {"ff", "ee", "am"}])
-@pytest.mark.parametrize("takeoff_mass", [AM0 + 500.0, AM0 - 8_000.0, 1_000_000.0])
+@pytest.mark.parametrize("takeoff_mass", [AM0 + 500.0, AM0 - 8_000.0, 82_000.0])
 def test_results_identical_with_and_without_takeoff_mass(
     ao: set[str], takeoff_mass: float
 ) -> None:
@@ -419,15 +430,15 @@ def test_real_bada_results_identical_and_warned(
     caplog.set_level(logging.DEBUG, logger=model.logger.name)
 
     ref = model(Flight(data=data.copy(), attrs=dict(attrs)))
-    out = model(Flight(data=data.copy(), attrs={**attrs, "takeoff_weight": 1e6}))
+    out = model(Flight(data=data.copy(), attrs={**attrs, "takeoff_weight": 80_000.0}))
 
     assert out.attrs["bada_version"] == "BADA4"
     pd.testing.assert_frame_equal(out.dataframe, ref.dataframe)
-    assert out.attrs["takeoff_weight"] == 1e6
+    assert out.attrs["takeoff_weight"] == 80_000.0
     msgs = [
         r.getMessage()
         for r in caplog.records
         if r.levelno == logging.WARNING and "takeoff_mass" in r.getMessage()
     ]
     assert len(msgs) == 1
-    assert msgs[0].startswith("Flight REAL1: takeoff_mass 1000000 kg is not used")
+    assert msgs[0].startswith("Flight REAL1: takeoff_mass 80000 kg is not used")

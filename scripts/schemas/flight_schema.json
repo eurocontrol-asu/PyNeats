@@ -81,7 +81,7 @@
         },
         "takeoff_mass": {
           "type": ["number", "null"],
-          "description": "Take-off mass in kg: the mass at the start of the take-off run."
+          "description": "Take-off mass in kg: the mass at the start of the take-off run. PyNEATS fails the flight when the value is below the BADA OEW or above 1.05 x the BADA MTOW of the aircraft type."
         }
       },
       "additionalProperties": true

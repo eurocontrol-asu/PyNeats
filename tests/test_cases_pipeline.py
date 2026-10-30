@@ -167,12 +167,7 @@ SUCCESS_TCS: list[tuple[str, str]] = [
 # Error TCs flight must appear in error_records, NOT in output.
 ERROR_TCS: list[tuple[str, str]] = [
     ("TC_AC_NO_BADA", "UAE62Y__tc_ac_no_bada"),
-    pytest.param(
-        "TC_MASS_BELOW_OEW",
-        "ACA812__tc_mass_below_oew",
-        id="TC_MASS_BELOW_OEW",
-        marks=_XFAIL_DLR,
-    ),
+    ("TC_MASS_BELOW_OEW", "ACA812__tc_mass_below_oew"),
     pytest.param(
         "TC_MASS_NOT_DECREASING",
         "UAE62Y__tc_mass_not_decreasing",
@@ -185,12 +180,7 @@ ERROR_TCS: list[tuple[str, str]] = [
         id="TC_MASS_EXCEEDS_MTOW",
         marks=_XFAIL_DLR,
     ),
-    pytest.param(
-        "TC_TOM_EXCEEDS_MTOW",
-        "RYR46YN__tc_tom_exceeds_mtow",
-        id="TC_TOM_EXCEEDS_MTOW",
-        marks=_XFAIL_DLR,
-    ),
+    ("TC_TOM_EXCEEDS_MTOW", "RYR46YN__tc_tom_exceeds_mtow"),
     # Fuel validation error cases
     pytest.param(
         "TC_HC_RATIO_OUT_OF_RANGE",
@@ -445,6 +435,32 @@ def test_tc_error(
     assert flight_id in error_ids, (
         f"{tc_id}: flight '{flight_id}' not found in error_records. Error IDs: {error_ids}"
     )
+
+    # The error must be the expected one, not any failure of the flight.
+    expected_error = _TC_ERROR_TEXT.get(tc_id)
+    if expected_error is not None:
+        errors = [
+            str(rec.get("error", ""))
+            for rec in runner.error_records
+            if _extract_error_flight_ids([rec]) == {flight_id}
+        ]
+        assert any(expected_error in e for e in errors), (
+            f"{tc_id}: no error of '{flight_id}' contains {expected_error!r}: {errors}"
+        )
+
+
+# Text that the error record of an error TC must contain (audit A6: the AO
+# takeoff_mass range check of the performance step).
+_TC_ERROR_TEXT: dict[str, str] = {
+    "TC_MASS_BELOW_OEW": (
+        "Flight ACA812__tc_mass_below_oew: takeoff_mass 10000 kg is below the"
+        " OEW 126000 kg of BADA model BADA4 A330-341."
+    ),
+    "TC_TOM_EXCEEDS_MTOW": (
+        "Flight RYR46YN__tc_tom_exceeds_mtow: takeoff_mass 999999 kg is above"
+        " 1.05 x MTOW = 82967 kg (MTOW 79016 kg) of BADA model BADA4 B738W26."
+    ),
+}
 
 
 # TCs where the input aircraft_mass column must be preserved in output.

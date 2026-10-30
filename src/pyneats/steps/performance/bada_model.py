@@ -196,6 +196,11 @@ def _mass_from_fuel_flow(
 _TAKEOFF_MASS_MISMATCH_MIN_KG = 1000.0
 _TAKEOFF_MASS_MISMATCH_FRACTION = 0.02
 
+# The AO takeoff_mass [kg] must lie in [OEW, _TAKEOFF_MASS_MTOW_MARGIN x MTOW]
+# of the first BADA model that loads, or the flight fails (audit A6). The
+# 5 % margin keeps the golden UAE62Y B77W (2.0 % above the BADA4 MTOW) valid.
+_TAKEOFF_MASS_MTOW_MARGIN = 1.05
+
 # Attribute set by FleetRunner._expand_multi_engine_sources on each engine
 # copy of a flight with a list engine_uid (the AO flight id). Same value as
 # pyneats.runners.fleet._MULTI_ENGINE_ORIG_FID_KEY; not imported, because
@@ -213,13 +218,10 @@ def _takeoff_mass_mismatch(
     or not finite, or when the absolute difference is at most
     max(1000 kg, 2 % of the first finite aircraft_mass) (audit A6).
     """
-    if "aircraft_mass" not in df.columns or takeoff_weight is None:
+    if "aircraft_mass" not in df.columns:
         return None
-    try:
-        takeoff_mass = float(takeoff_weight)
-    except (TypeError, ValueError):
-        return None
-    if not np.isfinite(takeoff_mass):
+    takeoff_mass = _finite_takeoff_mass(takeoff_weight)
+    if takeoff_mass is None:
         return None
     am = pd.to_numeric(df["aircraft_mass"], errors="coerce").to_numpy(dtype=float)
     finite = am[np.isfinite(am)]
@@ -233,6 +235,80 @@ def _takeoff_mass_mismatch(
     if abs(takeoff_mass - first_mass) <= threshold:
         return None
     return takeoff_mass, first_mass
+
+
+def _finite_takeoff_mass(takeoff_weight: Any) -> float | None:
+    """The AO takeoff_mass [kg] as a float, or None when missing or not finite.
+
+    None, NaN, pd.NA, an infinite value and a value that ``float`` cannot
+    convert all give None.
+    """
+    if takeoff_weight is None:
+        return None
+    try:
+        takeoff_mass = float(takeoff_weight)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(takeoff_mass):
+        return None
+    return takeoff_mass
+
+
+class _BADAModelLoadError(PerformanceStepError):
+    """Retryable failure to resolve or load the BADA model of an attempt.
+
+    Raised by ``run_by_bada_version`` before the take-off mass range check,
+    so the caller knows the check has not run with that model and makes the
+    BADA3 retry run it (audit A6).
+    """
+
+
+def _kg_pair(value: float, bound: float) -> tuple[str, str]:
+    """Format a mass and the bound it violates [kg] for an error message.
+
+    Both are printed to the kg. When they would then print the same (for
+    example 44999.6 kg against an OEW of 45000 kg), both are printed in full
+    (``repr``), so the message never shows a value equal to its bound.
+    """
+    value_text, bound_text = f"{value:.0f}", f"{bound:.0f}"
+    if value_text == bound_text:
+        value_text, bound_text = repr(float(value)), repr(float(bound))
+    return value_text, bound_text
+
+
+def _takeoff_mass_range_error(
+    takeoff_weight: Any,
+    operating_empty_weight: float | None,
+    maximum_takeoff_weight: float | None,
+) -> str | None:
+    """The text of an out-of-range AO takeoff_mass [kg], or None (audit A6).
+
+    Returns "takeoff_mass <value> kg is below the OEW ..." or "... is above
+    ``_TAKEOFF_MASS_MTOW_MARGIN`` x MTOW = ..." (all in kg) when
+    takeoff_mass is finite and below OEW or above that bound. Returns None
+    when takeoff_mass is missing or not finite (``_finite_takeoff_mass``),
+    when it is within the bounds (both included), or when OEW or MTOW is
+    not available.
+    """
+    takeoff_mass = _finite_takeoff_mass(takeoff_weight)
+    if (
+        takeoff_mass is None
+        or operating_empty_weight is None
+        or maximum_takeoff_weight is None
+    ):
+        return None
+    if takeoff_mass < operating_empty_weight:
+        value, bound = _kg_pair(takeoff_mass, operating_empty_weight)
+        return f"takeoff_mass {value} kg is below the OEW {bound} kg"
+    upper = _TAKEOFF_MASS_MTOW_MARGIN * maximum_takeoff_weight
+    if takeoff_mass > upper:
+        value, bound = _kg_pair(takeoff_mass, upper)
+        return (
+            f"takeoff_mass {value} kg is above"
+            f" {_TAKEOFF_MASS_MTOW_MARGIN:.2f} x MTOW = {bound} kg"
+            f" (MTOW {maximum_takeoff_weight:.0f} kg)"
+        )
+    return None
 
 
 # Hint added to a fuel-burn guardrail rejection of an AO fuel flow.
@@ -536,7 +612,12 @@ class BADAPerformanceModel(
         aircraft mass; or any error in the step) and by two internal
         consistency errors (a BADA file without MTOW or OEW when the take-off
         mass is estimated, and a missing initial mass), which do not occur
-        with the BADA files in use.
+        with the BADA files in use. It is also carried by the take-off mass
+        range check: a finite AO ``takeoff_mass`` below OEW or above 1.05 x
+        MTOW of the BADA model of the first attempt fails the flight, with
+        or without ``aircraft_mass`` (``_check_takeoff_mass_range``, audit
+        A6). When the first BADA model does not load, the BADA3 retry runs
+        the check with its own model.
 
         When the AO gives ``aircraft_mass`` and a ``takeoff_mass`` that
         differs from it by more than max(1000 kg, 2 % of the first
@@ -575,6 +656,9 @@ class BADAPerformanceModel(
         except PerformanceStepError as exc:
             if not exc.retryable:
                 raise
+            # The first BADA model did not load: the range check has not run,
+            # so the BADA3 retry runs it with its own model (audit A6).
+            check_on_retry = isinstance(exc, _BADAModelLoadError)
 
             self.logger.info(
                 "BADA performance evaluation failed. Retrying BADA performance evaluation with BADA3 enforced",
@@ -609,6 +693,7 @@ class BADAPerformanceModel(
                     engine_id_attr,
                     q_fuel_attr,
                     force_bada3=True,
+                    check_takeoff_mass=check_on_retry,
                 )
 
             except PerformanceStepError as exc2:
@@ -671,6 +756,37 @@ class BADAPerformanceModel(
             takeoff_mass,
         )
 
+    def _check_takeoff_mass_range(
+        self, flight: Flight, adapter: BaseBADAAdapter, bada_version: str
+    ) -> None:
+        """Fail the flight when the AO takeoff_mass is out of range (audit A6).
+
+        The ``takeoff_weight`` attribute (AO ``takeoff_mass``, kg) must lie
+        in [OEW, 1.05 x MTOW] of ``adapter`` (both in kg, bounds included).
+        ``run_by_bada_version`` calls it on the first attempt (on the BADA3
+        retry instead when the first BADA model does not load), after the
+        BADA model is resolved and before the airspeed trust step and the
+        early exit, so it applies whether or not ``aircraft_mass`` is given. The
+        failure is not retryable: no BADA3 retry, no altitude fallback. A
+        missing or non-finite takeoff_mass is not checked, nor is any value
+        when the adapter gives no OEW or MTOW. For an engine copy of a flight
+        with a list ``engine_uid``, the message names the AO flight id.
+        """
+        violation = _takeoff_mass_range_error(
+            flight.attrs.get("takeoff_weight"), adapter.OEW, adapter.MTOW
+        )
+        if violation is None:
+            return
+        flight_id = flight.attrs.get(_MULTI_ENGINE_ORIG_FID_KEY) or flight.attrs.get(
+            "flight_id"
+        )
+        raise PerformanceStepError(
+            f"Flight {flight_id}: {violation}"
+            f" of BADA model {bada_version} {adapter.bada_code}."
+            " takeoff_mass must be the mass at take-off in kg",
+            retryable=False,
+        )
+
     def _run_with_altitude_fallback(
         self,
         flight: FlightWithWeather,
@@ -722,6 +838,7 @@ class BADAPerformanceModel(
                     engine_id_attr,
                     q_fuel_attr,
                     force_bada3=True,
+                    check_takeoff_mass=isinstance(exc4, _BADAModelLoadError),
                 )
 
         except PerformanceStepError as exc3:
@@ -743,8 +860,17 @@ class BADAPerformanceModel(
         engine_id_attr: str | None,
         q_fuel_attr: float | None,
         force_bada3: bool = False,
+        check_takeoff_mass: bool | None = None,
     ) -> FlightWithPerformance:
         """Run BADA performance model on the given flight data, with optional BADA3 enforcement.
+
+        ``check_takeoff_mass`` runs the take-off mass range check
+        (``_check_takeoff_mass_range``) right after the BADA model is
+        resolved; None means ``not force_bada3``. The callers set it on a
+        forced BADA3 retry only when the previous attempt failed to load its
+        model (``_BADAModelLoadError``), so the check always runs with the
+        first BADA model that loads. A failure to resolve or load the model
+        raises ``_BADAModelLoadError`` (retryable).
 
         After resolving the BADA adapter, the airspeed trust step replaces
         untrusted true airspeeds (not finite, CAS below the stall CAS of the
@@ -764,11 +890,31 @@ class BADAPerformanceModel(
         # df to a BADA3 retry, which would otherwise take those columns as AO data.
         df = df.copy()
 
+        if check_takeoff_mass is None:
+            check_takeoff_mass = not force_bada3
+
+        # 1) resolve adapter + core attrs. A failure here is marked, so the
+        # BADA3 retry knows the range check below has not run (audit A6).
         try:
-            # 1) resolve adapter + core attrs
             adapter, bada_version, nb_eng, engine_id = self._resolve_bada_adapter(
                 icao, series, engine_id_attr, force_bada3
             )
+        except PerformanceStepError as e:
+            if not e.retryable:
+                raise
+            raise _BADAModelLoadError(str(e)) from e
+        except Exception as e:  # pylint: disable=broad-except
+            self.logger.exception("Performance evaluation failed")
+            raise _BADAModelLoadError(f"Performance evaluation failed: {e}") from e
+
+        try:
+            # 1a) AO takeoff_mass range check, with the first BADA model that
+            # loads (not with the model of a BADA3 retry after a later
+            # failure): a takeoff_mass below OEW or above 1.05 x MTOW ends
+            # the flight, with or without aircraft_mass and before the early
+            # exit (audit A6).
+            if check_takeoff_mass:
+                self._check_takeoff_mass_range(flight, adapter, bada_version)
 
             # 1b) airspeed trust: untrusted TAS replaced by interpolation in
             # time; no row is removed, so segment_duration [s] and rocd stay
