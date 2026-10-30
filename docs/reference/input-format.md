@@ -229,11 +229,10 @@ EKYT;0,2125;;0,0136;0,000035;43050000
 
 The AO upload schema asks for the points in ascending time, with at least one
 point every 60 seconds. PyNeats does not rely on either: it sorts the points by
-time, keeps one of the points that have the same time (which one is not
-defined: the sort is not stable), drops a point whose
-`ts`, `lat`, `lon` or `fl` is missing, and resamples the trajectory to one
-point per minute. A flight with no point left fails at parsing; so does a
-flight whose `trajectory` is `null`.
+time, drops a point whose `ts`, `lat`, `lon` or `fl` is missing, keeps the
+first point (in input order) of the points that have the same time, and
+resamples the trajectory to one point per minute. A flight with no point left
+fails at parsing; so does a flight whose `trajectory` is `null`.
 
 Each waypoint:
 
@@ -254,8 +253,8 @@ PyNeats does not check the ranges of `lat`, `lon`, `fl`, `tas`, `ff`, `ee` and
 
 **`ts`.** A UTC offset is applied (`"2025-11-02T12:02:00+02:00"` is 10:02 UTC);
 a time without offset is read as UTC. Fractional seconds are cut to whole
-seconds, so of the points within the same second only one is kept (which one
-is not defined). A `ts` that is not a
+seconds, so of the points within the same second only the first in input
+order is kept. A `ts` that is not a
 valid date-time fails the flight, with a message naming the flight and the
 point.
 
@@ -337,8 +336,8 @@ gap is therefore filled by a straight line, not by BADA.
     none. The points it drops are listed in
     [Checks on the input](#checks-on-the-input); the retry without the points
     below FL20 also removes the first point. In a few NM flights (24 of the
-    sample) point 0 and point 1 have the same time; PyNeats then keeps only
-    one of them.
+    sample) the first points (2 to 18 of them) have the same time; PyNeats
+    then keeps only point 0.
     Taxi fuel is therefore not included in the fuel burn, CO2 and emissions.
     An AO `takeoff_mass` is applied at the first point of the trajectory used,
     whatever that point is; for NM data, the take-off.
@@ -356,7 +355,7 @@ other flights, `FlightRunner` raises.
 | `ts` not a valid date-time | reading the JSON file | fails |
 | `flight_identification`, `departure_date_time`, `departure_airport`, `arrival_airport` or `aircraft_type` missing | parsing | fails |
 | No point with all of `ts`, `lat`, `lon` and `fl` (or `trajectory` is `null`) | parsing | fails |
-| Points with a missing `ts`, `lat`, `lon` or `fl`; points with the same time | parsing | dropped (of the points with the same time, one is kept; which one is not defined) |
+| Points with a missing `ts`, `lat`, `lon` or `fl`; points with the same time | parsing | dropped (of the points with the same time, the first in input order is kept) |
 | Trajectory spans more than 24 hours | parsing | fails (likely concatenated flights or a time zone error) |
 | `load_factor` above 1 | parsing | set to 1.0, with a warning |
 | `load_factor` negative or not readable as a number | parsing | fails |
