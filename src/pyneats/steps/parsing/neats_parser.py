@@ -235,7 +235,9 @@ class NeatsTrajectoryParser(
            altitude (FL x 100 ft x 0.3048 m/ft).
         3. Parses timestamps in ``params.date_format`` as UTC. The output
            ``Flight.time`` is tz-naive UTC whatever ``params.timezone`` is.
-        4. Cleans and deduplicates rows on the ``time`` column.
+        4. Drops rows with a missing required value, sorts by ``time``
+           (stable sort) and, of the rows with the same ``time``, keeps the
+           first one in input order.
         5. Rejects trajectories spanning more than 24 hours (likely a
            concatenation or timezone bug).
         6. Builds flight attributes, optionally filling fuel properties from
@@ -299,14 +301,18 @@ class NeatsTrajectoryParser(
             except Exception as e:
                 raise TrajectoryParserStepError(f"timestamp parsing failed: {e}") from e
 
-            # 4) Clean, sort, dedup
+            # 4) Clean, sort, dedup. The sort is stable, so of the points with
+            #    the same time the first one in input order is kept.
             mask = df[list(REQUIRED_4D_COLS)].notna().all(axis=1)
-            df = (
-                df.loc[mask]
-                .sort_values("time")
-                .drop_duplicates(subset="time", keep="first")
-                .reset_index(drop=True)
-            )
+            df = df.loc[mask].sort_values("time", kind="stable")
+            n_valid = len(df)
+            df = df.drop_duplicates(subset="time", keep="first").reset_index(drop=True)
+            if len(df) < n_valid:
+                self.logger.debug(
+                    "Dropped %d point(s) with a duplicate time (kept the first "
+                    "in input order)",
+                    n_valid - len(df),
+                )
 
             if df.empty:
                 raise TrajectoryParserStepError(
