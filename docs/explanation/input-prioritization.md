@@ -62,6 +62,9 @@ graph TD
 !!! note "AO aircraft mass and AO TOW"
     When the AO provides aircraft mass, its TOW (`takeoff_mass`) is not used, on every path. When the TOW differs from the first aircraft mass by more than 1,000 kg or 2 % of that mass, whichever is larger, one warning per flight names the flight and both masses; the output `takeoff_weight` still shows the AO TOW.
 
+!!! note "AO TOW range check"
+    A TOW (`takeoff_mass`, kg) below OEW or above 1.05 × MTOW of the BADA model of the first attempt (the BADA 3 model when the BADA 4 model file cannot be loaded) fails the flight, with no retry with BADA 3 and no FL20 retry. The check runs before any of the cases above, also when the AO provides aircraft mass (the TOW is then not used, but a value out of range shows an input error) and when it provides fuel flow, engine efficiency and aircraft mass. The error names the flight, the TOW, the bound and the BADA model. A missing or not-a-number TOW is not checked.
+
 !!! note "BADA mapping"
     Every flight needs its aircraft type in the BADA mapping, even when the AO provides fuel flow, engine efficiency and aircraft mass. The BADA file gives the wingspan (needed for contrails). The mapping gives the number of engines (needed for emissions; read from the BADA file when no BADA calculation is made) and, when no engine is declared, the engine UID: the MRR conservative engine where the type has one, otherwise the engine of the mapping row. A type that is not in the mapping makes the flight fail.
 

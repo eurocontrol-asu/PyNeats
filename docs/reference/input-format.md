@@ -40,6 +40,15 @@ nor take-off mass. A value above 1 is set to 1.0 with a warning (it is not
 divided by 100); a negative value fails the flight at parsing. When `null`, the
 default 1 is used.
 
+`takeoff_mass` (optional, nullable) is the mass at take-off in kg: the mass at
+the start of the take-off run. When the AO gives aircraft mass (`am`), it is
+not used (a warning names both masses when they differ by more than 1,000 kg
+or 2 %). A value below the BADA OEW or above 1.05 x the BADA MTOW of the
+aircraft type fails the flight, with or without aircraft mass, and without a
+retry with BADA 3; the error names the flight, the value, the bound and the
+BADA model. A value in tonnes is caught this way, and most values in pounds.
+When `null`, no check is made.
+
 ### `fuel_properties`
 
 All fields are nullable. When `null`, the value from the airport fuel file

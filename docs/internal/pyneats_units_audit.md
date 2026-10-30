@@ -38,6 +38,7 @@ cite line numbers on `dev` before the fix they describe.
 | A13 (mixed fuel-flow provenance) | Fixed: when the AO provides `ff` without `am`, the mass decreases with the AO fuel flow, from the AO TOM or from min(MTOW, OEW + payload_factor x MPL + 1.15 x AO trip fuel) (no iteration); the fuel-burn guardrail runs on the AO fuel flow before that, and its rejection is final (maintainer and method-owner decision). Fuel and CO2 unchanged; mass profile, computed `ee` and contrails change for these flights; flights with `am` or without `ff` unchanged; golden outputs regenerated (contrail EF −0.12 % to +0.07 %) | `fix/mass-from-ao-fuel-flow` | 2026-10-28 |
 | A3 (`load_factor` not range-checked: 1.5 or 80 gave more fuel without a warning, −0.5 a take-off mass below OEW) | Fixed: 0–1 kept unchanged (0 = ferry flight); above 1 set to 1.0 with a warning naming the flight and the value, not divided by 100 (DLR TC_LF_GT_ONE; in `neats_json_to_flights` for JSON input and in the parser for DataFrame input); negative fails the flight at parsing (no retry; other flights go on), as an out-of-range `q_fuel` does (maintainer decision). `None` and NaN unchanged. Valid inputs unchanged; no golden result changes | `fix/load-factor-range` | 2026-10-29 |
 | A6 PR 1 (`takeoff_mass` dropped without notice when the AO provides `am`; the warning meant for it could not be reached) | Fixed: one WARNING per flight, naming the flight and both masses, when `am` overrides a `takeoff_mass` that differs from the first `am` by more than max(1000 kg, 2 %), on every path where `am` wins (the early exit with `ff`, `ee` and `am` included; once across the BADA3 retry and the altitude fallback, and once for a flight with a list `engine_uid`); smaller differences and a missing or non-finite `takeoff_mass` stay at DEBUG or silent; the output attr `takeoff_weight` still shows the AO value; the unreachable warning in `_single_pass_performance` is now a DEBUG line, its safety net kept (maintainer decision: warning only). No number changes; no golden result changes. Still open: range check against OEW/MTOW (PR 2) | `fix/takeoff-mass-ignored-warning` | 2026-10-29 |
+| A6 PR 2 (`takeoff_mass` never range-checked: 10,000 kg on an A330 or 999,999 kg on a B737-800 gave a result without a word) | Fixed: a finite `takeoff_mass` below OEW or above 1.05 x MTOW of the BADA model of the first attempt (of the BADA3 retry when the BADA4 model does not load) fails the flight with a non-retryable error (no BADA3 retry, no altitude fallback) naming the flight, the value, the bound and the BADA model; checked before the early exit with `ff`, `ee` and `am`, so it applies with or without `am`; a missing, NaN or non-numeric `takeoff_mass` is not checked (maintainer decision: 5 % margin, so the golden UAE62Y B77W at +2.0 % above the BADA4 MTOW stays valid). In-range values: no number changes, the A6 PR 1 warning unchanged. Golden: `ACA812__tc_mass_below_oew` and `RYR46YN__tc_tom_exceeds_mtow` become error records; the two DLR strict xfails are removed. Still open: `aircraft_mass` above MTOW (`tc_mass_exceeds_mtow`) | `fix/takeoff-mass-range` | 2026-10-30 |
 
 ## 1. Outcome
 
@@ -397,7 +398,7 @@ Each entry gives:
 5. **Clarify the AO template** (fraction, % or ppm; mass or volume) before any use. Document
    that SO2 and sulphate outputs are fixed Jet A-1 values.
 
-**A6. `takeoff_mass`: point of application and precedence.** *Definition settled (§6.0): mass at the beginning of the take-off run, MRR §1(29). PyNEATS's point of application does not guarantee that event (see below).* *Warning when `am` overrides a different `takeoff_mass` added in A6 PR 1 (see the follow-up status table).*
+**A6. `takeoff_mass`: point of application and precedence.** *Definition settled (§6.0): mass at the beginning of the take-off run, MRR §1(29). PyNEATS's point of application does not guarantee that event (see below).* *Warning when `am` overrides a different `takeoff_mass` added in A6 PR 1; range check against OEW and 1.05 x MTOW added in A6 PR 2 (see the follow-up status table).*
 1. `takeoff_weight` → `_choose_mass_strategy` / `_single_pass_performance`
    (`bada_model.py:786-808,849`).
 2. The unit is kg and consistent. It is applied at the first **retained** trajectory point:
@@ -406,7 +407,8 @@ Each entry gives:
      `fix/airspeed-trust`);
    - on the altitude-fallback path, at the first point at or above FL20.
    It is ignored, with only a debug log, when an `am` column exists, and nothing checks it
-   against `am[0]`. It is not clipped to MTOW.
+   against `am[0]`. It is not clipped to MTOW. (A6 PR 2: a value below OEW or above
+   1.05 x MTOW now fails the flight.)
 3. Ground or taxi points before rotation are charged against it. On the FL20 fallback, the
    climb fuel below FL20 is never subtracted. Conflicting `am` and `takeoff_mass` pass without
    notice.
