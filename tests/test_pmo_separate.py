@@ -380,8 +380,9 @@ def test_climaccf_run_writes_pmo_apart(pmo: bool) -> None:
     df["aCCF_H2O"] = [1.0e-15, 1.0e-15, 1.0e-15]
     out = MagicMock()
     out.to_dataframe = MagicMock(return_value=df)
-    m._impl = MagicMock()
-    m._impl.eval = MagicMock(return_value=out)
+    impl = MagicMock()
+    impl.eval = MagicMock(return_value=out)
+    m._new_impl = MagicMock(return_value=impl)
     written: dict[str, Any] = {}
     flight = MagicMock()
     flight.__setitem__ = MagicMock(side_effect=written.__setitem__)
