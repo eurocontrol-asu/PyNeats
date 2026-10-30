@@ -101,15 +101,14 @@ import pandas as pd
 import pycontrails.core.flight as pyflight
 import pycontrails.physics.units as pyunits
 import pytest
-from pandas.testing import assert_frame_equal
 from scripts.create_golden_outputs import AGGREGATED_FLIGHT_SELECTIONS
 
-from pyneats.core.views import FlightView
 from pyneats.runners.fleet import FleetRunnerParams
 from pyneats.runners.large_emitter import FleetRunnerLargeEmitter
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
 from pyneats.steps.weather.weather_store import ZarrPaths
-from tests.conftest import assert_climate_payload_equal
+from tests.golden_compare import GOLDEN_RTOL
+from tests.golden_compare import assert_matches_golden
 
 
 GOLDEN_DIR = Path(__file__).parent / "data" / "golden"
@@ -319,19 +318,21 @@ def aggregated_fleet_run(weather_path, bada_path):
 
 
 @pytest.fixture(scope="module")
-def golden_outputs_by_id() -> dict[str, FlightView]:
-    """Load aggregated golden output, return dict[flight_id, FlightView]."""
+def golden_records_by_id() -> dict[str, dict[str, Any]]:
+    """Load aggregated golden output, return dict[flight_id, golden record].
+
+    A golden record is the JSON dict of one flight (``FlightView.to_dict``).
+    """
     if not _AGGREGATED_OUTPUT.exists():
         pytest.skip(f"Aggregated output not found: {_AGGREGATED_OUTPUT}")
 
     with open(_AGGREGATED_OUTPUT, encoding="utf-8") as fh:
-        data = json.load(fh)
+        data: list[dict[str, Any]] = json.load(fh)
 
-    flights = [FlightView.from_dict(d) for d in data]
-    result: dict[str, FlightView] = {}
-    for f in flights:
-        fid = _get_flight_id(f)
-        result[fid] = f
+    result: dict[str, dict[str, Any]] = {}
+    for record in data:
+        fid = record["flight_id"]
+        result[fid[0] if isinstance(fid, list) else fid] = record
     return result
 
 
@@ -367,13 +368,14 @@ def test_tc_success(
     tc_id: str,
     flight_id: str,
     aggregated_fleet_run: FleetRunnerLargeEmitter,
-    golden_outputs_by_id: dict[str, FlightView],
+    golden_records_by_id: dict[str, dict[str, Any]],
 ) -> None:
-    """Verify a successful TC flight matches its golden output."""
-    from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
+    """Verify a successful TC flight matches its golden output.
 
+    Every column, flight-level attribute and climate payload value, at
+    ``GOLDEN_RTOL`` (``tests/golden_compare.py``).
+    """
     runner = aggregated_fleet_run
-    rtol = 1e-3
 
     # Find actual flight in runner output
     actual = _find_flight(runner.fleet_with_climate_impact, flight_id)
@@ -383,27 +385,15 @@ def test_tc_success(
     )
 
     # Find expected flight in golden data
-    assert flight_id in golden_outputs_by_id, (
+    assert flight_id in golden_records_by_id, (
         f"{tc_id}: flight '{flight_id}' not found in golden output"
     )
-    expected = golden_outputs_by_id[flight_id]
 
-    # Compare DataFrame columns
-    check_cols = list(FlightWithClimateImpact.REQUIRED)
-    assert_frame_equal(
-        actual.to_dataframe()[check_cols],
-        FlightWithClimateImpact.from_flight(expected.copy()).to_dataframe()[check_cols],
-        rtol=rtol,
-        atol=float("inf"),
-        check_dtype=False,
-        obj=f"{tc_id} [{flight_id}]",
-    )
-
-    # Compare climate payload
-    assert_climate_payload_equal(
-        actual.attrs.get("climate_impact", {}),
-        expected.attrs.get("climate_impact", {}),
-        rtol=rtol,
+    assert_matches_golden(
+        actual.to_dict(),
+        golden_records_by_id[flight_id],
+        rtol=GOLDEN_RTOL,
+        label=f"{tc_id} [{flight_id}]",
     )
 
 

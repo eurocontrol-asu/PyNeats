@@ -15,13 +15,13 @@ import json
 from pathlib import Path
 
 import pytest
-from pandas.testing import assert_frame_equal
 
 from pyneats.core.views import FlightView
 from pyneats.runners.fleet import FleetRunnerParams
 from pyneats.runners.large_emitter import FleetRunnerLargeEmitter
 from pyneats.steps.weather.weather_store import ZarrPaths
-from tests.conftest import assert_climate_payload_equal
+from tests.golden_compare import GOLDEN_RTOL
+from tests.golden_compare import assert_matches_golden
 
 
 @pytest.mark.integration
@@ -40,13 +40,10 @@ def test_fleet_runner_golden(
     """Test FleetRunner produces golden outputs for each case.
 
     Runs all flights in the golden case through FleetRunner and compares
-    the outputs with expected results. The output keys (data columns and
-    attrs, as serialised by ``FlightView.to_dict``) must be those of the
-    golden output: the output schema does not change.
+    each output flight (``FlightView.to_dict``) with its golden record:
+    the same keys, every per-point column and flight-level attribute at
+    ``GOLDEN_RTOL``, and the climate payload (``tests/golden_compare.py``).
     """
-    # Import here to avoid collection errors when pyBADA not installed
-    from pyneats.steps.climate_metrics.views import FlightWithClimateImpact
-
     # Skip if dependencies not available
     if weather is None:
         pytest.skip("Weather data not available")
@@ -54,11 +51,6 @@ def test_fleet_runner_golden(
         pytest.skip("BADA data not available")
     if weather_path is None:
         pytest.skip("Weather path not available")
-
-    # Test configuration
-    rtol = 1e-3  # 0.1% relative tolerance
-    atol = float("inf")  # No absolute tolerance limit
-    check_cols = list(FlightWithClimateImpact.REQUIRED)
 
     # Setup Zarr paths
     met_store = weather_path / "icon_met.zarr"
@@ -93,44 +85,19 @@ def test_fleet_runner_golden(
         f"expected {len(golden_output)}. Errors: {runner.error_records}"
     )
 
-    # Output schema: the same keys as the golden output, flight by flight
+    # Compare each output flight with its golden record (same JSON layout)
     with open(golden_output_path, encoding="utf-8") as fh:
-        golden_keys = [set(d) for d in json.load(fh)]
-    for i, output_flight in enumerate(output_flights):
-        output_keys = set(output_flight.to_dict())
-        assert output_keys == golden_keys[i], (
-            f"Case '{golden_case}', flight {i}: output keys differ from the golden "
-            f"output (extra {sorted(output_keys - golden_keys[i])}, missing "
-            f"{sorted(golden_keys[i] - output_keys)})"
-        )
-
-    # Compare each output flight with expected
-    for i, (output_flight, expected_flight) in enumerate(
-        zip(output_flights, golden_output, strict=True)
+        golden_records = json.load(fh)
+    for i, (output_flight, expected_record) in enumerate(
+        zip(output_flights, golden_records, strict=True)
     ):
         flight_id = output_flight.attrs.get("flight_id", f"flight_{i}")
         if isinstance(flight_id, list):
             flight_id = flight_id[0] if flight_id else f"flight_{i}"
 
-        output = output_flight.to_dataframe()
-        expected = FlightWithClimateImpact.from_flight(
-            expected_flight.copy()
-        ).to_dataframe()
-
-        assert_frame_equal(
-            output[check_cols],
-            expected[check_cols],
-            rtol=rtol,
-            atol=atol,
-            check_dtype=False,
-            obj=f"Case '{golden_case}', flight {i} [{flight_id}]",
-        )
-
-        # Compare climate_payload
-        actual_payload = output_flight.attrs.get("climate_impact", {})
-        expected_payload = expected_flight.attrs.get("climate_impact", {})
-        assert_climate_payload_equal(
-            actual_payload,
-            expected_payload,
-            rtol=rtol,
+        assert_matches_golden(
+            output_flight.to_dict(),
+            expected_record,
+            rtol=GOLDEN_RTOL,
+            label=f"Case '{golden_case}', flight {i} [{flight_id}]",
         )
