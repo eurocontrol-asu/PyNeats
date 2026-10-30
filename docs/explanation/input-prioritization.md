@@ -59,6 +59,9 @@ graph TD
 | TOW, no aircraft mass | thrust and fuel flow | AO TOW, decreased with the AO fuel flow if provided, else with the BADA fuel flow | AO if provided, else BADA | AO if provided, else BADA |
 | Neither aircraft mass nor TOW | thrust and fuel flow | estimate (below) from the AO trip fuel if fuel flow is provided, else iterative with the BADA trip fuel; decreased with the AO fuel flow if provided, else with the BADA fuel flow | AO if provided, else BADA | AO if provided, else BADA |
 
+!!! note "AO aircraft mass and AO TOW"
+    When the AO provides aircraft mass, its TOW (`takeoff_mass`) is not used, on every path. When the TOW differs from the first aircraft mass by more than 1,000 kg or 2 % of that mass, whichever is larger, one warning per flight names the flight and both masses; the output `takeoff_weight` still shows the AO TOW.
+
 !!! note "BADA mapping"
     Every flight needs its aircraft type in the BADA mapping, even when the AO provides fuel flow, engine efficiency and aircraft mass. The BADA file gives the wingspan (needed for contrails). The mapping gives the number of engines (needed for emissions; read from the BADA file when no BADA calculation is made) and, when no engine is declared, the engine UID: the MRR conservative engine where the type has one, otherwise the engine of the mapping row. A type that is not in the mapping makes the flight fail.
 

@@ -28,6 +28,7 @@ BADAPerformanceModelParams
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
@@ -187,6 +188,51 @@ def _mass_from_fuel_flow(
     burn = _fuel_burn_per_segment(fuel_flow, segment_duration)
     burned_before = np.concatenate(([0.0], np.cumsum(burn)[:-1]))
     return float(initial_mass) - burned_before
+
+
+# A takeoff_mass that differs from the first aircraft_mass by more than
+# max(_TAKEOFF_MASS_MISMATCH_MIN_KG, _TAKEOFF_MASS_MISMATCH_FRACTION x that
+# mass) is reported at WARNING when aircraft_mass overrides it (audit A6).
+_TAKEOFF_MASS_MISMATCH_MIN_KG = 1000.0
+_TAKEOFF_MASS_MISMATCH_FRACTION = 0.02
+
+# Attribute set by FleetRunner._expand_multi_engine_sources on each engine
+# copy of a flight with a list engine_uid (the AO flight id). Same value as
+# pyneats.runners.fleet._MULTI_ENGINE_ORIG_FID_KEY; not imported, because
+# the runners import the steps.
+_MULTI_ENGINE_ORIG_FID_KEY = "_multi_engine_original_fid"
+
+
+def _takeoff_mass_mismatch(
+    df: pd.DataFrame, takeoff_weight: Any
+) -> tuple[float, float] | None:
+    """The (takeoff_mass, first aircraft_mass) pair [kg] when they differ too much.
+
+    Returns None when ``df`` has no ``aircraft_mass`` column (takeoff_mass
+    is then used), when takeoff_mass or every aircraft_mass value is missing
+    or not finite, or when the absolute difference is at most
+    max(1000 kg, 2 % of the first finite aircraft_mass) (audit A6).
+    """
+    if "aircraft_mass" not in df.columns or takeoff_weight is None:
+        return None
+    try:
+        takeoff_mass = float(takeoff_weight)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(takeoff_mass):
+        return None
+    am = pd.to_numeric(df["aircraft_mass"], errors="coerce").to_numpy(dtype=float)
+    finite = am[np.isfinite(am)]
+    if finite.size == 0:
+        return None
+    first_mass = float(finite[0])
+    threshold = max(
+        _TAKEOFF_MASS_MISMATCH_MIN_KG,
+        _TAKEOFF_MASS_MISMATCH_FRACTION * abs(first_mass),
+    )
+    if abs(takeoff_mass - first_mass) <= threshold:
+        return None
+    return takeoff_mass, first_mass
 
 
 # Hint added to a fuel-burn guardrail rejection of an AO fuel flow.
@@ -491,6 +537,12 @@ class BADAPerformanceModel(
         consistency errors (a BADA file without MTOW or OEW when the take-off
         mass is estimated, and a missing initial mass), which do not occur
         with the BADA files in use.
+
+        When the AO gives ``aircraft_mass`` and a ``takeoff_mass`` that
+        differs from it by more than max(1000 kg, 2 % of the first
+        aircraft_mass), one WARNING per flight says that takeoff_mass is not
+        used (``_log_takeoff_mass_ignored``, before the first attempt, audit
+        A6).
         """
 
         # --- Preprocessing + aircraft data extraction ---
@@ -509,6 +561,10 @@ class BADAPerformanceModel(
                 f"Preprocessing and aircraft attribute extraction failed during Performance evaluation: {e}",
                 retryable=False,
             ) from e
+
+        # Once per flight, before the retries: aircraft_mass wins over
+        # takeoff_mass on every path (early exit included, audit A6).
+        self._log_takeoff_mass_ignored(df, flight)
 
         # --- First attempt: normal BADA (3 or 4) execution ---
         try:
@@ -563,6 +619,57 @@ class BADAPerformanceModel(
                 return self._run_with_altitude_fallback(
                     flight, icao, series, engine_id_attr, q_fuel_attr, exc2
                 )
+
+    def _log_takeoff_mass_ignored(self, df: pd.DataFrame, flight: Flight) -> None:
+        """Log that the AO ``aircraft_mass`` overrides the AO ``takeoff_mass``.
+
+        When ``df`` has an ``aircraft_mass`` column, every path (the early
+        exit with AO fuel flow and engine efficiency, and the mass strategy)
+        uses it and never reads the ``takeoff_weight`` attribute (AO
+        ``takeoff_mass``, kg). A WARNING is logged when the two differ by
+        more than max(1000 kg, 2 % of the first aircraft_mass); a smaller
+        difference is logged at DEBUG. Called once per flight by ``run``, so
+        the BADA3 retry and the altitude fallback do not log it again. For a
+        flight with a list ``engine_uid`` (one copy per engine), the message
+        names the AO flight id and only the first copy (``<id>__eng0``)
+        logs it at WARNING; the other copies log it at DEBUG. No value is
+        changed: the output attribute ``takeoff_weight`` still shows the AO
+        value.
+        """
+        takeoff_weight = flight.attrs.get("takeoff_weight")
+        if "aircraft_mass" not in df.columns or takeoff_weight is None:
+            return
+        mismatch = _takeoff_mass_mismatch(df, takeoff_weight)
+        if mismatch is None:
+            self.logger.debug(
+                "'aircraft_mass' column provided: 'takeoff_weight' attribute"
+                " (%s kg) not used",
+                takeoff_weight,
+            )
+            return
+        takeoff_mass, first_mass = mismatch
+        # A flight with a list engine_uid runs as one copy per engine
+        # ("<id>__eng<i>", same masses). Name the AO flight id, and log at
+        # WARNING for the first copy only: one WARNING per flight.
+        flight_id = flight.attrs.get("flight_id")
+        original_fid = flight.attrs.get(_MULTI_ENGINE_ORIG_FID_KEY)
+        level = logging.WARNING
+        if original_fid is not None:
+            if flight_id != f"{original_fid}__eng0":
+                level = logging.DEBUG
+            flight_id = original_fid
+        self.logger.log(
+            level,
+            "Flight %s: takeoff_mass %.0f kg is not used because aircraft_mass"
+            " is given (first aircraft_mass %.0f kg, difference %+.0f kg)."
+            " The output attribute takeoff_weight still shows the AO value"
+            " %.0f kg",
+            flight_id,
+            takeoff_mass,
+            first_mass,
+            takeoff_mass - first_mass,
+            takeoff_mass,
+        )
 
     def _run_with_altitude_fallback(
         self,
@@ -1080,7 +1187,9 @@ class BADAPerformanceModel(
 
         Returns both perf output and q_fuel_used. In order of priority:
 
-        1. ``aircraft_mass`` column (AO): used point by point.
+        1. ``aircraft_mass`` column (AO): used point by point; the
+           ``takeoff_weight`` attribute is not read (``run`` logs it once per
+           flight, at WARNING when the two differ, audit A6).
         2. ``fuel_flow`` column (AO) without ``aircraft_mass``: the mass starts
            at the ``takeoff_weight`` attribute, or at the estimate from the AO
            trip fuel, and decreases with the AO fuel flow
@@ -1242,7 +1351,9 @@ class BADAPerformanceModel(
         With ``initial_mass`` [kg, at the first retained trajectory point] the
         mass is integrated with the BADA fuel flow
         (mass -= ff_corrected [kg/s] x segment_duration [s]); callers pass it
-        only when no AO ``fuel_flow`` column is given. Without it, the
+        only when no AO ``fuel_flow`` and no ``aircraft_mass`` column is
+        given (``aircraft_mass`` overriding ``takeoff_weight`` is logged
+        once per flight by ``_log_takeoff_mass_ignored``). Without it, the
         ``aircraft_mass`` column [kg] is used point by point (the AO column,
         or the mass integrated from the AO fuel flow). Returned fuel flow is kg/s for the
         whole aircraft and thrust is N.
@@ -1259,7 +1370,8 @@ class BADAPerformanceModel(
                 retryable=False,
             )
         if initial_mass is not None and "aircraft_mass" in df.columns:
-            self.logger.warning(
+            # No caller passes both; keep aircraft_mass first, as in run().
+            self.logger.debug(
                 "Both initial mass and 'aircraft_mass' column provided; ignoring initial mass"
             )
             initial_mass = None
