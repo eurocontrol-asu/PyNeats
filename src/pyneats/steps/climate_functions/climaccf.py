@@ -16,6 +16,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import field
 from typing import Any
+from typing import ClassVar
 
 import pandas as pd
 import xarray as xr
@@ -59,6 +60,30 @@ class ACCFParams(ClimateParams):
 
 
 # ---- surface adapter for ACCF -------------------------------------
+# ECMWF met variables of pycontrails ``ACCF`` (read once, at import).
+_ACCF_MET_VARIABLES = ACCF.ecmwf_met_variables()
+
+
+def make_accf_met_view(met: MetDataset) -> MetDataset:
+    """Return the met for pycontrails ``ACCF`` without changing the given one.
+
+    Renames the variables to the ECMWF names ``ACCF`` uses. When
+    ``relative_humidity`` is in "%", a new variable divided by 100 (units "1")
+    replaces it in a shallow copy. ``ACCF.__init__`` would otherwise run
+    ``met.data["relative_humidity"] /= 100.0`` on its renamed met, which
+    shares the numpy buffer with the given met: the given values would be
+    divided by 100 again for every new ``ACCF`` while their units stay "%".
+    The other variables share the given arrays (no copy).
+    """
+    accf_met = met.standardize_variables(_ACCF_MET_VARIABLES)
+    rh = accf_met.data["relative_humidity"]
+    if rh.attrs.get("units") != "%":
+        return accf_met
+    ds = accf_met.data.copy(deep=False)
+    ds["relative_humidity"] = (rh / 100.0).assign_attrs({**rh.attrs, "units": "1"})
+    return MetDataset(ds, copy=False)
+
+
 def make_accf_surface_view(surface: MetDataset) -> MetDataset:
     """
     Return an ACCF-compatible surface MetDataset WITHOUT mutating the given one.
@@ -134,12 +159,20 @@ class ACCFModel(
     """
     Thin wrapper around `pycontrails.models.accf.ACCF` (ClimAccf).
 
-    - Builds an ACCF with provided met and an *adapted* surface view.
+    - Builds an ACCF with provided met and an *adapted* surface view, a new
+      one for every flight (see ``_new_impl``).
     - Calls `.eval(flight)` to add climate columns (e.g., accf_total).
     - Validates required columns and returns a base Flight.
+
+    ``FleetRunner`` passes its ``met`` and ``rad`` datasets as ``met`` and
+    ``surface`` when ``requires_met_surface`` is True, unless the caller gives
+    them in ``params["non_co2_model"]``.
     """
 
     default_params = ACCFParams
+
+    # FleetRunner gives this step its met / rad datasets (as met / surface).
+    requires_met_surface: ClassVar[bool] = True
 
     def _post_init(self) -> None:
         if self.params.met is None or self.params.surface is None:
@@ -157,14 +190,36 @@ class ACCFModel(
             # PMO is never merged into aCCF_CH4 by the library (it would carry
             # the CH4 efficacy and factors, audit O14). ``run`` writes it as a
             # separate ATR_20_PMO column when accf_kwargs["PMO"] is True.
-            self._impl = ACCF(
-                met=self.params.met,
-                surface=accf_surface,
-                **{**self.params.accf_kwargs, "PMO": False},
-            )
+            self._accf_surface = accf_surface
+            self._accf_met = make_accf_met_view(self.params.met)
+            # Built here only to fail early on bad met / surface / kwargs;
+            # ``run`` builds a new ACCF for every flight.
+            self._new_impl()
         except Exception as e:
             self.logger.exception("Failed to initialize ACCF model")
             raise ACCFStepError(f"ACCF initialization failed: {e}") from e
+
+    def _new_impl(self) -> ACCF:
+        """Return a new pycontrails ``ACCF`` on the full met and surface.
+
+        ``ACCF.eval`` replaces the model's ``met`` and ``surface`` with copies
+        cut to the evaluated flight. An ``ACCF`` reused for a second flight
+        then has only the weather of the first flight, and CLIMaCCF fails
+        (IndexError) or gives wrong values. ``FleetRunner`` keeps one step per
+        process for all its flights, so ``run`` must not reuse one ``ACCF``.
+        A new ``ACCF`` per flight is also safe with ``prefer="threads"``.
+
+        ``ACCF`` does not copy ``met`` (it renames the variables into a new
+        ``MetDataset`` that shares the arrays) and makes a shallow copy of
+        ``surface``, so a new ``ACCF`` per flight does not copy the weather.
+        It gets ``self._accf_met``, whose relative humidity is already in
+        "1", so ``ACCF.__init__`` never divides a shared array by 100.
+        """
+        return ACCF(
+            met=self._accf_met,
+            surface=self._accf_surface,
+            **{**self.params.accf_kwargs, "PMO": False},
+        )
 
     def run(self, flight: FlightWithEmissions) -> FlightWithNonCO2Impact:
         """Compute non-CO2 ATR contributions via the CLIMaCCF library (aCCF v1.0A).
@@ -200,7 +255,7 @@ class ACCFModel(
             ACCFStepError: If the CLIMaCCF output is missing required columns.
         """
         try:
-            out: Flight = self._impl.eval(flight)
+            out: Flight = self._new_impl().eval(flight)
             df: pd.DataFrame = out.to_dataframe()
             fuel_burn = pd.to_numeric(df["fuel_burn"], errors="coerce").fillna(0.0)
             nox_ei = pd.to_numeric(df["nox_ei"], errors="coerce").fillna(0.0)

@@ -19,7 +19,7 @@ From a computational standpoint, PyNeats relies on external Python libraries to 
 - **pyBADA** — aircraft performance computation
 - **pyContrails** — CoCiP (contrails, Method C) and the pycontrails aCCF wrapper
 - **aCCFs (non-CO₂ species other than contrails, Method C)** — two swappable implementations selectable via the step registry:
-    - **`ACCFModel`** — delegates to the **CLIMaCCF** Python package (reference implementation from Yin/Dietmüller et al.)
+    - **`ACCFModel`** — delegates to the **CLIMaCCF** Python package (reference implementation from Yin/Dietmüller et al.) through the pycontrails `ACCF` wrapper. Selected with `non_co2_model="accf"`. The `climaccf` package is not a PyNeats dependency and must be installed separately (`pip install git+https://github.com/dlr-pa/climaccf.git`). It works in fleet runs: the fleet runner gives the step its met and radiation datasets, and the step builds a new pycontrails `ACCF` for each flight.
     - **`LocalACCFModel`** — a local in-tree reimplementation of the aCCF v1.0A regressions, provided for computational efficiency and to remove the CLIMaCCF runtime dependency. Emulates CLIMaCCF numerically and is validated against it.
 - **OpenAirClim** — Method D (small emitters)
 

@@ -49,6 +49,7 @@ from pyneats.core.steps import Step
 from pyneats.core.steps import VectorizedStep
 from pyneats.core.steps import get_step_critical_columns
 from pyneats.core.steps_registry import build
+from pyneats.core.steps_registry import known
 from pyneats.runners.flight import RunnerConfig
 from pyneats.runners.runner import Runner
 from pyneats.steps.climate_functions.cocip import CoCiPModel
@@ -734,7 +735,33 @@ class FleetRunner(Runner):
         )
         self.cocip_step = CoCiPModel(params=cocip_params)
 
+        # Non-CO2 step that needs the weather (e.g. "accf"): rebind it with
+        # met / surface now that they are loaded.
+        weather_extra = self._non_co2_weather_params()
+        if weather_extra:
+            self.non_co2_model = make_step_func(
+                NonCO2Model,  # type: ignore[type-abstract]
+                self.cfg.non_co2_model,
+                self._params("non_co2_model", extra=weather_extra),
+            )
+
         return self
+
+    def _non_co2_weather_params(self) -> dict[str, Any]:
+        """Return the met / surface params for a non-CO2 step that needs them.
+
+        A non-CO2 step class with ``requires_met_surface = True`` (the
+        ``"accf"`` backend) gets ``met=self.met`` and ``surface=self.rad``, as
+        ``FlightRunnerLargeEmitter`` gives it its own met and rad. A ``met`` or
+        ``surface`` given in ``cfg.params["non_co2_model"]`` is kept. Other
+        backends (e.g. the default ``"local_accf"``) get nothing.
+        """
+        ctor = known(NonCO2Model).get(self.cfg.non_co2_model.lower().strip())  # type: ignore[type-abstract]
+        if not getattr(ctor, "requires_met_surface", False):
+            return {}
+        given = self.cfg.params.get("non_co2_model", {})
+        weather = {"met": self.met, "surface": self.rad}
+        return {k: v for k, v in weather.items() if given.get(k) is None}
 
     def _expand_multi_engine_sources(self) -> None:
         """Expand source DataFrames with list engine_uid into N copies with scalar engine_uid."""
