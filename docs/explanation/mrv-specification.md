@@ -157,6 +157,7 @@ DWD ICON variables covering the **550–140 hPa** range (FL160–FL460) **at an 
 Performance models such as BADA require **true airspeed (TAS)** to estimate aircraft performance over most of the flight. TAS can be computed from ambient wind (direction and magnitude), ground speed, heading, and track. To support this, DWD was asked to supply an **additional wind-field dataset** for **840–570 hPa (FL050–FL150)**, complementing the main file (550–140 hPa, ≈ FL160–FL460) that already provides atmospheric variables at higher altitudes.
 
 - Both wind datasets are **concatenated**, and below FL050 the wind is set to **zero**, simplifying TAS derivation in the lower atmosphere.
+  This is the default. The parameter `wind_below_lowest_level` of the weather step (`WeatherProviderParams`; default `DEFAULT_WIND_BELOW_LOWEST_LEVEL` in `neats_default_parameters.py`) selects the wind below the lowest level of the wind data: `"zero"` (default), `"constant"` (the wind of the lowest level) or `"linear"` (the wind of the lowest level times the altitude divided by the ISA altitude of that level, so 0 at 0 m above mean sea level, not at the airport elevation). Only the level is held: points before the first or after the last time of the weather data, or outside its area, get zero wind in every mode. When the wind is read from a dataset whose lowest level is higher, such as ERA5 met data at 550 hPa (about FL160), the same rule applies from that level down.
 - **Temperature**: interpolated on the main file (550–140 hPa) to provide BADA with the required temperature-based correction relative to the standard atmosphere. Extrapolation for lower altitudes is performed in the performance module (see §3.4).
 - **Specific humidity**: interpolated on the main file (550–140 hPa) to supply the emission model for further use in CoCiP.
 
@@ -178,7 +179,7 @@ The performance model is used to estimate these values when the AO does not prov
 
 #### Basic Parameterisation
 
-- If TAS is not provided by the AO, it is computed from the (smoothed) ground speed and the wind fields, available **above 840 hPa (FL050)**; where no wind is available (below that level) the wind is set to 0, so TAS equals the smoothed ground speed. Implausible TAS values (provided or computed) are replaced before BADA is run (see rule 4 of the Input Decision Logic).
+- If TAS is not provided by the AO, it is computed from the (smoothed) ground speed and the wind fields, available **above 840 hPa (FL050)**; where no wind is available (below that level) the wind is set to 0 by default, so TAS equals the smoothed ground speed (see `wind_below_lowest_level` in §3.3.2). Implausible TAS values (provided or computed) are replaced before BADA is run (see rule 4 of the Input Decision Logic).
 - The International Standard Atmosphere is corrected with actual air above 550 hPa, backfilling and forward-filling the correction for lower altitudes.
 - BADA flight phases are determined from **vertical speed** using simple decision thresholds.
 

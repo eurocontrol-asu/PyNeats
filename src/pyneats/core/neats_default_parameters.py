@@ -353,6 +353,16 @@ DEFAULT_WEATHER_INTEPOLATION_METHOD: Final[InterpolationMethod] = (
 # CRITICAL: If True, delta_tau (contrail formation parameter) is incorrectly extrapolated below altitude limits
 DEFAULT_WEATHER_USE_INDICES: Final[bool] = False
 
+# Wind below the lowest pressure level of the wind data (DWD ICON: 843 hPa, about FL50;
+# ERA5 met used as wind: 550 hPa, about FL160):
+# - "zero": the wind is 0 (MRV specification), so TAS = ground speed there
+# - "constant": the wind of the lowest level
+# - "linear": the wind of the lowest level times altitude / ISA altitude of that level,
+#   so it falls linearly to 0 at 0 m (mean sea level, not the airport elevation)
+# In every mode, points outside the time or horizontal range of the data get 0.
+WindBelowLowestLevel = Literal["zero", "constant", "linear"]
+DEFAULT_WIND_BELOW_LOWEST_LEVEL: Final[WindBelowLowestLevel] = "zero"
+
 
 # Jet fuel composition and thermodynamic properties
 # Used in emissions and energy calculations. Default values from consortium (DLR/TO70)
