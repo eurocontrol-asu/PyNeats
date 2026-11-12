@@ -353,7 +353,7 @@ The conversion factors $K_{AGWP \leftarrow RF}$ and $K_{ATR \leftarrow RF}$ (Pul
 |---|---|---|---|---|
 | 20  | 10.6318 | 1.0192 | 1.0192 | 10.6318 |
 | 50  | 13.0968 | 1.0192 | 1.0192 | 13.0968 |
-| 100 | 13.3563 | 1.0192 | 1.0192 | 13.3560 |
+| 100 | 13.3563 | 1.0192 | 1.0192 | 13.3563 |
 
 **$K_{ATR \leftarrow RF}^{Spec}(H)$** — RF → ATR conversion (includes efficacy):
 

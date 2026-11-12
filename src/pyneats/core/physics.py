@@ -103,7 +103,7 @@ CO2_AGWP_COEFF_WM2YR_PER_KG: Mapping[int, float] = {
 CONVERSION_FACTORS_AGWP_TO_RF: Final[dict[int, dict[str, float]]] = {
     20: {"CH4": 10.6318, "O3": 1.0192, "H2O": 1.0192, "PMO": 10.6318},
     50: {"CH4": 13.0968, "O3": 1.0192, "H2O": 1.0192, "PMO": 13.0968},
-    100: {"CH4": 13.3563, "O3": 1.0192, "H2O": 1.0192, "PMO": 13.356},
+    100: {"CH4": 13.3563, "O3": 1.0192, "H2O": 1.0192, "PMO": 13.3563},
 }
 CONVERSION_FACTORS_ATR_TO_RF: Final[dict[int, dict[str, float]]] = {
     20: {"CH4": 0.2838, "O3": 0.0337, "H2O": 0.032, "PMO": 0.269},
