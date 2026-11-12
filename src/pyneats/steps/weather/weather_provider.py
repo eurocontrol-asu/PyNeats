@@ -28,7 +28,9 @@ from numpy.typing import NDArray
 from pycontrails import Fleet
 from pycontrails import Flight
 from pycontrails.core.met import MetDataset
+from pycontrails.core.vector import GeoVectorDataset
 from pycontrails.models.humidity_scaling import HumidityScaling
+from pycontrails.physics import units
 
 from pyneats.core.fleet_utils import fleet_to_flights
 from pyneats.core.fleet_utils import flights_to_fleet
@@ -39,7 +41,9 @@ from pyneats.core.neats_default_parameters import DEFAULT_LON_BUF
 from pyneats.core.neats_default_parameters import DEFAULT_TIME_BUF
 from pyneats.core.neats_default_parameters import DEFAULT_WEATHER_INTEPOLATION_METHOD
 from pyneats.core.neats_default_parameters import DEFAULT_WEATHER_USE_INDICES
+from pyneats.core.neats_default_parameters import DEFAULT_WIND_BELOW_LOWEST_LEVEL
 from pyneats.core.neats_default_parameters import InterpolationMethod
+from pyneats.core.neats_default_parameters import WindBelowLowestLevel
 from pyneats.core.steps import BaseParams
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps import Step
@@ -164,6 +168,9 @@ class WeatherProviderParams(BaseParams):
 
     method: InterpolationMethod = DEFAULT_WEATHER_INTEPOLATION_METHOD
     use_indices: bool = DEFAULT_WEATHER_USE_INDICES
+    # Wind below the lowest level of the wind data: "zero", "constant" or "linear"
+    # (see DEFAULT_WIND_BELOW_LOWEST_LEVEL)
+    wind_below_lowest_level: WindBelowLowestLevel = DEFAULT_WIND_BELOW_LOWEST_LEVEL
 
     # Strict contract: either None, or a model that returns a Flight
     humidity_scaling: HumidityScalingModel | None = field(
@@ -306,7 +313,9 @@ class WeatherProvider(
         For each ``met_var → out_col`` entry in ``params.var_map``:
 
         - **Wind vars** are read from the dedicated wind dataset if provided,
-          otherwise fall back to the MET dataset. NaN values are replaced by 0.
+          otherwise fall back to the MET dataset. Below the lowest level of
+          the data, ``params.wind_below_lowest_level`` gives the wind ("zero",
+          "constant" or "linear"); all other NaN values are replaced by 0.
         - **Non-wind vars** are read from the MET dataset only.
         - Missing vars raise ``KeyError`` if the column is in
           ``DEFAULT_REQUIRED_WEATHER_COLS``, otherwise they are silently
@@ -380,7 +389,7 @@ class WeatherProvider(
                 )
 
                 if met_var in WIND_VARS:
-                    vals = np.nan_to_num(vals, nan=0.0)
+                    vals = self._fill_wind(flight, src, vals)
 
                 new_cols[out_col] = vals
 
@@ -499,6 +508,39 @@ class WeatherProvider(
 
         return typed, errors
 
+    def _fill_wind(
+        self,
+        vector: GeoVectorDataset,
+        src: Any,
+        vals: NDArray[np.floating[Any]],
+    ) -> NDArray[np.floating[Any]]:
+        """Fill missing wind values according to ``wind_below_lowest_level``.
+
+        With "constant" or "linear", points below the lowest pressure level of
+        ``src`` are interpolated again at that level (same longitude, latitude and
+        time), and with "linear" scaled by altitude / ISA altitude of that level.
+        Only the level is held: points outside the time or horizontal range of
+        ``src`` stay missing. All remaining missing values are set to 0.
+        """
+        mode = self.params.wind_below_lowest_level
+        if mode != "zero" and "level" in src.data.dims and src.data["level"].size:
+            lowest = float(src.data["level"].values.max())  # hPa, closest to ground
+            below = np.asarray(vector.level) > lowest
+            if below.any():
+                held = src.interpolate(
+                    np.asarray(vector["longitude"])[below],
+                    np.asarray(vector["latitude"])[below],
+                    np.full(int(below.sum()), lowest),
+                    np.asarray(vector["time"])[below],
+                    method=self.params.method,
+                )
+                if mode == "linear":
+                    altitude = np.asarray(vector.altitude)[below]
+                    held = held * np.clip(altitude / units.pl_to_m(lowest), 0.0, 1.0)
+                vals = np.array(vals, copy=True)
+                vals[below] = held
+        return np.nan_to_num(vals, nan=0.0)
+
     def _intersect_weather_variables(
         self, fleet: Fleet, ds_met: MetDataset, ds_wind: MetDataset | None
     ) -> dict[str, np.ndarray]:
@@ -537,7 +579,7 @@ class WeatherProvider(
             )
 
             if met_var in WIND_VARS:
-                vals = np.nan_to_num(vals, nan=0.0)
+                vals = self._fill_wind(fleet, src, vals)
 
             new_cols[out_col] = vals
 
