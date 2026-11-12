@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug Fixes
 
+- **climate_metrics**: PMO k_AGWP at H = 100 set to the CH4 value 13.3563 (was 13.356, a rounding in the table; decided by Philippe 2026-11-12). Method C only: PMO EAGWP at H = 100 +0.0022 %, CH4 entry about +0.0006 % in magnitude; H = 20 and 50 unchanged
 - **open_airclim**: A configured base inventory file that does not exist now raises `OpenAirClimStepError` naming the path instead of silently running without the base inventory; `base_inventory_path = None` remains the explicit opt-out
 
 ## [1.0.1] - 2026-05-26
