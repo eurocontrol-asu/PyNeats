@@ -40,11 +40,12 @@ from pyneats.steps.climate_functions.views import FlightWithGlobalAGWP
 
 OPENAIRCLIM_VERSION = "0.20.0"
 
-# (AGWP_100_CH4 / AGWP_20_CH4) with CH4 including PMO, for the perturbation
+# (AGWP_100_CH4 / AGWP_20_CH4) for the perturbation
 # approach (resp_CH4_pert.nc) with a one-year pulse in 2025 and the SSP2-4.5
 # background. It does not depend on the flight (the CH4 ODE is linear in the
 # forcing): 1.2596 with openairclim 0.19.1 and 1.2602 with 0.20.0 for a
-# production flight. The tagging approach gives about 1.44.
+# production flight. The tagging approach gives about 1.44. PMO is
+# 0.29 x CH4 at every time step, so the ratio is the same with or without it.
 CH4_AGWP_100_OVER_20_REF = 1.2596
 
 # Per-segment emissions of the synthetic flight [kg]; ~1 t fuel in total.
@@ -53,7 +54,7 @@ _EI_NOX = 0.012  # kg NOx (as NO2) / kg fuel
 _EI_CO2 = 3.16
 _EI_H2O = 1.23
 
-SPECIES = ("O3", "CH4", "H2O", "CONT")
+SPECIES = ("O3", "CH4", "PMO", "H2O", "CONT")
 HORIZONS = (20, 50, 100)
 
 _RESOURCES = files("pyneats.resources")
@@ -262,11 +263,12 @@ def test_agwp_signs_and_finiteness(agwp_by_scale):
     for h in HORIZONS:
         assert r[f"AGWP_{h}_O3"] > 0
         assert r[f"AGWP_{h}_H2O"] > 0
-        assert r[f"AGWP_{h}_CH4"] < 0  # CH4 + PMO
+        assert r[f"AGWP_{h}_CH4"] < 0
+        assert r[f"AGWP_{h}_PMO"] < 0
         assert r[f"AGWP_{h}_CONT"] > 0
 
 
-@pytest.mark.parametrize("species", ["O3", "CH4", "H2O"])
+@pytest.mark.parametrize("species", ["O3", "CH4", "PMO", "H2O"])
 def test_agwp_scales_linearly_with_inventory(agwp_by_scale, species):
     """AGWP / scale is the same for x0.01, x1 and x100 inventories.
 
@@ -285,6 +287,15 @@ def test_ch4_agwp_horizon_ratio_matches_reference(agwp_by_scale):
     for scale, res in agwp_by_scale.items():
         ratio = res["AGWP_100_CH4"] / res["AGWP_20_CH4"]
         assert ratio == pytest.approx(CH4_AGWP_100_OVER_20_REF, rel=1e-2), scale
+
+
+def test_pmo_is_stored_apart_from_ch4(agwp_by_scale):
+    """openairclim computes RF_PMO = 0.29 x RF_CH4 (``calc_ch4.calc_pmo_rf``);
+    ``AGWP_{H}_CH4`` must exclude PMO (audit O14), which GWPMetrics adds with
+    its own efficacy."""
+    r = agwp_by_scale[1.0]
+    for h in HORIZONS:
+        assert r[f"AGWP_{h}_PMO"] == pytest.approx(0.29 * r[f"AGWP_{h}_CH4"], rel=1e-6)
 
 
 def test_contrail_agwp_is_per_flight_not_base_fleet(agwp_by_scale):

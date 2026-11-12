@@ -398,7 +398,7 @@ $$
 AGWP_{Spec}(H) = \sum_{t = t_0}^{t_0 + H - 1} RF_{Spec}(t) \cdot 1\,\text{yr}
 $$
 
-This is the same formula openairclim uses for its own AGWP. $AGWP_{CH4}$ includes the primary-mode ozone (PMO). The metric start year $t_0$ is the reference year (2025), which is also the year of the bundled base inventory, so flights of any date run (audit item O4).
+This is the same formula openairclim uses for its own AGWP. The primary-mode ozone (PMO), which openairclim computes as 0.29 × the CH4 RF, is stored apart as $AGWP_{PMO}$ and added into the CH4 entry with its own efficacy (audit item O14). The metric start year $t_0$ is the reference year (2025), which is also the year of the bundled base inventory, so flights of any date run (audit item O4).
 
 **Change from openairclim 0.13.0.** The contrail model of openairclim 0.19 and later is new science, accepted by the method owners. Measured on 100 Network Manager flights (2025-07-09), the decided 0.20.0 setup against the 0.13.0 setup (tagging, NOx as NO), as ratios of the fleet sums: contrails **×0.56** (per-flight median ×0.61), O3 ×1.16, CH4 + PMO ×0.67 (H = 20) and ×0.55 (H = 100), H2O ×1.00, CO2 unchanged. Method D results therefore change.
 
