@@ -1,0 +1,27 @@
+OpenAirClim repository data bundled with PyNEATS (Method D)
+=========================================================
+
+Source:  "OpenAirClim Data", version 0.2.0, Zenodo record 22962383
+DOI:     10.5281/zenodo.22962383 (concept DOI 10.5281/zenodo.22146822)
+License: CC-BY-4.0. Authors: S. Voelk, H. Yamashita, L. Megill, K. Dahlmann,
+         V. Grewe (DLR).
+Used by: openairclim 0.20.0 (openairclim/core/repository.py expects data 0.2.0)
+         through ../openairclim.toml.
+
+Every file below is byte-identical to the Zenodo 0.2.0 file (MD5 from the
+Zenodo API). ch4_for_swv_calc.nc is not bundled because PyNEATS does not
+compute SWV (decision A.4, Ramon + Philippe, 2026-10-28).
+resp_RF.nc and resp_cont.nc are not referenced by openairclim.toml; they are
+kept for reference only.
+
+990d30402f5bee95e6d6c93332c1b50a  ch4_bg.nc
+18c7c2620b8360887911b08353389e4a  co2_bg.nc
+cac751c6d8c8bc42bd934652a310db16  n2o_bg.nc
+aae707f66ca5b616b2141453135c4587  resp_ch4.nc
+b0550f9a9aa5abef98f2a9868a6d5962  resp_CH4_pert.nc
+840a560eab5f5163925487768fbb0332  resp_cont_lf.nc
+303393da75bb81aa5244c46bb4d925d4  resp_cont.nc
+8f390af6d94c49e1b095905044079a98  resp_RF_H2O.nc
+1d5800841cd033b1b2bfe9574968cc29  resp_RF.nc
+0fef3159d4b2c3628361c6d73df1666f  resp_RF_O3.nc
+9385feff2d43609ba64ca42d3d1f65b5  resp_RF_O3_pert.nc

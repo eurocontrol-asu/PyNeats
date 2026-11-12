@@ -80,7 +80,6 @@ jobs:
         run: |
           uv sync --dev
           uv run pip install pybada --no-deps --ignore-requires-python
-          uv run pip install git+https://github.com/dlr-pa/oac.git
 
       - name: Run tests with coverage
         env:

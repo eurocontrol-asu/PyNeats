@@ -5,6 +5,16 @@ All notable changes to PyNeats will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Features
+
+- **open_airclim**: [**breaking**] Upgrade OpenAirClim from 0.13.0 to 0.20.0 (repository data 0.2.0, DOI 10.5281/zenodo.22962383) with the Method D setup decided by Ramon and Philippe on 2026-10-28: perturbation approach for O3 and CH4 (A.1), NOx given as NO2 (`nox = "NO2"`, A.2), the new contrail science accepted and documented (A.3), the bundled ELK 2025 base inventory kept (`rel_to_base`) and no SWV (A.4), and the default `"proportional"` CH4/CO2 attribution (A.5). AGWP values are now the flight's own share (aircraft `DEFAULT`), integrated from its RF over [t_0, t_0 + H). **Method D results change.** On 100 NM flights, as ratios of the fleet sums (0.20.0 / 0.13.0): CH4 + PMO ×0.67 (H = 20) and ×0.55 (H = 100), O3 ×1.16, contrails ×0.56, H2O ×1.00, CO2 unchanged
+
+### Bug Fixes
+
+- **open_airclim**: A configured base inventory file that does not exist now raises `OpenAirClimStepError` naming the path instead of silently running without the base inventory; `base_inventory_path = None` remains the explicit opt-out
+
 ## [1.0.1] - 2026-05-26
 
 ### Bug Fixes
@@ -242,4 +252,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add climate_payload verification to golden reference tests
 
 ## [0.2.0] - 2025-11-28
-

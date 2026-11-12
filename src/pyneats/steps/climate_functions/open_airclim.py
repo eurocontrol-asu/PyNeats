@@ -5,13 +5,16 @@ Implements the Method D climate function based on OpenAirClim for computing non-
 aviation climate impacts including ozone (O₃), methane (CH₄), water vapor (H₂O),
 and contrail cirrus effects across multiple time horizons (20, 50, 100 years).
 
-The module wraps the open-airclim library to compute Absolute Global Warming Potential
-(AGWP) metrics for flight emissions, using a grid-based inventory approach with
-temporary workspace management.
+The module wraps the openairclim library (0.20.0, pinned in pyproject.toml) to
+compute Absolute Global Warming Potential (AGWP) metrics for flight emissions,
+using a grid-based inventory approach with temporary workspace management.
+The configuration is ``pyneats/resources/openairclim.toml`` and the response and
+background data are ``pyneats/resources/repository`` (openairclim repository
+data 0.2.0).
 
 See Also
 --------
-open_airclim : https://github.com/openclimatefix/open-airclim
+openairclim : https://github.com/dlr-pa/oac
 """
 
 from __future__ import annotations
@@ -39,6 +42,14 @@ from pyneats.steps.climate_functions.protocol import NonCO2Model
 from pyneats.steps.climate_functions.protocol import OpenAirClimStepError
 from pyneats.steps.climate_functions.views import FlightWithGlobalAGWP
 from pyneats.steps.emissions.views import FlightWithEmissions
+
+
+# Aircraft identifier openairclim assigns when the inventory has no "ac"
+# coordinate (see openairclim.toml [aircraft] types = ["DEFAULT"]). Results
+# are read for this identifier, not "TOTAL": openairclim's own metrics file
+# only holds "TOTAL", and with rel_to_base = true openairclim >= 0.15 adds
+# the whole base fleet's contrails to "TOTAL".
+OAC_AIRCRAFT_ID = "DEFAULT"
 
 
 @dataclass(frozen=True)
@@ -95,7 +106,12 @@ def _create_worker_toml(
     ``year`` is the reference year (``OpenAirClimParams.reference_year``),
     which is also the inventory year. ``time.range`` covers every year from
     ``year`` to ``year + horizon`` [years] and ``metrics.t_0`` is ``[year]``,
-    so every metric window [t_0, t_0 + H) starts with the emission.
+    so every metric window [t_0, t_0 + H) starts with the emission and is
+    the AGWP window read by ``OpenAirClimModel.run`` (see ``_harvest_agwp``).
+    With ``rel_to_base``, openairclim also requires the inventory year to be
+    the base inventory year (2025 for the bundled ELK inventory), which the
+    reference year satisfies (audit item O4, see
+    docs/internal/pyneats_units_audit.md).
     """
     with open(base_toml_path) as f:
         config = toml.load(f)
@@ -146,6 +162,41 @@ def _save_inventory(ds, filepath):
     )
 
 
+def _harvest_agwp(
+    results_nc: str, t_0: int, horizons: tuple[int, ...], ac: str = OAC_AIRCRAFT_ID
+) -> dict[int, dict[str, float]]:
+    """Integrate openairclim RF time series into AGWP per species.
+
+    ``AGWP_H = sum_{t in [t_0, t_0 + H)} RF(t) * dt`` [W m-2 yr] with
+    dt = 1 year (openairclim requires a time step of 1), which is
+    openairclim's own AGWP (``core/calc_metric.py``) applied to the results
+    of aircraft identifier ``ac``. openairclim's ``*_metrics.nc`` only holds
+    "TOTAL", which includes the base fleet's contrails when ``rel_to_base``
+    is set.
+
+    Returns:
+        ``{H: {species: AGWP}}`` for every ``RF_<species>`` variable.
+
+    Raises:
+        OpenAirClimStepError: The results do not cover [t_0, t_0 + H).
+    """
+    out: dict[int, dict[str, float]] = {}
+    with xr.load_dataset(results_nc) as ds:
+        rf_vars = [v for v in ds.data_vars if str(v).startswith("RF_")]
+        for h in horizons:
+            window = ds.sel(ac=ac, time=slice(t_0, t_0 + h - 1))
+            if window.sizes["time"] != h:
+                raise OpenAirClimStepError(
+                    f"openairclim results cover {window.sizes['time']} of the "
+                    f"{h} years in [{t_0}, {t_0 + h})"
+                )
+            out[h] = {
+                str(v)[len("RF_") :]: float(window[v].astype("float64").sum())
+                for v in rf_vars
+            }
+    return out
+
+
 @register(NonCO2Model, "open_airclim")
 class OpenAirClimModel(
     BaseStep[
@@ -170,9 +221,10 @@ class OpenAirClimModel(
 
         NaN NOx, CO2 and H2O (e.g. NOx outside the met domain) are filled
         with 0. NOx is the pycontrails NOx mass (expressed as NO2 by ICAO
-        EDB convention), while the bundled ``openairclim.toml`` sets
-        ``[species] nox = "NO"``, for which openairclim applies no 30/46
-        correction (see docs/internal/pyneats_units_audit.md).
+        EDB convention), matching ``[species] nox = "NO2"`` in the bundled
+        ``openairclim.toml`` (decision A.2, Ramon + Philippe 2026-10-28).
+        The openairclim 0.20 default is ``"NO"``, which would scale the NOx
+        responses by 46/30, so the setting must stay explicit.
         """
         grid_res = self.params.grid_res
         df = flight.to_dataframe()
@@ -245,12 +297,32 @@ class OpenAirClimModel(
         """Run openairclim on the flight inventory (Method D).
 
         Sets ``flight.attrs["AGWP_{H}_{O3,CH4,PMO,H2O,CONT}"]`` for H = 20, 50 and
-        100 years, in W m-2 yr (openairclim "W m-2 year"), without efficacy,
-        read from openairclim's ``AGWP_{H}_{reference_year}`` (window
-        starting in the reference year; see ``_create_worker_toml``). ``AGWP_{H}_CH4``
-        excludes PMO, which is stored separately in ``AGWP_{H}_PMO``; GWPMetrics
-        applies each its own efficacy and adds them into the "CH4" output entry.
+        100 years, in W m-2 yr (openairclim "W m-2 year"), without efficacy.
+        The values are the flight's own share (aircraft ``OAC_AIRCRAFT_ID``),
+        integrated from openairclim's RF over the window starting at
+        ``metrics.t_0``, the reference year (see ``_create_worker_toml`` and
+        ``_harvest_agwp``). ``AGWP_{H}_CH4`` excludes PMO, which is stored
+        separately in ``AGWP_{H}_PMO``; GWPMetrics applies each its own
+        efficacy and adds them into the "CH4" output entry.
+
+        Raises:
+            OpenAirClimStepError: ``base_inventory_path`` is set but the file
+                does not exist (``None`` runs without a base inventory), or
+                openairclim fails.
         """
+        # A configured base inventory that is missing is an error, not a
+        # silent run without it: rel_to_base changes the contrail result.
+        # None is the explicit opt-out. Resolved before the chdir below.
+        base_inventory_path = self.params.base_inventory_path
+        if base_inventory_path is not None:
+            base_inventory_path = os.path.abspath(base_inventory_path)
+            if not os.path.isfile(base_inventory_path):
+                raise OpenAirClimStepError(
+                    "OpenAirClim base inventory not found: "
+                    f"base_inventory_path={self.params.base_inventory_path!r}. "
+                    "Set base_inventory_path=None to run without a base inventory."
+                )
+
         # The runners create the folder at start-up; direct users of the model
         # (and worker processes) get it created here.
         if self.params.tmp_base_dir_path:
@@ -272,14 +344,10 @@ class OpenAirClimModel(
 
                 # 4. Symlink Base Inventory
                 base_inv_filename = None
-                if self.params.base_inventory_path and os.path.exists(
-                    self.params.base_inventory_path
-                ):
-                    base_inv_filename = os.path.basename(
-                        self.params.base_inventory_path
-                    )
+                if base_inventory_path is not None:
+                    base_inv_filename = os.path.basename(base_inventory_path)
                     os.symlink(
-                        self.params.base_inventory_path,
+                        base_inventory_path,
                         os.path.join("inputs", base_inv_filename),
                     )
 
@@ -307,33 +375,21 @@ class OpenAirClimModel(
                 # 8. RUN OPENAIRCLIM
                 oac.run(toml_rel_path)
 
-                # 9. Harvest Results
-                result_nc = "outputs/worker_result_metrics.nc"
+                # 9. Harvest Results (the flight's own share, see _harvest_agwp)
+                result_nc = "outputs/worker_result.nc"
                 if not os.path.exists(result_nc):
-                    raise OpenAirClimStepError(
-                        "ACCF requires both 'met' and 'surface' datasets."
-                    )
+                    raise OpenAirClimStepError("openairclim produced no results file")
+                with open(toml_rel_path) as f:
+                    t_0 = int(toml.load(f)["metrics"]["t_0"][0])
+                results = _harvest_agwp(result_nc, t_0, tuple(self.params.horizons))
 
-                with xr.load_dataset(result_nc) as metrics_ds:
-                    results = {}
-                    for h in self.params.horizons:
-                        var_name = f"AGWP_{h}_{year}"
-                        if var_name in metrics_ds:
-                            raw_results = metrics_ds[var_name]
-                            results[f"AGWP_{h}"] = {
-                                str(k): float(v)
-                                for k, v in zip(
-                                    raw_results["species"].values, raw_results.values
-                                )
-                            }
-
-                    # Assign Attributes
-                    for h in [20, 50, 100]:
-                        flight.attrs[f"AGWP_{h}_O3"] = results[f"AGWP_{h}"]["O3"]
-                        flight.attrs[f"AGWP_{h}_CH4"] = results[f"AGWP_{h}"]["CH4"]
-                        flight.attrs[f"AGWP_{h}_PMO"] = results[f"AGWP_{h}"]["PMO"]
-                        flight.attrs[f"AGWP_{h}_H2O"] = results[f"AGWP_{h}"]["H2O"]
-                        flight.attrs[f"AGWP_{h}_CONT"] = results[f"AGWP_{h}"]["cont"]
+                # Assign Attributes
+                for h in [20, 50, 100]:
+                    flight.attrs[f"AGWP_{h}_O3"] = results[h]["O3"]
+                    flight.attrs[f"AGWP_{h}_CH4"] = results[h]["CH4"]
+                    flight.attrs[f"AGWP_{h}_PMO"] = results[h]["PMO"]
+                    flight.attrs[f"AGWP_{h}_H2O"] = results[h]["H2O"]
+                    flight.attrs[f"AGWP_{h}_CONT"] = results[h]["cont"]
 
             except Exception as e:
                 self.logger.exception("Open_AirClim evaluation failed")
