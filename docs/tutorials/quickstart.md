@@ -4,7 +4,7 @@ This tutorial walks you through installing PyNeats and running your first climat
 
 ## Prerequisites
 
-- **Python 3.11+**
+- **Python 3.12+**
 - [uv](https://docs.astral.sh/uv/) (recommended package manager)
 - **BADA data** — EUROCONTROL aircraft performance coefficients (required for full pipeline)
 - **Weather data** — DWD ICON or ERA5 meteorological data in Zarr format

@@ -71,16 +71,23 @@ def test_mrr_conservative_engine(bada: Path) -> None:
         aircraft_type="A320",
         emissions_engine_uid="1IA001",
         emissions_engine_source="MRR conservative",
+        emissions_engine_uid_used="1IA001",
     )
 
 
 @pytest.mark.requires_bada
-@pytest.mark.parametrize("engine_uid", ["3CM026", "CFM56-FAKE"])
-def test_operator_engine(bada: Path, engine_uid: str) -> None:
+@pytest.mark.parametrize(
+    ("engine_uid", "used"),
+    [("3CM026", "3CM026"), ("CFM56-FAKE", None), ("01P21GE217", "07P27GE240")],
+)
+def test_operator_engine(bada: Path, engine_uid: str, used: str | None) -> None:
     """A declared engine goes to pycontrails as given, known or not; the BADA
-    model stays the one of the A320 mapping row."""
+    model stays the one of the A320 mapping row. pycontrails computes with the
+    latest successor of a superseded UID (01P21GE217, GE90-115B) and with no
+    EDB engine (constant emission indices) for an unknown UID."""
     r = resolve_aircraft("A320", engine_uid=engine_uid, bada_path=bada)
     assert r.emissions_engine_uid == engine_uid
+    assert r.emissions_engine_uid_used == used
     assert r.emissions_engine_source == "operator"
     assert r.bada_model == "A320-214"
     assert r.bada_engine_uid == "3CM026"
@@ -289,6 +296,7 @@ def test_resolver_matches_golden_outputs(bada: Path) -> None:
             bada_path=bada,
         )
         assert r.emissions_engine_uid == _scalar(out["engine_uid"]), props
+        assert r.emissions_engine_uid_used == _scalar(out["engine_uid_used"]), props
         assert r.n_engine == _scalar(out["n_engine"]), props
         assert r.aircraft_type == _scalar(out["aircraft_type"]), props
         if out.get("bada_version") is not None:

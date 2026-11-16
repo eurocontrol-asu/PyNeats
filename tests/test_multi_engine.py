@@ -148,6 +148,13 @@ class TestMergeEngineGroup:
         assert isinstance(result.attrs["engine_uid"], list)
         assert result.attrs["engine_uid"] == ["ENG_A", "ENG_B"]
 
+    def test_engine_uid_used_becomes_list(self):
+        group = self._make_group("pk", "FLT001", n_engines=2)
+        group[0].attrs["engine_uid_used"] = "ENG_A"
+        group[1].attrs["engine_uid_used"] = "ENG_B2"  # superseded ENG_B
+        result = _merge_engine_group(group, "pk")
+        assert result.attrs["engine_uid_used"] == ["ENG_A", "ENG_B2"]
+
     def test_numeric_df_columns_are_averaged(self):
         group = self._make_group("pk", "FLT001", n_engines=2)
         # nvpm_ei_m: eng0=0.4, eng1=0.6 → mean=0.5

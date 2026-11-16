@@ -202,7 +202,8 @@ r = resolve_aircraft("A320", series=None, engine_uid=None, bada_path="/path/to/b
 #     bada_model='A320-214', bada_engine='CFM56-5B4/P SAC',
 #     bada_engine_uid='3CM026', n_engine=2, aircraft_type='A320',
 #     emissions_engine_uid='1IA001',
-#     emissions_engine_source='MRR conservative')
+#     emissions_engine_source='MRR conservative',
+#     emissions_engine_uid_used='1IA001')
 ```
 
 `emissions_engine_source` is `"operator"` (the declared `engine_uid`),
@@ -213,6 +214,21 @@ emissions engine can differ from the engine of the BADA model. Golden flight
 EAF2143 (A320, no engine declared) flies the BADA4 A320-214 model (CFM56-5B4/P,
 `3CM026`), and its emissions use the MRR conservative engine `1IA001`: total NOx
 51.9 kg, against 30.3 kg with the pycontrails default engine for the A320.
+
+`emissions_engine_uid_used` is the engine pycontrails computes the emissions
+with (`engine_uid_used` in the flight attributes). It is `emissions_engine_uid`,
+or its latest successor when the ICAO EDB marks that UID as superseded (for
+example `01P21GE217` → `07P27GE240`, GE90-115B), and `None` when the UID is not
+in the EDB; pycontrails then uses constant emission indices.
+
+pycontrails estimates nvPM with SCOPE11 (from the smoke numbers) for an engine
+without nvPM data in the ICAO EDB. SCOPE11 needs the bypass ratio, which EDB
+v32 does not give for PW4098 (`5PW076`) and JT9D (`8PW086`, `8PW087`,
+`8PW088`; e.g. the MRR conservative engine of B741 and B74S): nvPM would then
+be NaN at every point and CoCiP would give no contrail. For such a flight the
+emissions step logs a warning and uses the pycontrails constant nvPM emission
+indices (0.088 g/kg fuel, 10^15 particles/kg fuel, with the ICAO Annex 16 fuel
+correction); `nvpm_data_source` records the fallback.
 
 `force_bada3=True` gives the BADA3 model of the BADA3 retry (when the BADA4
 attempt of a flight fails); the engine UID and the number of engines do not

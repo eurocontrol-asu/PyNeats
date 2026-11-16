@@ -3,7 +3,8 @@ Aircraft Resolution Module
 
 Tells, without running a flight, which BADA model and which engine PyNEATS
 uses for an aircraft: the BADA model of the performance step, and the engine
-UID that the emissions step gives to pycontrails (``attrs["engine_uid"]``).
+UID that the emissions step gives to pycontrails (``attrs["engine_uid"]``)
+and the UID pycontrails then uses (``attrs["engine_uid_used"]``).
 
 The performance step (``BADAPerformanceModel._resolve_bada_adapter`` and its
 BADA3 retry) uses the same two pieces: the mapping chain of
@@ -30,6 +31,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Literal
+
+from pycontrails.models.emissions import Emissions
 
 from pyneats.steps.performance.bada_mapper import BadaMapper
 from pyneats.steps.performance.bada_mapper import EngineSource
@@ -76,6 +79,11 @@ class ResolvedAircraft:
         Engine UID passed to pycontrails (``attrs["engine_uid"]``).
     emissions_engine_source : {"operator", "MRR conservative", "ECTL mapping row"}
         Where ``emissions_engine_uid`` comes from (see ``EngineSource``).
+    emissions_engine_uid_used : str or None
+        Engine UID pycontrails computes the emissions with
+        (``attrs["engine_uid_used"]``): ``emissions_engine_uid``, or its latest
+        successor when the ICAO EDB marks it as superseded. None when the UID
+        is not in the EDB; pycontrails then uses constant emission indices.
     """
 
     bada_version: Literal["BADA4", "BADA3"]
@@ -87,6 +95,7 @@ class ResolvedAircraft:
     aircraft_type: str
     emissions_engine_uid: str
     emissions_engine_source: EngineSource
+    emissions_engine_uid_used: str | None
 
 
 def _normalize_code_or_none(code: str | None) -> str | None:
@@ -114,6 +123,12 @@ def _select_bada_model(
     if bada4_code is None or force_bada3:
         return "BADA3", bada3
     return "BADA4", bada4_code
+
+
+@lru_cache(maxsize=1)
+def _emissions() -> Emissions:
+    """pycontrails emissions model, for its ICAO EDB supersession chain."""
+    return Emissions()
 
 
 @lru_cache(maxsize=256)
@@ -167,6 +182,7 @@ def _resolve_with_mapper(
         aircraft_type=icao,
         emissions_engine_uid=m.engine_id,
         emissions_engine_source=m.engine_source,
+        emissions_engine_uid_used=_emissions().get_latest_engine_uid(m.engine_id),
     )
 
 
@@ -225,6 +241,8 @@ def resolve_aircraft(
     ('A320-214', 'CFM56-5B4/P SAC', '3CM026')
     >>> r.emissions_engine_uid, r.emissions_engine_source  # doctest: +SKIP
     ('1IA001', 'MRR conservative')
+    >>> r.emissions_engine_uid_used  # doctest: +SKIP
+    '1IA001'
     """
     if params is None:
         # Local import: bada_model imports this module.

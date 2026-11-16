@@ -95,7 +95,7 @@ out, not set to `null`:
 | `model_type` | string | Model tag of the trajectory: `"NM"` when the fleet runner reads a JSON file (the default of `neats_json_to_flights`); with `trajectory_dataframe`, the value of its `model_type` column (e.g. `"CTFM"` for a DataFrame built with `concat_neats_flight(neats_json_to_flights(..., model_type="CTFM"))`) |
 | `aircraft_type` | string | ICAO aircraft type |
 | `aircraft_series` | string | `aircraft_version` as supplied; only when the input has it |
-| `engine_uid` | string, or list of strings | Engine UID used: the declared one (stripped and upper-cased), else the one chosen from the BADA mapping. A list when the input gives a list of engines (see below) |
+| `engine_uid` | string, or list of strings | Engine UID used: the declared one (stripped and upper-cased), else the one chosen from the BADA mapping. A list when the input gives a list of engines (see below). pycontrails computes the emissions with the latest successor of a superseded UID; `resolve_aircraft` gives that UID (`emissions_engine_uid_used`) |
 | `bada_version` | string | `"BADA4"` or `"BADA3"`. **Absent** when the AO provides fuel flow, engine efficiency and aircraft mass (each with at least one value), because the BADA performance model is then not run. BADA still gives the engine count, the wingspan and the airspeed limits |
 | `bada_code` | string | BADA aircraft code. **Absent** in the same case as `bada_version` |
 | `co2_baseline_kg` | float | Flight total CO2, kg |
@@ -296,8 +296,14 @@ Flight-level fields include those of `flight_information` above except
 `co2_baseline_kg`, `fuel_burn_kg` and `contrails_ef_J` (these are only in the
 nested `climate_impact`), the input attributes the flight has (e.g.
 `takeoff_weight`, `payload_factor`, `q_fuel`, `hydrogen_content`), plus
-`n_engine`, `gaseous_data_source` (e.g. `"FFM2"`), `nvpm_data_source`
-(e.g. `"FA Model"`), the flight totals `total_co2`, `total_h2o`, `total_nox`,
+`n_engine`, `engine_uid_used` (the engine UID pycontrails computes the
+emissions with: `engine_uid`, or its latest successor when the ICAO EDB marks
+it as superseded; `null` when the UID is not in the EDB; a list for a
+multi-engine flight), `gaseous_data_source` (e.g. `"FFM2"`), `nvpm_data_source`
+(e.g. `"ICAO EDB (T4/T2)"`, `"ICAO EDB (SCOPE11 with T4/T2)"`, `"Constant"`, or
+`"Constant (fallback: ICAO EDB (SCOPE11 with T4/T2) gave NaN nvPM)"` for an
+engine whose nvPM estimate is NaN at every point, see
+[usage](../howto/usage.md)), the flight totals `total_co2`, `total_h2o`, `total_nox`,
 ... (kg; `total_nvpm_number` is a number of particles), and the nested
 `climate_impact` (the successful result above). `flight_id` and `wingspan` are
 per-segment columns in the dump.
