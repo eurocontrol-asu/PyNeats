@@ -95,18 +95,23 @@ cont.response_grid = "cont"
 cont.resp.file = "resp_cont_lf.nc"
 
 # Temperature options. Only used by openairclim's dT/ATR/AGTP/AEGWP outputs;
-# PyNEATS reads AGWP (no efficacy) and applies its own efficacies.
+# PyNEATS reads AGWP (no efficacy) and applies its own efficacies
+# (pyneats.core.physics.EFFICACY), so these values do not change PyNEATS
+# results. They are kept equal to EFFICACY so that openairclim's own outputs
+# are consistent with PyNEATS (tests/test_open_airclim_method_d.py checks it).
 [temperature]
 method = "Boucher&Reddy"
-# Climate sensitivity parameter, Ponater et al. 2006, Table 1
-# https://doi.org/10.1016/j.atmosenv.2006.06.036
-CO2.lambda = 0.73
-# Efficacies, Ponater et al. 2006, Table 1
-H2O.efficacy = 1.14
-O3.efficacy = 1.37
-PMO.efficacy = 1.37
-CH4.efficacy = 1.14
-cont.efficacy = 0.59
+# Climate sensitivity parameter, Boucher & Reddy (2008), the openairclim 0.20.0
+# default and example.toml value
+CO2.lambda = 1.06
+# Efficacies: mean values of Table 3.1 of the RSTS, "Reference set of technical
+# specifications for the MRV", report EC-CLIMA/2024/NP/0014, 2025.
+# cont is set explicitly: the openairclim default 0.21 is the RSTS minimum.
+H2O.efficacy = 1.0
+O3.efficacy = 1.05
+PMO.efficacy = 1.0
+CH4.efficacy = 1.04
+cont.efficacy = 0.37
 
 # Climate metrics options
 [metrics]

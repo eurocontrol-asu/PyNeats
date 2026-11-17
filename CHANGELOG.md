@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **climate_metrics**: PMO k_AGWP at H = 100 set to the CH4 value 13.3563 (was 13.356, a rounding in the table; decided by Philippe 2026-11-12). Method C only: PMO EAGWP at H = 100 +0.0022 %, CH4 entry about +0.0006 % in magnitude; H = 20 and 50 unchanged
 - **open_airclim**: A configured base inventory file that does not exist now raises `OpenAirClimStepError` naming the path instead of silently running without the base inventory; `base_inventory_path = None` remains the explicit opt-out
 
+### Miscellaneous
+
+- **open_airclim**: `[temperature]` of the bundled `openairclim.toml` set to the values PyNEATS uses: `CO2.lambda = 1.06` (Boucher & Reddy, openairclim 0.20.0 default) and the RSTS Table 3.1 mean efficacies (contrails 0.37, O3 1.05, CH4 1.04, H2O 1.0, PMO 1.0), replacing the Ponater et al. (2006) values (0.73; 0.59, 1.37, 1.14, 1.14, 1.37). A test keeps them equal to `EFFICACY`. No change to PyNEATS results: these settings are only used by openairclim's own dT/ATR/AGTP/AEGWP outputs, and PyNEATS reads AGWP without efficacy (confirmed by DLR, S. Völk, November 2026)
+
+### Documentation
+
+- **open_airclim**: Method D settings table lists `[temperature]`; note that the CH4 RF of a flight first decreases and then returns towards 0 with openairclim 0.20.0, the expected behaviour (DLR)
+
 ## [1.0.1] - 2026-05-26
 
 ### Bug Fixes
