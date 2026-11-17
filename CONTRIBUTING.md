@@ -8,7 +8,7 @@ Thank you for your interest in contributing to **PyNeats**! We welcome contribut
 
 ### Prerequisites
 
-- **Python 3.11+**
+- **Python 3.12+**
 - **uv** (fast Python package manager) – [Installation guide](https://docs.astral.sh/uv/getting-started/installation/)
 - **make** (build automation tool)
 

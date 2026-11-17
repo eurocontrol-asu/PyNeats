@@ -17,7 +17,7 @@ hide:
   <a href="https://pypi.org/project/pyneats/">
     <img src="https://img.shields.io/pypi/v/pyneats" alt="PyPI" />
   </a>
-  <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+" />
+  <img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+" />
   <a href="https://eurocontrol-asu.github.io/PyNeats/">
     <img src="https://img.shields.io/badge/docs-live-brightgreen" alt="Docs" />
   </a>

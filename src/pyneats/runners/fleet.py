@@ -449,8 +449,10 @@ def _merge_engine_group(
             values = [f.attrs[key] for f in group if key in f.attrs]
             if values:
                 merged_attrs[key] = float(np.mean(values))
-    # engine_uid: record all engines used as a list
+    # engine_uid: record all engines used as a list, and the engines pycontrails
+    # computed with (engine_uid_used: the latest successor of a superseded UID)
     merged_attrs["engine_uid"] = [f.attrs.get("engine_uid") for f in group]
+    merged_attrs["engine_uid_used"] = [f.attrs.get("engine_uid_used") for f in group]
     # Restore original flight_id exactly — no string parsing needed
     original_fid = merged_attrs.pop(_MULTI_ENGINE_ORIG_FID_KEY)
     merged_attrs["flight_id"] = original_fid

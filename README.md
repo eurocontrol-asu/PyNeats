@@ -3,7 +3,7 @@
 [![CI](https://github.com/eurocontrol-asu/PyNeats/actions/workflows/ci.yml/badge.svg)](https://github.com/eurocontrol-asu/PyNeats/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/eurocontrol-asu/PyNeats/branch/main/graph/badge.svg)](https://codecov.io/gh/eurocontrol-asu/PyNeats)
 [![PyPI version](https://badge.fury.io/py/pyneats.svg)](https://badge.fury.io/py/pyneats)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Typed](https://img.shields.io/badge/typed-mypy-blue)](https://mypy-lang.org/)
@@ -36,7 +36,7 @@ The library is designed for **researchers, airspace operators, regulators, and i
 
 ### Prerequisites
 
-- **Python 3.11+** (see [Python installation](https://www.python.org/downloads/))
+- **Python 3.12+** (see [Python installation](https://www.python.org/downloads/))
 - **uv** (fast Python package manager) – [Installation guide](https://docs.astral.sh/uv/getting-started/installation/)
 - **make** (build automation tool) – typically pre-installed on Linux/macOS
 

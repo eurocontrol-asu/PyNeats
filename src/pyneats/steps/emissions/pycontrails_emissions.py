@@ -11,8 +11,10 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Any
 
+import numpy as np
 from pycontrails import Flight
 from pycontrails.models.emissions import Emissions
+from pycontrails.models.emissions import nvpm
 
 from pyneats.core.neats_default_parameters import DEFAULT_EMISSIONS_KWARGS
 from pyneats.core.steps import BaseStep
@@ -28,6 +30,10 @@ __all__ = [
     "PyContrailsEmissionParams",
     "PyContrailsEmissionModel",
 ]
+
+# nvPM mass EI of the pycontrails "Constant" route [kg/kg fuel]: 0.088 g/kg
+# (Stettler et al., 2013), as in Emissions._nvpm_emission_indices_constant.
+_CONSTANT_NVPM_EI_M = 0.088e-3
 
 
 @dataclass(frozen=True)
@@ -96,8 +102,57 @@ class PyContrailsEmissionModel(
         """
         try:
             out: Flight = self._impl.eval(flight)
+            if _all_nan_nvpm(out):
+                out = self._constant_nvpm_fallback(out)
         except Exception as e:
             raise EmissionStepError(f"backend eval failed: {e}") from e
 
         # Validate required emission columns and return typed view (zero-copy)
         return FlightWithEmissions.from_flight(out)
+
+    def _constant_nvpm_fallback(self, out: Flight) -> Flight:
+        """Replace all-NaN nvPM emission indices with the pycontrails constant ones.
+
+        pycontrails >= 0.63 estimates nvPM with SCOPE11 for engines that have
+        smoke numbers but no nvPM data in the ICAO EDB. SCOPE11 needs the bypass
+        ratio, and EDB v32 has none for some engines (PW4098 ``5PW076``,
+        JT9D ``8PW086``, ``8PW087``, ``8PW088``): nvPM is then NaN at every
+        waypoint, with no warning, and CoCiP gets no contrail from the flight.
+
+        The fallback gives the emission indices of the pycontrails "Constant"
+        route (mass 0.088 g/kg fuel, number ``default_nvpm_ei_n``, both with the
+        ICAO Annex 16 fuel correction) and runs pycontrails again, which keeps
+        these columns and recomputes ``nvpm_mass``, ``nvpm_number`` and the
+        totals. ``nvpm_data_source`` records the fallback.
+        """
+        source = out.attrs.get("nvpm_data_source")
+        self.logger.warning(
+            "Flight %s, engine %s: nvPM emission indices are all NaN (%s); "
+            "constant nvPM emission indices used instead",
+            out.attrs.get("flight_id"),
+            out.attrs.get("engine_uid_used", out.attrs.get("engine_uid")),
+            source,
+        )
+        thrust_setting = out["thrust_setting"]
+        h_content = out.fuel.hydrogen_content
+        k_mass = nvpm.nvpm_mass_fuel_correction_icao_annex_16(h_content, thrust_setting)
+        k_num = nvpm.nvpm_number_fuel_correction_icao_annex_16(
+            h_content, thrust_setting
+        )
+        ei_n = self._impl.params["default_nvpm_ei_n"]
+        out["nvpm_ei_m"] = (
+            np.full(out.size, _CONSTANT_NVPM_EI_M, dtype=np.float32) * k_mass
+        )
+        out["nvpm_ei_n"] = np.full(out.size, ei_n, dtype=np.float32) * k_num
+        # pycontrails keeps nvPM EIs that are already set and recomputes the totals
+        out = self._impl.eval(out)
+        out.attrs["nvpm_data_source"] = f"Constant (fallback: {source} gave NaN nvPM)"
+        return out
+
+
+def _all_nan_nvpm(flight: Flight) -> bool:
+    """True when ``nvpm_ei_n`` or ``nvpm_ei_m`` is NaN at every waypoint."""
+    return any(
+        col in flight and flight.size > 0 and bool(np.isnan(flight[col]).all())
+        for col in ("nvpm_ei_n", "nvpm_ei_m")
+    )

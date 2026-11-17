@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "NEATS: aviation non-CO2 climate metrics pipeline (PyNeats)."
 readme = "README.md"
 license = { file = "LICENSE.md" }
-requires-python = ">=3.11.5,<3.14"
+requires-python = ">=3.12,<3.14"
 authors = [
     { name = "Philippe VERY", email = "philippe.very@eurocontrol.int" },
     { name = "Ramon DALMAU", email = "ramon.dalmau-codina@eurocontrol.int" },
@@ -31,7 +31,6 @@ classifiers = [
     "License :: OSI Approved :: European Union Public Licence 1.2 (EUPL 1.2)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
@@ -40,7 +39,7 @@ classifiers = [
 ]
 dependencies = [
     "xarray==2024.10.0",
-    "pycontrails[ecmwf,gcp,gfs,jupyter,pyproj]==0.60.2",
+    "pycontrails[ecmwf,gcp,gfs,jupyter,pyproj]==0.65.0",
     "dacite>=1.9.2",
     "zarr>=2.18.3,<3",
     "scipy>=1.11.0",
@@ -204,7 +203,7 @@ docstring-code-format = true
 # MYPY - Type Checking
 # ============================================
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = false
 warn_unused_configs = true
 disallow_untyped_defs = false
