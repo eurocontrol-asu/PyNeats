@@ -172,6 +172,27 @@ def test_bundled_toml_leaves_attribution_to_library_default():
         assert "attr" not in raw["responses"][spec].get("rf", {}), spec
 
 
+def test_bundled_toml_temperature_matches_pyneats_efficacies():
+    """The [temperature] efficacies equal the RSTS values PyNEATS applies.
+
+    They do not change PyNEATS results (PyNEATS reads AGWP without efficacy),
+    but keep openairclim's own dT/AEGWP outputs consistent with PyNEATS.
+    """
+    from pyneats.core.physics import EFFICACY
+
+    temp = toml.loads(_BASE_TOML.read_text())["temperature"]
+    toml_to_pyneats = {
+        "H2O": "H2O",
+        "O3": "O3",
+        "PMO": "PMO",
+        "CH4": "CH4",
+        "cont": "Contrails",
+    }
+    for oac_spec, pyneats_spec in toml_to_pyneats.items():
+        assert temp[oac_spec]["efficacy"] == EFFICACY[pyneats_spec], oac_spec
+    assert temp["CO2"]["lambda"] == 1.06
+
+
 def test_worker_toml_validates_against_openairclim_schema(tmp_path):
     """The TOML PyNEATS writes passes openairclim's validation and resolves
     to the decided settings."""

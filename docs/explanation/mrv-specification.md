@@ -390,7 +390,10 @@ PyNeats uses **openairclim 0.20.0** with the OpenAirClim repository data **0.2.0
 | `inventories.rel_to_base` | `true` | The flight is computed relative to the bundled base inventory above (`OpenAirClimParams.base_inventory_path`). If the configured file does not exist, the run stops with an error naming the path; `base_inventory_path = None` is the explicit way to run without a base inventory |
 | `species.out` | no `"SWV"` | Stratospheric water vapour from CH4 oxidation is not computed |
 | `CH4.rf.attr`, `CO2.rf.attr` | not set: openairclim default `"proportional"` | Attribution of the non-linear CH4 (and CO2) RF to the flight |
+| `[temperature]` | `CO2.lambda = 1.06`; efficacies equal to the RSTS mean values (Table 3.1) that PyNeats applies: contrails 0.37, O3 1.05, CH4 1.04, H2O 1.0, PMO 1.0 | Only used by openairclim's own dT/ATR/AGTP/AEGWP outputs. PyNeats reads AGWP without efficacy and applies `EFFICACY` itself, so these values do not change PyNeats results; they are kept equal to `EFFICACY` so that openairclim's outputs are consistent with PyNeats. The contrail efficacy is set explicitly because the openairclim default (0.21) is the RSTS minimum |
 | CH4 solver | openairclim defaults | openairclim integrates the CH4 lifetime equation with scipy's default tolerances. On a single flight this gives AGWP_CH4 about 0.3 % lower than a tightly converged solution |
+
+**Time structure of the CH4 RF.** With openairclim 0.20.0, the CH4 RF of the flight (negative: the NOx pulse shortens the CH4 lifetime) first decreases and then returns progressively towards 0. DLR (S. Völk, November 2026) confirmed that this is the expected behaviour of openairclim 0.20.0.
 
 The **AGWP values are the flight's own share.** With a base inventory, openairclim's own metrics output covers the base fleet plus the flight. PyNeats therefore integrates the radiative forcing of the flight (aircraft identifier `DEFAULT`) over the window $[t_0, t_0 + H)$:
 
