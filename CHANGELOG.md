@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- **performance**: Figure 2 of the MRV specification (ICAO-BADA correspondence) replaced: the MRR conservative engine no longer appears as a key of the BADA mapping: the old figure showed the pre-v0.7.5 chain, where it selected a (type, engine) row; since v0.7.5 it only gives the emissions engine. Text added under the figure
 - **open_airclim**: Method D settings table lists `[temperature]`; note that the CH4 RF of a flight first decreases and then returns towards 0 with openairclim 0.20.0, the expected behaviour (DLR)
 
 ## [1.0.1] - 2026-05-26
