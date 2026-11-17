@@ -233,6 +233,8 @@ See [Input Prioritization](input-prioritization.md) for the full decision flowch
 
 *Figure 2 — ICAO-BADA Correspondence*
 
+The figure selects the row of the mapping tables, and thus the BADA model: the BADA 4 type of the row, or its BADA 3 type when the row has none (see [BADA Type Mapping](input-prioritization.md#bada-type-mapping) for the retries). Only the aircraft version and the engine UID given by the AO are keys; the MRR conservative engine is not used to select the row. It is only the engine UID given to the emissions step when the AO declares none. A version or an engine UID that is not in a table is not an error: the look-up goes on with the next table. When several rows match, the first one is used.
+
 ### 3.5 Emissions Model
 
 PyNeats uses the emission model within **PyContrails** that implements the **BFFM2** and **T4/T2** models.
