@@ -186,8 +186,10 @@ class TestExtractResultsSeparatesLowAltitude:
         pytest.importorskip("pyBADA", reason="pyBADA required")
 
         from pyneats.runners.fleet import FleetRunner
+        from pyneats.runners.flight import RunnerConfig
 
         runner = FleetRunner.__new__(FleetRunner)
+        runner.cfg = RunnerConfig()
         runner._pipeline_aborted = False
 
         # Mock successful flight
@@ -236,8 +238,10 @@ class TestExtractResultsAbortedWithLowAltitude:
         pytest.importorskip("pyBADA", reason="pyBADA required")
 
         from pyneats.runners.fleet import FleetRunner
+        from pyneats.runners.flight import RunnerConfig
 
         runner = FleetRunner.__new__(FleetRunner)
+        runner.cfg = RunnerConfig()
         runner._pipeline_aborted = True
         runner.fleet_with_climate_impact = None
 
@@ -281,8 +285,10 @@ class TestEdgeCaseNoLowAltitudeErrors:
         pytest.importorskip("pyBADA", reason="pyBADA required")
 
         from pyneats.runners.fleet import FleetRunner
+        from pyneats.runners.flight import RunnerConfig
 
         runner = FleetRunner.__new__(FleetRunner)
+        runner.cfg = RunnerConfig()
         runner._pipeline_aborted = True
         runner.fleet_with_climate_impact = None
 
@@ -319,8 +325,10 @@ class TestEdgeCaseAllLowAltitude:
         pytest.importorskip("pyBADA", reason="pyBADA required")
 
         from pyneats.runners.fleet import FleetRunner
+        from pyneats.runners.flight import RunnerConfig
 
         runner = FleetRunner.__new__(FleetRunner)
+        runner.cfg = RunnerConfig()
         runner._pipeline_aborted = True
         runner.fleet_with_climate_impact = None
 
@@ -357,8 +365,10 @@ class TestEdgeCaseEmptyErrorRecords:
         pytest.importorskip("pyBADA", reason="pyBADA required")
 
         from pyneats.runners.fleet import FleetRunner
+        from pyneats.runners.flight import RunnerConfig
 
         runner = FleetRunner.__new__(FleetRunner)
+        runner.cfg = RunnerConfig()
         runner._pipeline_aborted = False
 
         successful_flight = MagicMock()

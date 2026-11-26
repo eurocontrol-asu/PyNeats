@@ -45,6 +45,12 @@ ACCF_SCALE_CH4 : Mapping[str, float]
     Scaling factors for CH4 ACCFs (divisors), keyed by aCCF version.
 ACCF_SCALE_H2O : Mapping[str, float]
     Scaling factors for H2O ACCFs (divisors), keyed by aCCF version.
+SCALING_TO_BASELINE_2026_METHOD_C : Mapping[str, float | None]
+    Method C divisors of the "scaling_to_baseline_2026" non-CO2 scaling, keyed
+    by species (None = not set yet).
+SCALING_TO_BASELINE_2026_METHOD_D : Mapping[str, float | None]
+    Method D divisors of the "scaling_to_baseline_2026" non-CO2 scaling, keyed
+    by species (None = not set yet).
 DEFAULT_PRESSURE_LEVELS_HPA : tuple of float
     Default pressure levels in hPa.
 """
@@ -66,6 +72,8 @@ __all__ = [
     "ACCF_SCALE_03",
     "ACCF_SCALE_CH4",
     "ACCF_SCALE_H2O",
+    "SCALING_TO_BASELINE_2026_METHOD_C",
+    "SCALING_TO_BASELINE_2026_METHOD_D",
     "RF_BACKWARD_FACTOR",
     "PMO_CH4_RF_RATIO",
 ]
@@ -152,6 +160,27 @@ PMO_CH4_RF_RATIO: Final[float] = 0.29
 ACCF_SCALE_03: Final[Mapping[str, float]] = {"V1.0": 1.97, "V1.0A": 11.0}
 ACCF_SCALE_CH4: Final[Mapping[str, float]] = {"V1.0": 2.03, "V1.0A": 35.0}
 ACCF_SCALE_H2O: Final[Mapping[str, float]] = {"V1.0": 1.92, "V1.0A": 3.0}
+
+# Non-CO2 scaling "scaling_to_baseline_2026" (DLR, 2026): Method D is aligned
+# with Lee et al. on a global inventory (D*), then Method C with D* on the MRV
+# regional perimeter (C*). All values are divisors, keyed by species; PMO uses
+# the CH4 value (see core/non_co2_scaling.py).
+# - Method C: divisor of the raw aCCF regression. It replaces both
+#   ACCF_SCALE_*[accf_v] (local_accf.py) and RF_BACKWARD_FACTOR (gwp.py), which
+#   is 1.0 under this scaling.
+# - Method D: divisor of the OpenAirClim AGWP (open_airclim.py); the
+#   "accf_version" scaling applies none.
+# None = value not given yet: a run with this scaling stops at start-up.
+SCALING_TO_BASELINE_2026_METHOD_C: Final[Mapping[str, float | None]] = {
+    "O3": None,
+    "CH4": None,
+    "H2O": None,
+}
+SCALING_TO_BASELINE_2026_METHOD_D: Final[Mapping[str, float | None]] = {
+    "O3": None,
+    "CH4": None,
+    "H2O": None,
+}
 
 # Pressure levels in hPa
 DEFAULT_PRESSURE_LEVELS_HPA: Final[tuple[float, ...]] = (

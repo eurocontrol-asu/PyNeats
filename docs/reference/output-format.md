@@ -27,6 +27,7 @@ Collected once per run by [`FleetReport.collect`](https://github.com/eurocontrol
 | `bada4_version` | string | `"4.2.1"`, fixed in the code: the default `bada4_version` of the performance step, that is the `bada_path` sub-directory read for BADA 4. Not read from the BADA files, and not updated when you set `params["performance"]["bada4_version"]` |
 | `bada3_version` | string | `"3.16"`, fixed in the code: the default `bada3_version` of the performance step, that is the `bada_path` sub-directory read for BADA 3. Not read from the BADA files, and not updated when you set `params["performance"]["bada3_version"]` |
 | `pybada_version` | string | Installed pyBADA version (`"unknown"` if not found) |
+| `non_co2_scaling` | string | Non-CO2 scaling of the run (`RunnerConfig.non_co2_scaling`): `"accf_version"` (default) or `"scaling_to_baseline_2026"` (see [MRV specification](../explanation/mrv-specification.md), section 3.6). Not in `FleetReport.collect()` |
 
 ## `flight_results`
 

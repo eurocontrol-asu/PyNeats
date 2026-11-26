@@ -157,6 +157,21 @@ runner = FleetRunnerSmallEmitter(params)
 runner.eval()
 ```
 
+### Non-CO2 scaling
+
+Both fleet runners and both single-flight runners take the non-CO2 scaling
+from `non_co2_scaling` (default `"accf_version"`, the scaling of the aCCF
+version `accf_v`). To use the 2026 scaling for Methods C and D:
+
+```python
+params = FleetRunnerParams(..., non_co2_scaling="scaling_to_baseline_2026")
+```
+
+The runner stops at start-up if a divisor of that scaling is not set yet, or
+with the `"accf"` (CLIMaCCF) backend. Set it on the runner config only, not in
+`params["non_co2_model"]` or `params["climate_impact"]`. The value is written
+to `results["fleet_meta_data"]["non_co2_scaling"]`.
+
 ### Single flight (debugging / notebooks)
 
 `FlightRunnerLargeEmitter` and `FlightRunnerSmallEmitter` process one flight

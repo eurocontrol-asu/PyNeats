@@ -22,6 +22,8 @@ from numpy.typing import NDArray
 from pycontrails import Flight
 
 from pyneats.core.neats_default_parameters import DEFAULT_ACCF_VALIDITY_PRESSURE
+from pyneats.core.non_co2_scaling import ACCF_VERSION_SCALING
+from pyneats.core.non_co2_scaling import non_co2_scaling_divisors
 from pyneats.core.physics import ACCF_SCALE_03
 from pyneats.core.physics import ACCF_SCALE_CH4
 from pyneats.core.physics import ACCF_SCALE_H2O
@@ -61,7 +63,9 @@ class LocalACCFParams(ACCFParams):
     col_air_pressure: str = "air_pressure"  # [Pa]
     col_phase: str = "phase"
 
-    # Version-specific divisors applied to the raw regressions (dimensionless)
+    # Version-specific divisors applied to the raw regressions (dimensionless),
+    # under the "accf_version" non-CO2 scaling only; other scalings use the
+    # Method C divisors of core/physics.py (see core/non_co2_scaling.py)
     scale_o3: Mapping[str, float] = field(default_factory=lambda: ACCF_SCALE_03)
     scale_ch4: Mapping[str, float] = field(
         default_factory=lambda: ACCF_SCALE_CH4,
@@ -72,6 +76,13 @@ class LocalACCFParams(ACCFParams):
     solar_constant: float = SOLAR_CONSTANT  # [W m^-2]
 
     def __post_init__(self) -> None:
+        if self.non_co2_scaling != ACCF_VERSION_SCALING:
+            # Fails here, at construction, if a divisor is not set yet
+            try:
+                non_co2_scaling_divisors(self.non_co2_scaling, "C")
+            except ValueError as e:
+                raise ACCFStepError(str(e)) from None
+            return
         if self.accf_kwargs["accf_v"] not in self.scale_o3:
             raise ACCFStepError(
                 f"Unknown ACCF version '{self.accf_kwargs['accf_v']}' for O3 scaling."
@@ -147,6 +158,17 @@ class LocalACCFModel(
     default_params = LocalACCFParams
 
     # ---- plumbing ----
+    def _divisor(self, species: str, by_version: Mapping[str, float]) -> float:
+        """Divisor of the raw ``species`` regression (dimensionless).
+
+        ``by_version[accf_v]`` under the "accf_version" non-CO2 scaling, else
+        the Method C divisor of the selected scaling.
+        """
+        divisors = non_co2_scaling_divisors(self.params.non_co2_scaling, "C")
+        if divisors is None:
+            return by_version[self.params.accf_kwargs["accf_v"]]
+        return divisors[species]
+
     def _require_cols(self, flight: Flight, cols: list[str]) -> None:
         columns = list(flight.data.keys())
         missing = [c for c in cols if c not in columns]
@@ -179,8 +201,8 @@ class LocalACCFModel(
             np.isfinite(accf), np.maximum(accf, 0.0), np.nan
         )  # clamp negatives to 0
         try:
-            # Scaling with version-specific factor
-            accf /= self.params.scale_o3[self.params.accf_kwargs["accf_v"]]
+            # Scaling with the version-specific or non-CO2 scaling divisor
+            accf /= self._divisor("O3", self.params.scale_o3)
 
             # convert from K-per-kg(NOx as NO2) to K-per-kg(fuel) with NOx EI
             accf *= _as_np(flight[self.params.col_nox_ei])
@@ -225,8 +247,8 @@ class LocalACCFModel(
             np.isfinite(accf), np.minimum(accf, 0.0), np.nan
         )  # clamp positives to 0
         try:
-            # Scaling with version-specific factor
-            accf /= self.params.scale_ch4[self.params.accf_kwargs["accf_v"]]
+            # Scaling with the version-specific or non-CO2 scaling divisor
+            accf /= self._divisor("CH4", self.params.scale_ch4)
 
             # convert from K-per-kg(NOx as NO2) to K-per-kg(fuel) with NOx EI
             accf *= _as_np(flight[self.params.col_nox_ei])
@@ -267,8 +289,8 @@ class LocalACCFModel(
         pv = _as_np(flight[self.params.col_potential_vorticity])
         accf = self.h2o_raw_formula(pv)
         try:
-            # Scaling with version-specific factor
-            accf /= self.params.scale_h2o[self.params.accf_kwargs["accf_v"]]
+            # Scaling with the version-specific or non-CO2 scaling divisor
+            accf /= self._divisor("H2O", self.params.scale_h2o)
 
             # Final conversion from K-per-kg(fuel) to K per segment
             accf *= _as_np(flight[self.params.col_fuel_burn])

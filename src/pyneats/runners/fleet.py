@@ -51,6 +51,7 @@ from pyneats.core.steps import get_step_critical_columns
 from pyneats.core.steps_registry import build
 from pyneats.core.steps_registry import known
 from pyneats.runners.flight import RunnerConfig
+from pyneats.runners.flight import with_non_co2_scaling
 from pyneats.runners.runner import Runner
 from pyneats.steps.climate_functions.cocip import CoCiPModel
 from pyneats.steps.climate_functions.cocip import ContrailsParams
@@ -557,7 +558,7 @@ class FleetRunner(Runner):
         Raises:
             ValidationError: If ``cfg.validate()`` rejects the configuration.
         """
-        self.cfg = cfg
+        self.cfg = with_non_co2_scaling(cfg)
         self.cfg.validate()
 
         # ---- Weather datasets (loaded once) ---------------------------------
@@ -931,6 +932,13 @@ class FleetRunner(Runner):
                 other.append(rec)
         return low_altitude, other
 
+    def _fleet_meta_data(self) -> dict[str, Any]:
+        """Tool versions (``FleetReport.collect``) and the non-CO2 scaling."""
+        return {
+            **FleetReport.collect(),
+            "non_co2_scaling": self.cfg.non_co2_scaling,
+        }
+
     def _extract_results(self) -> Self:
         low_altitude_results, other_errors = self._separate_low_altitude_errors(
             self.error_records,
@@ -944,7 +952,7 @@ class FleetRunner(Runner):
                 len(self.error_records),
             )
             self.results = {
-                "fleet_meta_data": FleetReport.collect(),
+                "fleet_meta_data": self._fleet_meta_data(),
                 "flight_results": low_altitude_results + other_errors,
             }
             clear_dataset_cache()
@@ -961,7 +969,7 @@ class FleetRunner(Runner):
         ]
 
         self.results = {
-            "fleet_meta_data": FleetReport.collect(),
+            "fleet_meta_data": self._fleet_meta_data(),
             "flight_results": successful_results + low_altitude_results + other_errors,
         }
 

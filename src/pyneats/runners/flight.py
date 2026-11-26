@@ -19,6 +19,7 @@ This abstract class does not implement the climate impact step, which is defined
 in the SmallEmitter and LargeEmitter classes.
 """
 
+import dataclasses
 import logging
 from abc import ABC
 from abc import abstractmethod
@@ -26,6 +27,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Any
 from typing import Self
+from typing import TypeVar
 
 import pandas as pd
 from pycontrails.core.met import MetDataset
@@ -35,9 +37,12 @@ from pyneats.core.neats_default_parameters import DEFAULT_CONTRAILS_MODEL
 from pyneats.core.neats_default_parameters import DEFAULT_EMISSIONS
 from pyneats.core.neats_default_parameters import DEFAULT_INTERPOLATOR
 from pyneats.core.neats_default_parameters import DEFAULT_NON_CO2_MODEL
+from pyneats.core.neats_default_parameters import DEFAULT_NON_CO2_SCALING
 from pyneats.core.neats_default_parameters import DEFAULT_PERFORMANCE
 from pyneats.core.neats_default_parameters import DEFAULT_TRAJECTORY_PARSER
+from pyneats.core.non_co2_scaling import check_non_co2_scaling
 from pyneats.core.steps_registry import build
+from pyneats.core.steps_registry import known
 from pyneats.runners.runner import Runner
 from pyneats.steps.climate_functions import FlightWithNonCO2Impact
 from pyneats.steps.climate_functions import NonCO2Model
@@ -65,7 +70,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RunnerConfig:
-    """Names correspond to registry entries for each step."""
+    """Names correspond to registry entries for each step.
+
+    ``non_co2_scaling`` selects the non-CO2 scaling of Methods C and D
+    (``"accf_version"`` or ``"scaling_to_baseline_2026"``, see
+    ``pyneats.core.non_co2_scaling``). The runners pass it to the non-CO2 and
+    climate-impact steps.
+    """
 
     interpolator: str = DEFAULT_INTERPOLATOR
     trajectory_parser: str = DEFAULT_TRAJECTORY_PARSER
@@ -74,8 +85,57 @@ class RunnerConfig:
     contrails_model: str = DEFAULT_CONTRAILS_MODEL
     non_co2_model: str = DEFAULT_NON_CO2_MODEL
     climate_impact: str = DEFAULT_CLIMATE_IMPACT
+    non_co2_scaling: str = DEFAULT_NON_CO2_SCALING
 
     params: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
+# Steps that take the non-CO2 scaling: (RunnerConfig step field, interface)
+_NON_CO2_SCALING_STEPS: tuple[tuple[str, type[Any]], ...] = (
+    ("non_co2_model", NonCO2Model),
+    ("climate_impact", ClimateImpactModel),
+)
+
+
+CfgT = TypeVar("CfgT", bound=RunnerConfig)
+
+
+def with_non_co2_scaling(cfg: CfgT) -> CfgT:
+    """Return a copy of ``cfg`` whose step params carry ``cfg.non_co2_scaling``.
+
+    Each step's params dict is copied, so the runners' later updates of
+    ``params`` do not change the caller's ``cfg``. ``non_co2_scaling`` is added
+    to the params of the selected non-CO2 and climate-impact steps (when their
+    params have that field), and these params are built once with it, so that
+    an unknown scaling, a divisor not set yet or an unsupported backend stops
+    the run here instead of failing every flight.
+
+    Raises:
+        ValueError: ``cfg.non_co2_scaling`` is unknown, or a step's params give
+            another ``non_co2_scaling``.
+        ACCFStepError | OpenAirClimStepError | ClimateImpactStepError: The
+            selected step cannot run with this scaling.
+    """
+    scaling = cfg.non_co2_scaling
+    check_non_co2_scaling(scaling)
+    params = {key: dict(value) for key, value in cfg.params.items()}
+    for key, interface in _NON_CO2_SCALING_STEPS:
+        ctor = known(interface).get(getattr(cfg, key).lower().strip())
+        params_cls = getattr(ctor, "default_params", None)
+        if params_cls is None or "non_co2_scaling" not in {
+            f.name for f in dataclasses.fields(params_cls)
+        }:
+            continue
+        step_params = params.setdefault(key, {})
+        given = step_params.get("non_co2_scaling", scaling)
+        if given != scaling:
+            raise ValueError(
+                f"params['{key}']['non_co2_scaling'] = '{given}' differs from "
+                f"non_co2_scaling = '{scaling}'; set it on the runner config only"
+            )
+        step_params["non_co2_scaling"] = scaling
+        params_cls(non_co2_scaling=scaling)
+    return dataclasses.replace(cfg, params=params)
 
 
 class FlightRunner(Runner, ABC):
@@ -115,7 +175,7 @@ class FlightRunner(Runner, ABC):
             bada_path: Root of the BADA 3 / BADA 4 coefficient files.
             airport_fuel_path: Optional airport -> fuel properties file.
         """
-        self.cfg = cfg or RunnerConfig()
+        self.cfg = with_non_co2_scaling(cfg or RunnerConfig())
 
         self._source = None  # initialize backing field before using the property
         self.source = source  # use the property setter for validation
