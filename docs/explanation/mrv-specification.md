@@ -263,6 +263,21 @@ The parameterisation of the climate functions is specified precisely in the requ
 - The alteration of the calorific value (`q_fuel`) will have an impact on the **SAC** (Schmidt-Appleman Criterion) computation in CoCiP.
 - It has been finally chosen **not to apply any humidity correction** to the ICON NWP data.
 - As specified in the requirement document, **aCCF version `v1.0A`** is used.
+- The non-CO₂ scaling is selected with `RunnerConfig.non_co2_scaling` (see
+  `pyneats.core.non_co2_scaling`):
+    - `"accf_version"` (default): Method C divides the raw aCCF regressions by
+      the `accf_v` scaling factors (v1.0A: O₃ 11, CH₄ 35, H₂O 3) and the ATR by
+      $RF_{Spec}^{Backward}$ (section 3.7); Method D applies no factor.
+    - `"scaling_to_baseline_2026"`: Method D is aligned with Lee et al. on a
+      global inventory (D\*), then Method C with D\* on the MRV regional
+      perimeter (C\*). For Method C, one divisor per species replaces both the
+      `accf_v` factor and $RF_{Spec}^{Backward}$ (which is then 1). For Method
+      D, one divisor per species divides the OpenAirClim AGWP. PMO uses the CH₄
+      divisor; contrails are not scaled. The divisors are in
+      `SCALING_TO_BASELINE_2026_METHOD_C` / `_D` (`pyneats.core.physics`).
+      **They are not set yet:** until they are, a run with this scaling stops
+      at start-up. The `"accf"` (CLIMaCCF) backend only supports
+      `"accf_version"`.
 
 ### 3.7 Climate Metrics
 
@@ -329,6 +344,7 @@ where:
     | PMO | 0.492 (CH₄ value: PMO is derived from the CH₄ aCCF) |
 
     A species without an RF backward factor, an efficacy or a conversion factor is an error; there is no default of 1.
+    Under the `"scaling_to_baseline_2026"` non-CO₂ scaling (section 3.6), $RF_{Spec}^{Backward} = 1$.
 
 - $H_0 = 20$ is the reference horizon for pulse computation within CLIMaCCF.
 - $\varepsilon_{Spec}$ are the efficacies as defined in the specification document: CH₄ 1.04, O₃ 1.05, H₂O 1.0 and PMO 1.0 (the PMO value is the RSTS value, confirmed by the method owner on 2026-10-28). Values in `EFFICACY` in `pyneats.core.physics`.

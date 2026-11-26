@@ -95,10 +95,10 @@ class FlightRunnerSmallEmitter(FlightRunner):
     ) -> None:
         prepare_tmp_base_dir(tmp_base_dir_path)
 
-        # Run Shared Init
-        super().__init__(weather, source, cfg, bada_path, airport_fuel_path)
-
-        self.cfg = cfg or SmallEmitterConfig()
+        # Run Shared Init (sets self.cfg, with the non-CO2 scaling in its params)
+        super().__init__(
+            weather, source, cfg or SmallEmitterConfig(), bada_path, airport_fuel_path
+        )
 
         # Initialize ONLY one non_CO2 model no call to CoCiP wich requires weather information
         non_co2_params = self.cfg.params.get("non_co2_model", {})

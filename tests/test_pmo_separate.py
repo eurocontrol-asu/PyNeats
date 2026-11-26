@@ -289,8 +289,9 @@ def test_open_airclim_stores_ch4_and_pmo_apart() -> None:
 
     from pyneats.steps.climate_functions import open_airclim
 
-    src = inspect.getsource(open_airclim.OpenAirClimModel.run)
-    assert 'flight.attrs[f"AGWP_{h}_PMO"]' in src
+    src = inspect.getsource(open_airclim._agwp_attrs)
+    assert 'for sp in ("O3", "CH4", "PMO", "H2O"):' in src
+    assert 'attrs[f"AGWP_{h}_{sp}"]' in src
     assert '["CH4"] + results' not in src
 
 

@@ -28,6 +28,7 @@ from pycontrails.datalib.ecmwf import TopNetThermalRadiation
 from pycontrails.models.accf import ACCF  # pycontrails’ wrapper for ClimAccf
 
 from pyneats.core.neats_default_parameters import DEFAULT_CLIMACCF_KWARGS
+from pyneats.core.non_co2_scaling import ACCF_VERSION_SCALING
 from pyneats.core.physics import PMO_CH4_RF_RATIO
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
@@ -57,6 +58,15 @@ class ACCFParams(ClimateParams):
     accf_kwargs: Mapping[str, Any] = field(
         default_factory=lambda: DEFAULT_CLIMACCF_KWARGS
     )
+
+    def __post_init__(self) -> None:
+        # CLIMaCCF applies its own accf_v scaling; it cannot take other divisors
+        if self.non_co2_scaling != ACCF_VERSION_SCALING:
+            raise ACCFStepError(
+                f"Non-CO2 scaling '{self.non_co2_scaling}' is not supported by the "
+                f"'accf' (CLIMaCCF) backend; use '{ACCF_VERSION_SCALING}' or the "
+                "'local_accf' backend."
+            )
 
 
 # ---- surface adapter for ACCF -------------------------------------

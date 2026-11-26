@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib.resources import files
 
@@ -34,6 +35,7 @@ from pyneats.core.neats_default_parameters import OPEN_AIRCLIM_COMPUTATION_HORIZ
 from pyneats.core.neats_default_parameters import OPEN_AIRCLIM_GRID_RES
 from pyneats.core.neats_default_parameters import OPEN_AIRCLIM_LEVELS
 from pyneats.core.neats_default_parameters import OPEN_AIRCLIM_REFERENCE_YEAR
+from pyneats.core.non_co2_scaling import non_co2_scaling_divisors
 from pyneats.core.physics import METRICS_HORIZONS
 from pyneats.core.steps import BaseStep
 from pyneats.core.steps_registry import register
@@ -65,6 +67,13 @@ class OpenAirClimParams(ClimateParams):
     computation_horizon: int = OPEN_AIRCLIM_COMPUTATION_HORIZON  # [years]
     reference_year: int = OPEN_AIRCLIM_REFERENCE_YEAR  # emission year of every flight
     horizons: tuple[int, ...] = METRICS_HORIZONS  # [years]
+
+    def __post_init__(self) -> None:
+        # Fails here, at construction, if a Method D divisor is not set yet
+        try:
+            non_co2_scaling_divisors(self.non_co2_scaling, "D")
+        except ValueError as e:
+            raise OpenAirClimStepError(str(e)) from None
 
 
 def prepare_tmp_base_dir(path: str) -> None:
@@ -195,6 +204,28 @@ def _harvest_agwp(
                 for v in rf_vars
             }
     return out
+
+
+def _agwp_attrs(
+    results: Mapping[int, Mapping[str, float]],
+    horizons: tuple[int, ...],
+    divisors: Mapping[str, float] | None,
+) -> dict[str, float]:
+    """Return the ``AGWP_{H}_{species}`` flight attributes [W m-2 yr].
+
+    O3, CH4, PMO and H2O are divided by the Method D ``divisors`` of the
+    non-CO2 scaling (``None``, the "accf_version" scaling: not divided).
+    Contrails (``AGWP_{H}_CONT``) are never divided.
+    """
+    attrs: dict[str, float] = {}
+    for h in horizons:
+        for sp in ("O3", "CH4", "PMO", "H2O"):
+            agwp = results[h][sp]
+            if divisors is not None:
+                agwp /= divisors[sp]
+            attrs[f"AGWP_{h}_{sp}"] = agwp
+        attrs[f"AGWP_{h}_CONT"] = results[h]["cont"]
+    return attrs
 
 
 @register(NonCO2Model, "open_airclim")
@@ -384,12 +415,13 @@ class OpenAirClimModel(
                 results = _harvest_agwp(result_nc, t_0, tuple(self.params.horizons))
 
                 # Assign Attributes
-                for h in [20, 50, 100]:
-                    flight.attrs[f"AGWP_{h}_O3"] = results[h]["O3"]
-                    flight.attrs[f"AGWP_{h}_CH4"] = results[h]["CH4"]
-                    flight.attrs[f"AGWP_{h}_PMO"] = results[h]["PMO"]
-                    flight.attrs[f"AGWP_{h}_H2O"] = results[h]["H2O"]
-                    flight.attrs[f"AGWP_{h}_CONT"] = results[h]["cont"]
+                flight.attrs.update(
+                    _agwp_attrs(
+                        results,
+                        tuple(self.params.horizons),
+                        non_co2_scaling_divisors(self.params.non_co2_scaling, "D"),
+                    )
+                )
 
             except Exception as e:
                 self.logger.exception("Open_AirClim evaluation failed")

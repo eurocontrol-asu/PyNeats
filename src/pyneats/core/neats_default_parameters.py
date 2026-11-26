@@ -120,6 +120,8 @@ __all__ = [
     "DEFAULT_EMISSIONS_KWARGS",
     "DEFAULT_COCIP_KWARGS",
     "DEFAULT_CLIMACCF_KWARGS",
+    "NON_CO2_SCALINGS",
+    "DEFAULT_NON_CO2_SCALING",
     "DEFAULT_ROCD_PHASE_THRESHOLD",
     "DEFAULT_AIRSPEED_STALL_CONFIG",
     "DEFAULT_MAX_TRUSTED_CAS",
@@ -304,6 +306,14 @@ else:
 # ClimAccf uses ACCF (Aviation Radiative Forcing Index-Component Impact Factor) methodology
 ACCFS_VERSIONS = Literal["V1.0", "V1.0A"]
 DEFAULT_ACCF_VERSION: Final[ACCFS_VERSIONS] = "V1.0A"  # Latest ACCF methodology version
+
+# Non-CO2 scaling of Methods C and D (see core/non_co2_scaling.py):
+# - "accf_version": Method C divides by ACCF_SCALE_*[accf_v] and by
+#   RF_BACKWARD_FACTOR, Method D applies no factor (results as before).
+# - "scaling_to_baseline_2026": one divisor per species and method, from
+#   SCALING_TO_BASELINE_2026_METHOD_C / _D in core/physics.py.
+NON_CO2_SCALINGS = Literal["accf_version", "scaling_to_baseline_2026"]
+DEFAULT_NON_CO2_SCALING: Final[NON_CO2_SCALINGS] = "accf_version"
 
 # ClimAccf model configuration
 # Computes climate impact factors for CO2, NOx (via aviation induced NOx and ozone), CH4, H2O, and contrails

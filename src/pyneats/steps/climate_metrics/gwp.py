@@ -15,7 +15,10 @@ from typing import Final
 import pandas as pd
 
 from pyneats.core.neats_default_parameters import DEFAULT_CLIMACCF_KWARGS
+from pyneats.core.neats_default_parameters import DEFAULT_NON_CO2_SCALING
 from pyneats.core.neats_default_parameters import MAX_NONCO2_CO2_RATIO
+from pyneats.core.non_co2_scaling import ACCF_VERSION_SCALING
+from pyneats.core.non_co2_scaling import check_non_co2_scaling
 from pyneats.core.physics import CO2_AGWP_COEFF_WM2YR_PER_KG
 from pyneats.core.physics import CONVERSION_FACTORS_AGWP_TO_RF
 from pyneats.core.physics import CONVERSION_FACTORS_ATR_TO_RF
@@ -81,9 +84,19 @@ class GWPParams(BaseParams):
     atr_ref_horizon: int = field(
         default_factory=lambda: DEFAULT_CLIMACCF_KWARGS.get("time_horizon", 20)
     )
+    # Method C divisors, used under the "accf_version" non-CO2 scaling only
+    # (other scalings put all the Method C scaling in the aCCF step: 1.0 here)
     rf_backward_factor: Mapping[str, float] = field(
         default_factory=lambda: RF_BACKWARD_FACTOR
     )
+    # Non-CO2 scaling (see pyneats.core.non_co2_scaling); set by the runners
+    non_co2_scaling: str = DEFAULT_NON_CO2_SCALING
+
+    def __post_init__(self) -> None:
+        try:
+            check_non_co2_scaling(self.non_co2_scaling)
+        except ValueError as e:
+            raise ClimateImpactStepError(str(e)) from None
 
 
 # ---------------------------
@@ -190,13 +203,18 @@ class GWPMetrics(
         EAGWP(H) = ATR(H0) * k_AGWP(H) / k_ATR(H0) / rf_backward * efficacy**2.
 
         Every factor is looked up for ``species`` itself (PMO has its own);
-        a missing entry raises ``ClimateImpactStepError``.
+        a missing entry raises ``ClimateImpactStepError``. ``rf_backward`` is
+        1.0 under a non-CO2 scaling other than "accf_version", whose Method C
+        divisor (applied in the aCCF step) replaces it.
         """
         eps_spec = self._factor("efficacy", self.params.efficacy, species)
         h_0 = self.params.atr_ref_horizon
-        rf_backward = self._factor(
-            "RF backward factor", self.params.rf_backward_factor, species
-        )
+        if self.params.non_co2_scaling == ACCF_VERSION_SCALING:
+            rf_backward = self._factor(
+                "RF backward factor", self.params.rf_backward_factor, species
+            )
+        else:
+            rf_backward = 1.0
 
         k_atr_h_0 = self._conversion_factor(
             "k_ATR conversion factor", self.params.k_atr_from_rf, h_0, species
