@@ -3,8 +3,8 @@
 ``"accf_version"`` (default) must give the results of before the option
 existed. ``"scaling_to_baseline_2026"`` replaces, for Method C, both
 ``ACCF_SCALE_*[accf_v]`` and ``RF_BACKWARD_FACTOR`` with one divisor, and
-divides the Method D (OpenAirClim) AGWP. Its divisors are placeholders (None)
-until DLR gives them, so the tests that need values patch them in.
+divides the Method D (OpenAirClim) AGWP. The tests that need values patch
+test divisors in, so they do not depend on the values of core/physics.py.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ import pytest
 from pycontrails import Flight
 
 from pyneats.core import non_co2_scaling
+from pyneats.core import physics
 from pyneats.core.non_co2_scaling import non_co2_scaling_divisors
 from pyneats.core.physics import ACCF_SCALE_03
 from pyneats.core.physics import ACCF_SCALE_CH4
@@ -60,16 +61,54 @@ def test_unknown_scaling_raises() -> None:
         non_co2_scaling_divisors("V1.0B", "C")
 
 
+@pytest.fixture()
+def divisors_not_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give the "scaling_to_baseline_2026" scaling divisors that are not set."""
+    not_set = dict.fromkeys(("O3", "CH4", "H2O"))
+    monkeypatch.setitem(non_co2_scaling._DIVISORS, NEW, {"C": not_set, "D": not_set})
+
+
 @pytest.mark.parametrize("method", ["C", "D"])
-def test_placeholders_raise(method: str) -> None:
-    """The DLR values are not set yet: the scaling cannot be used."""
+def test_placeholders_raise(divisors_not_set: None, method: str) -> None:
+    """A divisor that is not set (None): the scaling cannot be used."""
     with pytest.raises(ValueError, match=r"no Method .* divisor yet"):
         non_co2_scaling_divisors(NEW, method)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("method", ["C", "D"])
+def test_values_resolve(method: str) -> None:
+    """The values of core/physics.py resolve, PMO with a divisor of its own."""
+    divisors = non_co2_scaling_divisors(NEW, method)  # type: ignore[arg-type]
+    assert divisors is not None
+    assert set(divisors) == {"O3", "CH4", "PMO", "H2O"}
+    assert all(v > 0.0 for v in divisors.values())
+    assert divisors["PMO"] != divisors["CH4"]
+
+
+def test_method_c_divisors_combine_the_two_steps() -> None:
+    """C* = C x (C to D) x (D to Lee et al.), from the "accf_version" divisor."""
+    c = non_co2_scaling_divisors(NEW, "C")
+    d = non_co2_scaling_divisors(NEW, "D")
+    assert c is not None and d is not None
+    scale = {"O3": ACCF_SCALE_03, "CH4": ACCF_SCALE_CH4, "PMO": ACCF_SCALE_CH4}
+    scale["H2O"] = ACCF_SCALE_H2O
+    for sp, c_to_d in physics._BASELINE_2026_C_TO_D.items():
+        legacy = scale[sp]["V1.0A"] * RF_BACKWARD_FACTOR[sp]
+        assert legacy / c[sp] == pytest.approx(c_to_d / d[sp], rel=1e-12)
 
 
 def test_divisors_pmo_uses_ch4(divisors_set: None) -> None:
     assert non_co2_scaling_divisors(NEW, "C") == {**C_DIVISORS, "PMO": 20.0}
     assert non_co2_scaling_divisors(NEW, "D") == {**D_DIVISORS, "PMO": 0.8}
+
+
+def test_divisors_own_pmo_is_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(
+        non_co2_scaling._DIVISORS,
+        NEW,
+        {"C": C_DIVISORS, "D": {**D_DIVISORS, "PMO": 0.5}},
+    )
+    assert non_co2_scaling_divisors(NEW, "D") == {**D_DIVISORS, "PMO": 0.5}
 
 
 @pytest.mark.parametrize("bad", [0.0, -1.0, float("nan")])
@@ -154,9 +193,27 @@ def test_local_accf_new_scaling_replaces_version_scale(
     )
 
 
-def test_local_accf_params_reject_placeholders() -> None:
+def test_local_accf_params_reject_placeholders(divisors_not_set: None) -> None:
     with pytest.raises(ACCFStepError, match="no Method C divisor yet"):
         LocalACCFParams(non_co2_scaling=NEW)
+
+
+@pytest.mark.parametrize(
+    ("divisors", "factor"),
+    [
+        (C_DIVISORS, 1.0),  # no PMO divisor: PMO uses the CH4 one
+        ({**C_DIVISORS, "PMO": 8.0}, 20.0 / 8.0),
+    ],
+)
+def test_local_accf_pmo_factor(
+    monkeypatch: pytest.MonkeyPatch, divisors: dict[str, float], factor: float
+) -> None:
+    """PMO is 0.29 x CH4, scaled by its own divisor when it has one."""
+    assert _model()._pmo_factor() == 1.0
+    monkeypatch.setitem(
+        non_co2_scaling._DIVISORS, NEW, {"C": divisors, "D": D_DIVISORS}
+    )
+    assert _model(non_co2_scaling=NEW)._pmo_factor() == pytest.approx(factor)
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +308,9 @@ def test_with_non_co2_scaling_rejects_conflicting_step_param() -> None:
         ("accf", "not supported by the 'accf'"),
     ],
 )
-def test_with_non_co2_scaling_fails_at_start_up(non_co2_model: str, match: str) -> None:
+def test_with_non_co2_scaling_fails_at_start_up(
+    divisors_not_set: None, non_co2_model: str, match: str
+) -> None:
     cfg = RunnerConfig(non_co2_model=non_co2_model, non_co2_scaling=NEW)
     with pytest.raises(Exception, match=match):
         with_non_co2_scaling(cfg)

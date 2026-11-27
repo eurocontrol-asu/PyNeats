@@ -169,6 +169,18 @@ class LocalACCFModel(
             return by_version[self.params.accf_kwargs["accf_v"]]
         return divisors[species]
 
+    def _pmo_factor(self) -> float:
+        """Factor of ``ATR_20_PMO`` on top of 0.29 x ``ATR_20_CH4`` (dimensionless).
+
+        1.0 under the "accf_version" non-CO2 scaling. Else the CH4 divisor over
+        the PMO divisor of the selected scaling, so that PMO is scaled by its
+        own divisor (1.0 when the scaling gives PMO the CH4 divisor).
+        """
+        divisors = non_co2_scaling_divisors(self.params.non_co2_scaling, "C")
+        if divisors is None:
+            return 1.0
+        return divisors["CH4"] / divisors["PMO"]
+
     def _require_cols(self, flight: Flight, cols: list[str]) -> None:
         columns = list(flight.data.keys())
         missing = [c for c in cols if c not in columns]
@@ -323,7 +335,9 @@ class LocalACCFModel(
             (P-ATR20 of that segment's emissions; NaN outside validity).
             With ``accf_kwargs["PMO"]`` True (default) it also writes
             ``ATR_20_PMO`` = ``PMO_CH4_RF_RATIO`` (0.29) x ``ATR_20_CH4``
-            [K per segment]; ``ATR_20_CH4`` itself excludes PMO.
+            [K per segment], times the CH4 divisor over the PMO divisor
+            under a non-CO2 scaling with a PMO divisor of its own;
+            ``ATR_20_CH4`` itself excludes PMO.
 
         Raises:
             ACCFStepError: If the local regression evaluation fails.
@@ -360,7 +374,7 @@ class LocalACCFModel(
             flight["ATR_20_H2O"] = h2o
             if self.params.accf_kwargs["PMO"]:
                 # Primary-mode ozone, derived from the CH4 aCCF [K per segment]
-                flight["ATR_20_PMO"] = PMO_CH4_RF_RATIO * ch4
+                flight["ATR_20_PMO"] = PMO_CH4_RF_RATIO * ch4 * self._pmo_factor()
 
         except Exception as e:
             self.logger.exception("local ACCF evaluation failed")
