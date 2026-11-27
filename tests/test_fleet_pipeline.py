@@ -20,6 +20,7 @@ from pyneats.core.views import FlightView
 from pyneats.runners.fleet import FleetRunnerParams
 from pyneats.runners.large_emitter import FleetRunnerLargeEmitter
 from pyneats.steps.weather.weather_store import ZarrPaths
+from tests.golden_compare import FLEET_CONTRAIL_COLUMN_ATOL
 from tests.golden_compare import GOLDEN_RTOL
 from tests.golden_compare import assert_matches_golden
 
@@ -43,6 +44,9 @@ def test_fleet_runner_golden(
     each output flight (``FlightView.to_dict``) with its golden record:
     the same keys, every per-point column and flight-level attribute at
     ``GOLDEN_RTOL``, and the climate payload (``tests/golden_compare.py``).
+    The contrail evolution columns are compared within
+    ``FLEET_CONTRAIL_COLUMN_ATOL`` of their column maximum: they differ at
+    single points between machines.
     """
     # Skip if dependencies not available
     if weather is None:
@@ -99,5 +103,6 @@ def test_fleet_runner_golden(
             output_flight.to_dict(),
             expected_record,
             rtol=GOLDEN_RTOL,
+            loose=FLEET_CONTRAIL_COLUMN_ATOL,
             label=f"Case '{golden_case}', flight {i} [{flight_id}]",
         )
