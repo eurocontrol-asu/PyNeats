@@ -11,7 +11,8 @@ selected by ``RunnerConfig.non_co2_scaling``:
   (``SCALING_TO_BASELINE_2026_METHOD_C`` / ``_D`` in core/physics.py). For
   Method C it replaces both ``ACCF_SCALE_*[accf_v]`` and ``RF_BACKWARD_FACTOR``.
 
-PMO uses the CH4 divisor. Contrails are not scaled.
+PMO uses the CH4 divisor unless the table has its own ``"PMO"`` entry.
+Contrails are not scaled.
 """
 
 from __future__ import annotations
@@ -63,7 +64,8 @@ def non_co2_scaling_divisors(
 
     Returns:
         ``None`` for ``"accf_version"`` (the step applies its own factors);
-        otherwise ``{"O3", "CH4", "PMO", "H2O"}`` divisors, PMO = CH4.
+        otherwise ``{"O3", "CH4", "PMO", "H2O"}`` divisors; PMO is the CH4
+        value when the table has no ``"PMO"`` entry.
 
     Raises:
         ValueError: ``scaling`` is unknown, or one of its divisors is not set
@@ -87,5 +89,5 @@ def non_co2_scaling_divisors(
             f"Non-CO2 scaling '{scaling}' Method {method} divisors must be "
             f"positive; got {[(sp, divisors[sp]) for sp in bad]}"
         )
-    divisors["PMO"] = divisors["CH4"]
+    divisors.setdefault("PMO", divisors["CH4"])
     return divisors

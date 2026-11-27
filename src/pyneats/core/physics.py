@@ -163,23 +163,52 @@ ACCF_SCALE_H2O: Final[Mapping[str, float]] = {"V1.0": 1.92, "V1.0A": 3.0}
 
 # Non-CO2 scaling "scaling_to_baseline_2026" (DLR, 2026): Method D is aligned
 # with Lee et al. on a global inventory (D*), then Method C with D* on the MRV
-# regional perimeter (C*). All values are divisors, keyed by species; PMO uses
-# the CH4 value (see core/non_co2_scaling.py).
+# regional perimeter (C*). O3, CH4, PMO and H2O each have a value; contrails
+# are not scaled.
+#
+# PROVISIONAL inputs, not for results (given by Philippe, 2026-11-27). Both
+# are multipliers:
+# - D to Lee et al.: multiplier of the OpenAirClim output, from Bruder et al.
+# - C to D: Method D / Method C on a sample, both with the "accf_version"
+#   scaling (aCCF V1.0A). The CH4 value is also used for PMO.
+_BASELINE_2026_D_TO_LEE: Final[Mapping[str, float]] = {
+    "O3": 0.60,
+    "CH4": 1.06,
+    "PMO": 1.83,
+    "H2O": 2.38,
+}
+_BASELINE_2026_C_TO_D: Final[Mapping[str, float]] = {
+    "O3": 0.889056,
+    "CH4": 2.316996,
+    "PMO": 2.316996,
+    "H2O": 1.480933,
+}
+# What Method C divides by under the "accf_version" scaling with aCCF V1.0A:
+# ACCF_SCALE_*["V1.0A"] x RF_BACKWARD_FACTOR (O3 5.588, CH4 and PMO 17.22,
+# H2O 1.56). PMO carries the CH4 aCCF scale (ATR_PMO = 0.29 x ATR_CH4).
+_ACCF_V10A_DIVISOR: Final[Mapping[str, float]] = {
+    "O3": ACCF_SCALE_03["V1.0A"] * RF_BACKWARD_FACTOR["O3"],
+    "CH4": ACCF_SCALE_CH4["V1.0A"] * RF_BACKWARD_FACTOR["CH4"],
+    "PMO": ACCF_SCALE_CH4["V1.0A"] * RF_BACKWARD_FACTOR["PMO"],
+    "H2O": ACCF_SCALE_H2O["V1.0A"] * RF_BACKWARD_FACTOR["H2O"],
+}
+
+# The values the code applies. All are divisors, keyed by species. A table
+# without a "PMO" entry uses the CH4 value for PMO (core/non_co2_scaling.py).
+# None = value not given yet: a run with this scaling stops at start-up.
 # - Method C: divisor of the raw aCCF regression. It replaces both
 #   ACCF_SCALE_*[accf_v] (local_accf.py) and RF_BACKWARD_FACTOR (gwp.py), which
-#   is 1.0 under this scaling.
-# - Method D: divisor of the OpenAirClim AGWP (open_airclim.py); the
-#   "accf_version" scaling applies none.
-# None = value not given yet: a run with this scaling stops at start-up.
+#   is 1.0 under this scaling: C* = C x (C to D) x (D to Lee et al.), so the
+#   divisor is the "accf_version" one over these two multipliers. The PMO
+#   divisor sets ATR_PMO = 0.29 x ATR_CH4 x (CH4 divisor / PMO divisor).
+# - Method D: divisor of the OpenAirClim AGWP (open_airclim.py), 1 over the
+#   multiplier; the "accf_version" scaling applies none.
 SCALING_TO_BASELINE_2026_METHOD_C: Final[Mapping[str, float | None]] = {
-    "O3": None,
-    "CH4": None,
-    "H2O": None,
+    sp: _ACCF_V10A_DIVISOR[sp] / (_BASELINE_2026_C_TO_D[sp] * m)
+    for sp, m in _BASELINE_2026_D_TO_LEE.items()
 }
 SCALING_TO_BASELINE_2026_METHOD_D: Final[Mapping[str, float | None]] = {
-    "O3": None,
-    "CH4": None,
-    "H2O": None,
+    sp: 1.0 / m for sp, m in _BASELINE_2026_D_TO_LEE.items()
 }
 
 # Pressure levels in hPa

@@ -272,12 +272,13 @@ The parameterisation of the climate functions is specified precisely in the requ
       global inventory (D\*), then Method C with D\* on the MRV regional
       perimeter (C\*). For Method C, one divisor per species replaces both the
       `accf_v` factor and $RF_{Spec}^{Backward}$ (which is then 1). For Method
-      D, one divisor per species divides the OpenAirClim AGWP. PMO uses the CH₄
-      divisor; contrails are not scaled. The divisors are in
-      `SCALING_TO_BASELINE_2026_METHOD_C` / `_D` (`pyneats.core.physics`).
-      **They are not set yet:** until they are, a run with this scaling stops
-      at start-up. The `"accf"` (CLIMaCCF) backend only supports
-      `"accf_version"`.
+      D, one divisor per species divides the OpenAirClim AGWP. O₃, CH₄, PMO
+      and H₂O each have a divisor; contrails are not scaled. In Method C,
+      PMO is 0.29 × the CH₄ ATR times the CH₄ divisor over the PMO divisor.
+      The divisors are in `SCALING_TO_BASELINE_2026_METHOD_C` / `_D`
+      (`pyneats.core.physics`). **The values are provisional.** A run with a
+      divisor that is not set stops at start-up. The `"accf"` (CLIMaCCF)
+      backend only supports `"accf_version"`.
 
 ### 3.7 Climate Metrics
 
