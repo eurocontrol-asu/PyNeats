@@ -107,6 +107,7 @@ from pyneats.runners.fleet import FleetRunnerParams
 from pyneats.runners.large_emitter import FleetRunnerLargeEmitter
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
 from pyneats.steps.weather.weather_store import ZarrPaths
+from tests.golden_compare import FLEET_CONTRAIL_COLUMN_ATOL
 from tests.golden_compare import GOLDEN_RTOL
 from tests.golden_compare import assert_matches_golden
 
@@ -373,7 +374,8 @@ def test_tc_success(
     """Verify a successful TC flight matches its golden output.
 
     Every column, flight-level attribute and climate payload value, at
-    ``GOLDEN_RTOL`` (``tests/golden_compare.py``).
+    ``GOLDEN_RTOL`` (``tests/golden_compare.py``), except the contrail
+    evolution columns (``FLEET_CONTRAIL_COLUMN_ATOL``).
     """
     runner = aggregated_fleet_run
 
@@ -393,6 +395,7 @@ def test_tc_success(
         actual.to_dict(),
         golden_records_by_id[flight_id],
         rtol=GOLDEN_RTOL,
+        loose=FLEET_CONTRAIL_COLUMN_ATOL,
         label=f"{tc_id} [{flight_id}]",
     )
 

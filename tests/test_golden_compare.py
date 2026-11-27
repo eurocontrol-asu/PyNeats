@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from tests.golden_compare import FLEET_CONTRAIL_COLUMN_ATOL
 from tests.golden_compare import GOLDEN_RTOL
 from tests.golden_compare import assert_matches_golden
 
@@ -104,3 +105,24 @@ def test_failure_message_names_the_column() -> None:
     actual["fuel_flow"][1] = 2.0
     with pytest.raises(AssertionError, match="fuel_flow"):
         assert_matches_golden(actual, _record(), label="case")
+
+
+def test_fleet_contrail_band() -> None:
+    """One contrail point 0.2 % of the column maximum away passes; 5 % fails."""
+    expected = _record()
+    expected["contrail_age"] = [0, 30_120_000_000_000, 26_520_000_000_000, 0]
+    expected["rf_net_mean"] = [float("nan"), -1.33, -1.32, float("nan")]
+
+    actual = _record()
+    actual["contrail_age"] = [0, 30_120_000_000_000, 26_460_000_000_000, 0]
+    actual["rf_net_mean"] = [float("nan"), -1.33, -1.32 * (1 + 2e-3), float("nan")]
+    with pytest.raises(AssertionError, match="contrail_age"):
+        assert_matches_golden(actual, expected)
+    assert_matches_golden(actual, expected, loose=FLEET_CONTRAIL_COLUMN_ATOL)
+
+    actual["rf_net_mean"][2] = -1.32 * 1.05
+    with pytest.raises(AssertionError, match="rf_net_mean"):
+        assert_matches_golden(actual, expected, loose=FLEET_CONTRAIL_COLUMN_ATOL)
+    actual["rf_net_mean"][2] = float("nan")
+    with pytest.raises(AssertionError, match="rf_net_mean"):
+        assert_matches_golden(actual, expected, loose=FLEET_CONTRAIL_COLUMN_ATOL)

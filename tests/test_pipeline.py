@@ -23,6 +23,7 @@ from pyneats.runners.flight import RunnerConfig
 from pyneats.runners.large_emitter import FlightRunnerLargeEmitter
 from pyneats.steps.parsing.neats_io import neats_json_to_flights
 from tests.conftest import assert_climate_payload_equal
+from tests.golden_compare import CONTRAIL_EVOLUTION_COLUMNS
 from tests.golden_compare import GOLDEN_RTOL
 from tests.golden_compare import assert_matches_golden
 
@@ -60,6 +61,7 @@ CONTRAIL_COLUMN_ATOL = {
     "rf_net_mean": 0.25,  # (7.7e-2, UAE62Y ref)
     "sdr_mean": 0.7,  # (2.2e-1, ACA812 ref)
 }
+assert set(CONTRAIL_COLUMN_ATOL) == set(CONTRAIL_EVOLUTION_COLUMNS)
 
 
 def _as_fleet_record(record: dict[str, Any]) -> dict[str, Any]:

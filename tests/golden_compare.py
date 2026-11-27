@@ -34,7 +34,7 @@ Rules (:func:`assert_matches_golden`):
     flight-level 0 comes from an empty or zero input (no sulphur, no
     contrail), which is exactly 0 on every machine.
 
-- ``loose`` columns (FlightRunner contrail columns, see ``test_pipeline.py``):
+- ``loose`` columns (the contrail evolution columns, see below):
   same length, kinds and NaN pattern; values within ``fraction *
   max|expected column|``, no relative part.
 - ``climate_impact``: :func:`tests.conftest.assert_climate_payload_equal`
@@ -44,15 +44,22 @@ All failing keys are reported in one message, each with the first failing
 index, the expected and actual values, the relative difference and the number
 of failing points.
 
-Known risk (not measured): the FleetRunner and TC tests compare the contrail
-columns (``ef``, ``rf_*_mean``, ``contrail_age``, ...) and the Contrails
-payload at ``rtol`` too. They are bit-identical on the machine that made the
-goldens, but contrail evolution amplifies input noise (FlightRunner vs
-FleetRunner: 1.9e-6 of the scale in the CoCiP inputs gives up to 28 % at single
-points). If another machine or library build makes these tests fail only on
-contrail values, pass the FlightRunner contrail treatment (``loose`` and
-``CONTRAIL_RTOL`` in ``test_pipeline.py``) there too, rather than loosening
-``GOLDEN_RTOL``.
+Contrail evolution columns between machines (``FLEET_CONTRAIL_COLUMN_ATOL``):
+the FleetRunner and TC tests compare the same runner as the goldens, so on the
+machine that made the goldens the contrail columns are bit-identical. On
+another machine they are not: contrail evolution amplifies float noise, and a
+contrail can end one time step apart at a single point. Measured on grogu
+(Xeon w7-3545, AVX-512; dev 98bee16, 2026-11-27) against the goldens made on
+the dataiku machine, same code, data and uv.lock: 17 tests failed, all on
+flight UAE62Y at one or two of 780 points, only on these eight columns, by at
+most 2.0e-3 of the column maximum (``sdr_mean``; ``contrail_age`` 60 s);
+every other column, attribute and payload value matched at ``GOLDEN_RTOL``.
+These tests therefore pass ``loose=FLEET_CONTRAIL_COLUMN_ATOL`` (1e-2 of the
+column maximum, 5x the measured maximum) for these columns only; the length,
+kinds and NaN pattern (where there is a contrail) stay exact, and the contrail
+totals of the payload stay at ``GOLDEN_RTOL``. ``test_pipeline.py`` compares
+another runner (FlightRunner) with the same goldens and has its own, wider
+values.
 """
 
 from __future__ import annotations
@@ -67,7 +74,13 @@ import numpy as np
 from tests.conftest import assert_climate_payload_equal
 
 
-__all__ = ["ATOL_FRACTION", "GOLDEN_RTOL", "assert_matches_golden"]
+__all__ = [
+    "ATOL_FRACTION",
+    "CONTRAIL_EVOLUTION_COLUMNS",
+    "FLEET_CONTRAIL_COLUMN_ATOL",
+    "GOLDEN_RTOL",
+    "assert_matches_golden",
+]
 
 # Relative tolerance of the golden comparison (G-2, decided 2026-10-30). On the
 # machine that generated the goldens the output is bit-identical; 1e-5 leaves
@@ -77,6 +90,26 @@ GOLDEN_RTOL = 1e-5
 # Absolute floor of a per-point column, as a fraction of ``rtol * scale``
 # (see the module docstring).
 ATOL_FRACTION = 0.1
+
+# Per-point columns of the contrail evolution (CoCiP), which differ at single
+# points between machines (see the module docstring).
+CONTRAIL_EVOLUTION_COLUMNS: tuple[str, ...] = (
+    "ef",
+    "contrail_age",
+    "olr_mean",
+    "rf_sw_mean",
+    "rf_lw_mean",
+    "rsr_mean",
+    "rf_net_mean",
+    "sdr_mean",
+)
+
+# ``loose`` of the FleetRunner and TC golden tests: these columns are compared
+# within this fraction of their column maximum (measured maximum between
+# machines: 2.0e-3).
+FLEET_CONTRAIL_COLUMN_ATOL: dict[str, float] = dict.fromkeys(
+    CONTRAIL_EVOLUTION_COLUMNS, 1e-2
+)
 
 _PAYLOAD_KEY = "climate_impact"
 
